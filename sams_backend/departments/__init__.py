@@ -1,0 +1,1 @@
+"""Departments App - Department management."""
