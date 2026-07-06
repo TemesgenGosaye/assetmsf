@@ -2,7 +2,7 @@
 Views for common functionality.
 """
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import api_view, permission_classes
 from core.responses import StandardResponse
 from core.permissions import IsAdminOrManager
@@ -11,6 +11,13 @@ from .serializers import (
     VendorSerializer, VendorCreateSerializer, VendorUpdateSerializer
 )
 from .models import QRCode, Vendor
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """Simple health check endpoint to verify backend is running."""
+    return StandardResponse.success({"status": "ok"}, "Health check passed")
 
 
 class QRCodeListView(generics.ListCreateAPIView):

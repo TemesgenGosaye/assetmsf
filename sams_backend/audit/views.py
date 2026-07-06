@@ -15,6 +15,37 @@ from .serializers import (
 )
 from .models import AuditSession, AuditAssignment, AuditReview, AuditScan, AuditIncharge
 from authentication.models import UserPropertyAccess
+from properties.models import Property
+
+
+def _frequency_months_to_choice(months):
+    """Map frontend frequency_months (1/3/6) to model frequency choices."""
+    return {
+        1: AuditSession.Frequency.MONTHLY,
+        3: AuditSession.Frequency.QUARTERLY,
+        6: AuditSession.Frequency.YEARLY,
+    }.get(months, AuditSession.Frequency.MONTHLY)
+
+
+def _frequency_choice_to_months(frequency):
+    """Map model frequency choices to frontend frequency_months."""
+    return {
+        AuditSession.Frequency.MONTHLY: 1,
+        AuditSession.Frequency.QUARTERLY: 3,
+        AuditSession.Frequency.YEARLY: 6,
+    }.get(frequency, 1)
+
+
+def session_to_frontend(session):
+    """Serialize an audit session in the shape expected by the React app."""
+    return {
+        'id': session.id,
+        'started_at': session.start_date.isoformat() if session.start_date else session.created_at.isoformat(),
+        'frequency_months': _frequency_choice_to_months(session.frequency),
+        'initiated_by': session.initiated_by.email if session.initiated_by else None,
+        'is_active': session.status == AuditSession.Status.IN_PROGRESS,
+        'property_id': str(session.property_id) if session.property_id else None,
+    }
 
 
 class AuditSessionListView(generics.ListCreateAPIView):
@@ -39,14 +70,26 @@ class AuditSessionListView(generics.ListCreateAPIView):
         queryset = AuditSession.objects.filter(is_active=True)
         
         if user.is_super_admin() or user.is_admin():
-            return queryset
-        
-        accessible_property_ids = UserPropertyAccess.objects.filter(
-            user=user
-        ).values_list('property_id', flat=True)
-        
-        if accessible_property_ids:
-            queryset = queryset.filter(property_id__in=accessible_property_ids)
+            pass
+        else:
+            accessible_property_ids = UserPropertyAccess.objects.filter(
+                user=user
+            ).values_list('property_id', flat=True)
+            
+            if accessible_property_ids:
+                queryset = queryset.filter(property_id__in=accessible_property_ids)
+
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            if is_active.lower() == 'true':
+                queryset = queryset.filter(status=AuditSession.Status.IN_PROGRESS)
+            elif is_active.lower() == 'false':
+                queryset = queryset.exclude(status=AuditSession.Status.IN_PROGRESS)
+
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            ordering = ordering.replace('started_at', 'start_date')
+            queryset = queryset.order_by(ordering)
         
         return queryset
     
@@ -55,11 +98,11 @@ class AuditSessionListView(generics.ListCreateAPIView):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            data = [session_to_frontend(session) for session in page]
+            return self.get_paginated_response(data)
         
-        serializer = self.get_serializer(queryset, many=True)
-        return StandardResponse.success(serializer.data, "Sessions retrieved successfully")
+        data = [session_to_frontend(session) for session in queryset]
+        return StandardResponse.success(data, "Sessions retrieved successfully")
     
     def create(self, request, *args, **kwargs):
         """Create session with standard response format."""
@@ -86,14 +129,52 @@ class AuditSessionDetailView(generics.RetrieveUpdateDestroyAPIView):
     def retrieve(self, request, *args, **kwargs):
         """Retrieve session with standard response format."""
         instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return StandardResponse.success(serializer.data, "Session retrieved successfully")
+        return StandardResponse.success(
+            session_to_frontend(instance),
+            "Session retrieved successfully",
+        )
     
     def destroy(self, request, *args, **kwargs):
         """Soft delete session."""
         instance = self.get_object()
         instance.soft_delete(request.user)
         return StandardResponse.no_content("Session deleted successfully")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_audit_session(request):
+    """Create and immediately start an audit session (frontend-compatible)."""
+    try:
+        freq_months = int(request.data.get('frequency_months', 1))
+    except (TypeError, ValueError):
+        freq_months = 1
+
+    property_id = request.data.get('property_id')
+    property_obj = None
+    if property_id:
+        property_obj = Property.objects.filter(id=property_id, is_active=True).first()
+    if not property_obj:
+        property_obj = Property.objects.filter(is_active=True).first()
+    if not property_obj:
+        return StandardResponse.bad_request("No property available for audit session")
+
+    session_id = f"AUD-{int(timezone.now().timestamp() * 1000)}"
+    session = AuditSession.objects.create(
+        id=session_id,
+        name=session_id,
+        property=property_obj,
+        status=AuditSession.Status.IN_PROGRESS,
+        frequency=_frequency_months_to_choice(freq_months),
+        scheduled_date=timezone.now().date(),
+        start_date=timezone.now(),
+        initiated_by=request.user,
+        created_by=request.user,
+    )
+    return StandardResponse.created(
+        session_to_frontend(session),
+        "Session started successfully",
+    )
 
 
 @api_view(['POST'])
@@ -111,7 +192,7 @@ def start_audit_session(request, id):
         session.save(updated_by=request.user)
         
         return StandardResponse.success(
-            AuditSessionSerializer(session).data,
+            session_to_frontend(session),
             "Session started successfully"
         )
     except AuditSession.DoesNotExist:
@@ -135,7 +216,7 @@ def end_audit_session(request, id):
         session.save(updated_by=request.user)
         
         return StandardResponse.success(
-            AuditSessionSerializer(session).data,
+            session_to_frontend(session),
             "Session completed successfully"
         )
     except AuditSession.DoesNotExist:

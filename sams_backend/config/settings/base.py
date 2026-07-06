@@ -49,6 +49,8 @@ INSTALLED_APPS = [
     'dashboard',
     'common',
     'employees',
+    'houses',
+    'newsletter',
 ]
 
 MIDDLEWARE = [

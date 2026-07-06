@@ -20,6 +20,189 @@ from .serializers import (
 )
 from .models import UserSettings, UserPermission, UserPropertyAccess, UserDepartmentAccess, PasswordResetOTP
 
+
+# ======================
+# Permissions Views
+# ======================
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_permissions(request):
+    """List permissions for a user (accepts user_id from query param or uses current user)."""
+    user_id = request.query_params.get('user_id') or request.user.id
+    permissions = UserPermission.objects.filter(user_id=user_id)
+    serializer = UserPermissionSerializer(permissions, many=True)
+    return StandardResponse.success(serializer.data, "Permissions retrieved successfully")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def set_permissions(request):
+    """Bulk set permissions for a user."""
+    user_id = request.data.get('user_id')
+    permissions_data = request.data.get('permissions', [])
+    
+    # Delete existing permissions for this user
+    UserPermission.objects.filter(user_id=user_id).delete()
+    
+    # Create new permissions
+    for perm in permissions_data:
+        UserPermission.objects.create(
+            user_id=user_id,
+            page=perm['page'],
+            can_view=perm.get('can_view', True),
+            can_edit=perm.get('can_edit', False)
+        )
+    
+    return StandardResponse.success(None, "Permissions set successfully")
+
+
+# ======================
+# User Preferences Views
+# ======================
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def user_preferences(request, user_id=None):
+    """Get or update user preferences (stored in dashboard_prefs JSON field)."""
+    # Get or create user settings
+    user = request.user
+    if user_id and (user.is_superuser or user.is_staff or str(user.id) == str(user_id)):
+        user = User.objects.get(id=user_id)
+    
+    settings, created = UserSettings.objects.get_or_create(user=user)
+    
+    if request.method == 'GET':
+        # Build preferences from dashboard_prefs
+        prefs = settings.dashboard_prefs or {}
+        default_prefs = {
+            "user_id": str(user.id),
+            "user_email": user.email,
+            "show_newsletter": False,
+            "show_help_center": True,
+            "compact_mode": False,
+            "enable_beta_features": False,
+            "default_landing_page": None,
+            "feature_flags": {},
+            "sidebar_collapsed": False,
+            "enable_sounds": True,
+            "density": "comfortable",
+            "auto_theme": False,
+            "show_announcements": True,
+            "sticky_header": False,
+            "top_nav_mode": False,
+            "created_at": settings.created_at.isoformat() if settings.created_at else None,
+            "updated_at": settings.updated_at.isoformat() if settings.updated_at else None
+        }
+        # Merge defaults with stored prefs
+        merged = {**default_prefs, **prefs}
+        merged['user_id'] = str(user.id)
+        merged['user_email'] = user.email
+        return StandardResponse.success(merged, "Preferences retrieved successfully")
+    
+    elif request.method == 'PATCH':
+        # Update preferences in dashboard_prefs
+        patch = request.data
+        current_prefs = settings.dashboard_prefs or {}
+        current_prefs.update(patch)
+        # Remove user_id and user_email from stored prefs (they are dynamic)
+        current_prefs.pop('user_id', None)
+        current_prefs.pop('user_email', None)
+        current_prefs.pop('created_at', None)
+        current_prefs.pop('updated_at', None)
+        settings.dashboard_prefs = current_prefs
+        settings.save()
+        
+        # Return merged prefs
+        prefs = settings.dashboard_prefs or {}
+        default_prefs = {
+            "user_id": str(user.id),
+            "user_email": user.email,
+            "show_newsletter": False,
+            "show_help_center": True,
+            "compact_mode": False,
+            "enable_beta_features": False,
+            "default_landing_page": None,
+            "feature_flags": {},
+            "sidebar_collapsed": False,
+            "enable_sounds": True,
+            "density": "comfortable",
+            "auto_theme": False,
+            "show_announcements": True,
+            "sticky_header": False,
+            "top_nav_mode": False,
+            "created_at": settings.created_at.isoformat() if settings.created_at else None,
+            "updated_at": settings.updated_at.isoformat() if settings.updated_at else None
+        }
+        merged = {**default_prefs, **prefs}
+        merged['user_id'] = str(user.id)
+        merged['user_email'] = user.email
+        return StandardResponse.success(merged, "Preferences updated successfully")
+
+
+# ======================
+# User Access Views
+# ======================
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_user_access(request):
+    """List property access for a user (accepts user_id from query param or uses current user)."""
+    user_id = request.query_params.get('user_id') or request.user.id
+    access = UserPropertyAccess.objects.filter(user_id=user_id)
+    serializer = UserPropertyAccessSerializer(access, many=True)
+    return StandardResponse.success(serializer.data, "Property access retrieved successfully")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def set_user_access(request):
+    """Bulk set property access for a user."""
+    user_id = request.data.get('user_id')
+    property_ids = request.data.get('property_ids', [])
+    
+    # Delete existing access for this user
+    UserPropertyAccess.objects.filter(user_id=user_id).delete()
+    
+    # Create new access entries
+    for prop_id in property_ids:
+        UserPropertyAccess.objects.create(
+            user_id=user_id,
+            property_id=str(prop_id)
+        )
+    
+    return StandardResponse.success(None, "Property access set successfully")
+
+
+# ======================
+# User Department Access Views
+# ======================
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_user_dept_access(request):
+    """List department access for a user (accepts user_id from query param or uses current user)."""
+    user_id = request.query_params.get('user_id') or request.user.id
+    access = UserDepartmentAccess.objects.filter(user_id=user_id)
+    serializer = UserDepartmentAccessSerializer(access, many=True)
+    return StandardResponse.success(serializer.data, "Department access retrieved successfully")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def set_user_dept_access(request):
+    """Bulk set department access for a user."""
+    user_id = request.data.get('user_id')
+    departments = request.data.get('departments', [])
+    
+    # Delete existing access for this user
+    UserDepartmentAccess.objects.filter(user_id=user_id).delete()
+    
+    # Create new access entries
+    for dept in departments:
+        UserDepartmentAccess.objects.create(
+            user_id=user_id,
+            department=str(dept)
+        )
+    
+    return StandardResponse.success(None, "Department access set successfully")
+
 User = get_user_model()
 
 

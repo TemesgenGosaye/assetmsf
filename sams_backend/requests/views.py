@@ -22,7 +22,7 @@ class ApprovalRequestListView(generics.ListCreateAPIView):
     queryset = ApprovalRequest.objects.filter(is_active=True)
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['request_type', 'status', 'requester', 'current_approver']
+    filterset_fields = ['request_type', 'requester', 'current_approver']
     search_fields = ['title', 'description']
     ordering_fields = ['created_at', 'status']
     ordering = ['-created_at']
@@ -48,6 +48,24 @@ class ApprovalRequestListView(generics.ListCreateAPIView):
         # Filter by current approver
         if user.is_manager():
             queryset = queryset.filter(current_approver=user)
+        
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            if status_param == 'pending_manager':
+                queryset = queryset.filter(
+                    status__in=[
+                        ApprovalRequest.Status.PENDING,
+                        ApprovalRequest.Status.UNDER_REVIEW,
+                    ],
+                    forwarded_by__isnull=True,
+                )
+            elif status_param == 'pending_admin':
+                queryset = queryset.filter(
+                    status=ApprovalRequest.Status.UNDER_REVIEW,
+                    forwarded_by__isnull=False,
+                )
+            elif status_param in dict(ApprovalRequest.Status.choices):
+                queryset = queryset.filter(status=status_param)
         
         return queryset.distinct()
     
