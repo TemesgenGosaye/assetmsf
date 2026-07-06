@@ -3112,3 +3112,258 @@ INFO 2026-07-06 04:53:02,656 basehttp 17524 4152 "GET /api/employees/?page_size=
 INFO 2026-07-06 04:53:02,756 basehttp 17524 14880 "GET /api/departments/?page_size=500 HTTP/1.1" 200 1570
 INFO 2026-07-06 04:53:02,987 basehttp 17524 8316 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
 INFO 2026-07-06 04:53:03,018 basehttp 17524 19192 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+INFO 2026-07-06 04:53:49,207 basehttp 17524 9352 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 04:54:49,163 basehttp 17524 20340 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 04:55:49,196 basehttp 17524 21436 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 04:56:49,174 basehttp 17524 18532 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 04:57:49,251 basehttp 17524 18616 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 04:58:49,190 basehttp 17524 18836 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:00:20,169 basehttp 17524 21280 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:01:26,549 basehttp 17524 17988 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:01:45,471 autoreload 17524 13256 F:\SAMS\sams_backend\audit\urls.py changed, reloading.
+INFO 2026-07-06 05:03:00,453 autoreload 20208 21304 Watching for file changes with StatReloader
+INFO 2026-07-06 05:05:28,647 basehttp 20208 6992 "GET /api/health/ HTTP/1.1" 200 85
+WARNING 2026-07-06 05:06:20,720 log 20208 21108 Bad Request: /api/auth/login/
+WARNING 2026-07-06 05:06:20,743 basehttp 20208 21108 "POST /api/auth/login/ HTTP/1.1" 400 253
+INFO 2026-07-06 05:06:36,853 basehttp 20208 19104 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:06:38,450 basehttp 20208 17484 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:06:38,542 basehttp 20208 17204 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:06:38,976 basehttp 20208 18052 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:06:39,087 basehttp 20208 16872 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:06:41,851 basehttp 20208 22664 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 200 181
+INFO 2026-07-06 05:06:41,879 basehttp 20208 22052 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:06:42,057 basehttp 20208 21048 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:07:04,290 basehttp 20208 22084 "GET /api/notifications/?user_id=1&limit=50 HTTP/1.1" 200 89
+INFO 2026-07-06 05:07:04,422 basehttp 20208 22332 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:07:07,064 basehttp 20208 21808 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:07:11,097 basehttp 20208 2820 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:07:11,128 basehttp 20208 19768 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:07:16,355 basehttp 20208 23016 "GET /api/employees/?page_size=500 HTTP/1.1" 200 4937
+INFO 2026-07-06 05:07:16,769 basehttp 20208 3224 "GET /api/departments/?page_size=500 HTTP/1.1" 200 1570
+INFO 2026-07-06 05:07:21,318 basehttp 20208 22608 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:07:21,332 basehttp 20208 17504 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+WARNING 2026-07-06 05:07:22,008 log 20208 19040 Unauthorized: /api/auth/login/
+WARNING 2026-07-06 05:07:22,008 basehttp 20208 19040 "POST /api/auth/login/ HTTP/1.1" 401 75
+INFO 2026-07-06 05:07:37,181 basehttp 20208 22344 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:07:45,258 basehttp 20208 22096 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:07:45,756 basehttp 20208 19368 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:07:45,758 basehttp 20208 436 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:07:45,927 basehttp 20208 16964 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:07:46,052 basehttp 20208 20236 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:07:46,155 basehttp 20208 23400 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:07:46,236 basehttp 20208 21060 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 200 181
+INFO 2026-07-06 05:07:46,379 basehttp 20208 17660 "GET /api/notifications/?user_id=1&limit=50 HTTP/1.1" 200 89
+INFO 2026-07-06 05:07:46,395 basehttp 20208 21976 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:07:46,608 basehttp 20208 22212 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:07:46,705 basehttp 20208 8144 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:07:46,977 basehttp 20208 23048 "GET /api/employees/?page_size=500 HTTP/1.1" 200 4937
+INFO 2026-07-06 05:07:47,031 basehttp 20208 21800 "GET /api/departments/?page_size=500 HTTP/1.1" 200 1570
+INFO 2026-07-06 05:07:47,036 basehttp 20208 22488 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:07:47,075 basehttp 20208 22912 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:07:47,163 basehttp 20208 17992 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+INFO 2026-07-06 05:07:47,392 basehttp 20208 16404 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:08:08,715 basehttp 20208 19040 - Broken pipe from ('127.0.0.1', 22180)
+INFO 2026-07-06 05:08:12,028 basehttp 20208 22004 "POST /api/auth/login/ HTTP/1.1" 200 842
+INFO 2026-07-06 05:08:45,177 basehttp 20208 21832 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:08:52,543 basehttp 20208 22004 - Broken pipe from ('127.0.0.1', 33839)
+INFO 2026-07-06 05:09:40,926 basehttp 20208 8944 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:41,213 basehttp 20208 14348 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:41,495 basehttp 20208 22052 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:41,593 basehttp 20208 16580 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:41,700 basehttp 20208 22412 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:41,846 basehttp 20208 18816 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:42,007 basehttp 20208 18092 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:42,100 basehttp 20208 20156 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:42,333 basehttp 20208 15484 "GET /api/user-dept-access/?user_id=1 HTTP/1.1" 200 93
+INFO 2026-07-06 05:09:42,366 basehttp 20208 23348 "GET /api/properties/?page_size=500 HTTP/1.1" 200 2135
+INFO 2026-07-06 05:09:42,519 basehttp 20208 21664 "GET /api/approvals/?page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:42,553 basehttp 20208 22948 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:42,643 basehttp 20208 16912 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+WARNING 2026-07-06 05:09:42,677 log 20208 12332 Not Found: /api/item-types/
+WARNING 2026-07-06 05:09:42,683 basehttp 20208 12332 "GET /api/item-types/?page_size=500 HTTP/1.1" 404 7027
+INFO 2026-07-06 05:09:42,692 basehttp 20208 22520 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:43,035 basehttp 20208 18052 "GET /api/user-dept-access/?user_id=1 HTTP/1.1" 200 93
+INFO 2026-07-06 05:09:43,044 basehttp 20208 17484 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:43,155 basehttp 20208 23196 "GET /api/user-access/?user_id=1 HTTP/1.1" 200 91
+INFO 2026-07-06 05:09:43,395 basehttp 20208 23312 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:43,615 basehttp 20208 16588 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:44,755 basehttp 20208 23012 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:46,409 basehttp 20208 1988 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:46,679 basehttp 20208 21944 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:46,944 basehttp 20208 12456 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:48,640 basehttp 20208 13592 "GET /api/health/ HTTP/1.1" 200 85
+ERROR 2026-07-06 05:09:49,242 log 20208 13064 Internal Server Error: /api/newsletter/posts/
+ERROR 2026-07-06 05:09:49,253 basehttp 20208 13064 "GET /api/newsletter/posts/?published=true HTTP/1.1" 500 112
+INFO 2026-07-06 05:09:49,385 basehttp 20208 15308 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:09:49,585 basehttp 20208 22292 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:49,716 basehttp 20208 19104 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:49,744 basehttp 20208 22300 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:49,856 basehttp 20208 17736 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:50,459 basehttp 20208 4984 "GET /api/notifications/?user_id=1&limit=50 HTTP/1.1" 200 89
+INFO 2026-07-06 05:09:50,580 basehttp 20208 22964 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:50,793 basehttp 20208 21544 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:50,898 basehttp 20208 17436 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:09:50,928 basehttp 20208 6424 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:51,371 basehttp 20208 16792 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:51,497 basehttp 20208 21344 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:09:51,985 basehttp 20208 17904 "GET /api/user-access/?user_id=1 HTTP/1.1" 200 91
+INFO 2026-07-06 05:09:52,018 basehttp 20208 21856 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:52,129 basehttp 20208 23220 "GET /api/audit/sessions/?page_size=10&ordering=-started_at HTTP/1.1" 200 181
+INFO 2026-07-06 05:09:52,148 basehttp 20208 1340 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:09:52,177 basehttp 20208 8952 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:09:52,510 basehttp 20208 20540 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:09:52,534 basehttp 20208 18204 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+ERROR 2026-07-06 05:09:57,912 log 9052 8364 Internal Server Error: /api/newsletter/posts/
+INFO 2026-07-06 05:10:27,627 autoreload 20208 21304 F:\SAMS\sams_backend\newsletter\views.py changed, reloading.
+INFO 2026-07-06 05:10:30,648 autoreload 21528 17940 Watching for file changes with StatReloader
+INFO 2026-07-06 05:10:48,192 basehttp 21528 17056 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:11:37,013 basehttp 21528 6276 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:11:37,796 basehttp 21528 21592 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:11:37,820 basehttp 21528 22504 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:37,837 basehttp 21528 18468 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:11:37,855 basehttp 21528 21860 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:37,880 basehttp 21528 9604 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:37,945 basehttp 21528 6216 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:38,214 basehttp 21528 8792 "GET /api/notifications/?user_id=1&limit=50 HTTP/1.1" 200 89
+INFO 2026-07-06 05:11:38,284 basehttp 21528 17024 "GET /api/newsletter/posts/?published=true HTTP/1.1" 200 81
+INFO 2026-07-06 05:11:38,329 basehttp 21528 17320 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:11:38,357 basehttp 21528 18128 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:11:38,383 basehttp 21528 20628 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:38,461 basehttp 21528 19804 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:38,801 basehttp 21528 23184 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:11:38,979 basehttp 21528 15444 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:11:39,025 basehttp 21528 3552 "GET /api/user-access/?user_id=1 HTTP/1.1" 200 91
+INFO 2026-07-06 05:11:39,101 basehttp 21528 10484 "GET /api/audit/sessions/?page_size=10&ordering=-started_at HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:39,197 basehttp 21528 21560 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:39,440 basehttp 21528 21020 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:11:39,594 basehttp 21528 12504 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:11:39,739 basehttp 21528 20596 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:12:37,174 basehttp 21528 12436 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:12:43,709 basehttp 21528 21632 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:12:43,808 basehttp 21528 17584 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:12:43,868 basehttp 21528 18572 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:12:43,913 basehttp 21528 22308 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:12:44,152 basehttp 21528 21452 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:12:44,246 basehttp 21528 22420 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 200 181
+INFO 2026-07-06 05:12:44,375 basehttp 21528 22868 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+INFO 2026-07-06 05:12:44,653 basehttp 21528 22944 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:12:44,665 basehttp 21528 3704 "GET /api/properties/?page_size=500 HTTP/1.1" 200 2135
+INFO 2026-07-06 05:12:44,668 basehttp 21528 20128 "GET /api/user-dept-access/?user_id=1 HTTP/1.1" 200 93
+INFO 2026-07-06 05:12:44,831 basehttp 21528 17980 "GET /api/approvals/?page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:12:45,081 basehttp 21528 20680 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:12:45,081 basehttp 21528 4072 "GET /api/user-access/?user_id=1 HTTP/1.1" 200 91
+WARNING 2026-07-06 05:12:45,088 log 21528 17388 Not Found: /api/item-types/
+WARNING 2026-07-06 05:12:45,103 basehttp 21528 17388 "GET /api/item-types/?page_size=500 HTTP/1.1" 404 7027
+INFO 2026-07-06 05:12:45,312 basehttp 21528 21744 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:12:45,516 basehttp 21528 20740 "GET /api/departments/?page_size=500 HTTP/1.1" 200 1570
+INFO 2026-07-06 05:12:45,674 basehttp 21528 23180 "GET /api/user-dept-access/?user_id=1 HTTP/1.1" 200 93
+WARNING 2026-07-06 05:12:45,779 log 21528 23484 Not Found: /api/item-types/
+WARNING 2026-07-06 05:12:45,783 basehttp 21528 23484 "GET /api/item-types/?page_size=500 HTTP/1.1" 404 7027
+INFO 2026-07-06 05:12:46,065 basehttp 21528 20308 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:12:46,248 basehttp 21528 19040 "GET /api/user-access/?user_id=1 HTTP/1.1" 200 91
+INFO 2026-07-06 05:13:37,178 basehttp 21528 18716 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:14:36,991 basehttp 21528 17976 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:14:47,707 basehttp 21528 9552 "GET /api/assets/ HTTP/1.1" 200 7613
+ERROR 2026-07-06 05:14:47,895 basehttp 21528 9572 "GET /api/dashboard/licenses/PROP-003/ HTTP/1.1" 500 59
+INFO 2026-07-06 05:15:19,370 basehttp 21528 10484 "GET /api/assets/ HTTP/1.1" 200 7613
+ERROR 2026-07-06 05:15:19,509 basehttp 21528 22184 "GET /api/dashboard/licenses/PROP-003/ HTTP/1.1" 500 59
+WARNING 2026-07-06 05:15:19,539 log 21528 22904 Not Found: /api/activity/
+WARNING 2026-07-06 05:15:19,540 basehttp 21528 22904 "POST /api/activity/ HTTP/1.1" 404 7008
+INFO 2026-07-06 05:15:19,726 basehttp 21528 22900 "GET /api/approvals/?page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:15:36,991 basehttp 21528 20500 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:20:00,115 autoreload 21528 17940 F:\SAMS\sams_backend\newsletter\views.py changed, reloading.
+INFO 2026-07-06 05:20:10,200 autoreload 20008 14348 Watching for file changes with StatReloader
+INFO 2026-07-06 05:25:08,418 basehttp 20008 20780 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:25:08,920 basehttp 20008 1988 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:25:09,103 basehttp 20008 21604 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:25:09,179 basehttp 20008 18876 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 05:25:09,181 basehttp 20008 9340 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:25:09,182 basehttp 20008 17196 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:25:11,625 basehttp 20008 17072 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 200 181
+INFO 2026-07-06 05:25:11,855 basehttp 20008 22224 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:25:12,870 basehttp 20008 22524 "GET /api/notifications/?user_id=1&limit=50 HTTP/1.1" 200 89
+INFO 2026-07-06 05:25:13,105 basehttp 20008 17204 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:25:13,190 basehttp 20008 15504 "GET /api/newsletter/posts/?published=true HTTP/1.1" 200 81
+INFO 2026-07-06 05:25:13,405 basehttp 20008 5780 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:25:13,748 basehttp 20008 21472 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 05:25:15,869 basehttp 20008 13228 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:25:15,909 basehttp 20008 17300 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:25:16,886 basehttp 20008 20640 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:25:16,932 basehttp 20008 23340 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 05:25:17,437 basehttp 20008 14932 "GET /api/user-access/?user_id=1 HTTP/1.1" 200 91
+INFO 2026-07-06 05:25:17,478 basehttp 20008 14880 "GET /api/audit/sessions/?page_size=10&ordering=-started_at HTTP/1.1" 200 181
+INFO 2026-07-06 05:25:18,149 basehttp 20008 23476 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+INFO 2026-07-06 05:25:18,210 basehttp 20008 17940 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 05:26:09,160 basehttp 20008 4520 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:27:09,175 basehttp 20008 11044 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:28:09,170 basehttp 20008 23012 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 05:29:09,374 basehttp 20008 18536 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:47:21,987 basehttp 20008 9868 "GET /api/health/ HTTP/1.1" 200 85
+WARNING 2026-07-06 06:47:22,078 log 20008 23228 Unauthorized: /api/approvals/
+WARNING 2026-07-06 06:47:22,125 log 20008 20724 Unauthorized: /api/approvals/
+WARNING 2026-07-06 06:47:22,143 basehttp 20008 23228 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,160 log 20008 16288 Unauthorized: /api/tickets/
+WARNING 2026-07-06 06:47:22,209 basehttp 20008 20724 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,215 log 20008 15464 Unauthorized: /api/permissions/
+WARNING 2026-07-06 06:47:22,232 basehttp 20008 16288 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,258 basehttp 20008 15464 "GET /api/permissions/?user_id=1 HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,281 log 20008 4644 Unauthorized: /api/preferences/1/
+WARNING 2026-07-06 06:47:22,294 basehttp 20008 4644 "GET /api/preferences/1/ HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,288 log 20008 20612 Unauthorized: /api/audit/sessions/
+WARNING 2026-07-06 06:47:22,284 log 20008 12020 Unauthorized: /api/notifications/
+WARNING 2026-07-06 06:47:22,337 basehttp 20008 12020 "GET /api/notifications/?user_id=1&limit=50 HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,333 basehttp 20008 20612 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,414 log 20008 18200 Unauthorized: /api/newsletter/posts/
+WARNING 2026-07-06 06:47:22,481 log 20008 14448 Unauthorized: /api/preferences/1/
+WARNING 2026-07-06 06:47:22,584 basehttp 20008 18200 "GET /api/newsletter/posts/?published=true HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,644 basehttp 20008 14448 "GET /api/preferences/1/ HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,777 log 20008 21964 Unauthorized: /api/permissions/
+WARNING 2026-07-06 06:47:22,780 log 20008 4088 Unauthorized: /api/tickets/
+WARNING 2026-07-06 06:47:22,782 log 20008 6732 Unauthorized: /api/audit/sessions/
+WARNING 2026-07-06 06:47:22,783 log 20008 6132 Unauthorized: /api/preferences/1/
+WARNING 2026-07-06 06:47:22,785 basehttp 20008 21964 "GET /api/permissions/?user_id=1 HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,786 basehttp 20008 4088 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 401 155
+WARNING 2026-07-06 06:47:22,791 basehttp 20008 6732 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,802 basehttp 20008 6132 "GET /api/preferences/1/ HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,833 log 20008 8944 Unauthorized: /api/preferences/1/
+WARNING 2026-07-06 06:47:22,838 basehttp 20008 8944 "GET /api/preferences/1/ HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,875 log 20008 20788 Unauthorized: /api/preferences/1/
+WARNING 2026-07-06 06:47:22,879 basehttp 20008 20788 "GET /api/preferences/1/ HTTP/1.1" 401 648
+WARNING 2026-07-06 06:47:22,946 log 20008 17064 Unauthorized: /api/audit/sessions/
+WARNING 2026-07-06 06:47:22,948 basehttp 20008 17064 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 401 155
+WARNING 2026-07-06 06:47:23,220 log 20008 17136 Unauthorized: /api/user-access/
+WARNING 2026-07-06 06:47:23,230 basehttp 20008 17136 "GET /api/user-access/?user_id=1 HTTP/1.1" 401 155
+WARNING 2026-07-06 06:47:23,236 log 20008 12472 Unauthorized: /api/audit/sessions/
+WARNING 2026-07-06 06:47:23,237 log 20008 23212 Unauthorized: /api/tickets/
+WARNING 2026-07-06 06:47:23,248 basehttp 20008 12472 "GET /api/audit/sessions/?page_size=10&ordering=-started_at HTTP/1.1" 401 155
+WARNING 2026-07-06 06:47:23,252 basehttp 20008 23212 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 401 155
+INFO 2026-07-06 06:47:27,391 basehttp 20008 15212 "POST /api/auth/login/ HTTP/1.1" 200 846
+INFO 2026-07-06 06:47:27,853 basehttp 20008 4664 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 06:47:27,971 basehttp 20008 22984 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:27,985 basehttp 20008 14328 "GET /api/approvals/?status=pending_manager&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:27,986 basehttp 20008 16068 "GET /api/tickets/?page_size=500&target_role=admin HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:27,996 basehttp 20008 20128 "GET /api/approvals/?status=pending_admin&page_size=500 HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:28,018 basehttp 20008 21788 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 06:47:28,083 basehttp 20008 17640 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:47:28,265 basehttp 20008 20236 "GET /api/notifications/?user_id=1&limit=50 HTTP/1.1" 200 89
+INFO 2026-07-06 06:47:28,397 basehttp 20008 21668 "GET /api/newsletter/posts/?published=true HTTP/1.1" 200 81
+INFO 2026-07-06 06:47:28,447 basehttp 20008 23512 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 06:47:28,503 basehttp 20008 15084 "GET /api/tickets/?page_size=500&assignee=1 HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:28,553 basehttp 20008 9724 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:28,597 basehttp 20008 6380 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 06:47:28,966 basehttp 20008 4100 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 06:47:29,089 basehttp 20008 8072 "GET /api/tickets/?page_size=500&assignee=admin%40sams.com HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:29,137 basehttp 20008 18680 "GET /api/user-access/?user_id=1 HTTP/1.1" 200 91
+INFO 2026-07-06 06:47:29,225 basehttp 20008 6312 "GET /api/audit/sessions/?page_size=10&ordering=-started_at HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:29,280 basehttp 20008 20648 "GET /api/permissions/?user_id=1 HTTP/1.1" 200 87
+INFO 2026-07-06 06:47:29,550 basehttp 20008 18352 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 06:47:29,753 basehttp 20008 23440 "GET /api/audit/sessions/?is_active=true&page_size=1 HTTP/1.1" 200 181
+INFO 2026-07-06 06:47:29,851 basehttp 20008 4656 "GET /api/preferences/1/ HTTP/1.1" 200 530
+INFO 2026-07-06 06:48:28,178 basehttp 20008 9336 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:49:28,161 basehttp 20008 15636 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:50:28,164 basehttp 20008 14180 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:51:28,175 basehttp 20008 20540 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:52:27,647 basehttp 20008 23340 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:53:27,487 basehttp 20008 22132 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:54:27,476 basehttp 20008 12504 "GET /api/health/ HTTP/1.1" 200 85
+INFO 2026-07-06 06:55:27,481 basehttp 20008 17420 "GET /api/health/ HTTP/1.1" 200 85
