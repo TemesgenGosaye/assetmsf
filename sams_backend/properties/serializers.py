@@ -14,7 +14,7 @@ class PropertySerializer(serializers.ModelSerializer):
     class Meta:
         model = Property
         fields = [
-            'id', 'name', 'address', 'city', 'state', 'country', 'postal_code',
+            'id', 'name', 'type', 'address', 'city', 'state', 'country', 'postal_code',
             'latitude', 'longitude', 'status', 'manager', 'manager_name',
             'manager_email', 'contact_email', 'contact_phone', 'total_area',
             'description', 'full_address', 'created_at', 'updated_at', 'is_active'
@@ -32,7 +32,7 @@ class PropertyCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Property
         fields = [
-            'id', 'name', 'address', 'city', 'state', 'country', 'postal_code',
+            'id', 'name', 'type', 'address', 'city', 'state', 'country', 'postal_code',
             'latitude', 'longitude', 'status', 'manager', 'contact_email',
             'contact_phone', 'total_area', 'description'
         ]
@@ -40,11 +40,11 @@ class PropertyCreateSerializer(serializers.ModelSerializer):
 
 class PropertyUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating properties."""
-    
+
     class Meta:
         model = Property
         fields = [
-            'name', 'address', 'city', 'state', 'country', 'postal_code',
+            'name', 'type', 'address', 'city', 'state', 'country', 'postal_code',
             'latitude', 'longitude', 'status', 'manager', 'contact_email',
             'contact_phone', 'total_area', 'description'
         ]

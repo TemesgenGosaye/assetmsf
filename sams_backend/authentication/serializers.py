@@ -4,7 +4,7 @@ Serializers for authentication and user management.
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
-from .models import User, UserSettings, UserPermission, UserPropertyAccess, UserDepartmentAccess
+from .models import User, UserSettings, UserPermission, UserPropertyAccess, UserDepartmentAccess, FinalApprover
 
 User = get_user_model()
 
@@ -124,3 +124,16 @@ class UserDepartmentAccessSerializer(serializers.ModelSerializer):
         model = UserDepartmentAccess
         fields = ['id', 'department']
         read_only_fields = ['id']
+
+
+class FinalApproverSerializer(serializers.ModelSerializer):
+    """Serializer for FinalApprover model."""
+    user_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FinalApprover
+        fields = ['property_id', 'user_id', 'user_name']
+        read_only_fields = ['user_name']
+
+    def get_user_name(self, obj):
+        return obj.user.name if obj.user else None

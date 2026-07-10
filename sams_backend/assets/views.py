@@ -104,9 +104,25 @@ class AssetDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Asset.objects.filter(is_active=True)
     serializer_class = AssetSerializer
     permission_classes = [IsAuthenticated]
-    lookup_field = 'id'
     
-    def get_queryset(self):
+    def get_object(self):
+        """Lookup by UUID or asset_code."""
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_val = self.kwargs.get('id')
+        
+        import uuid
+        try:
+            uuid.UUID(str(lookup_val))
+            obj = queryset.filter(id=lookup_val).first()
+        except ValueError:
+            obj = queryset.filter(asset_code=lookup_val).first()
+            
+        if not obj:
+            from django.http import Http404
+            raise Http404("No Asset matches the given query.")
+            
+        self.check_object_permissions(self.request, obj)
+        return obj
         """Filter queryset based on user permissions."""
         user = self.request.user
         queryset = Asset.objects.filter(is_active=True)
@@ -162,8 +178,17 @@ class AssetAttachmentListView(generics.ListCreateAPIView):
         return AssetAttachmentSerializer
     
     def get_queryset(self):
-        """Filter attachments by asset."""
+        """Filter attachments by asset, resolving asset_id."""
         asset_id = self.kwargs.get('asset_id')
+        import uuid
+        from django.shortcuts import get_object_or_404
+        
+        try:
+            uuid.UUID(str(asset_id))
+        except ValueError:
+            asset = get_object_or_404(Asset, asset_code=asset_id, is_active=True)
+            asset_id = asset.id
+            
         return AssetAttachment.objects.filter(asset_id=asset_id, is_active=True)
     
     def list(self, request, *args, **kwargs):
@@ -175,6 +200,15 @@ class AssetAttachmentListView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         """Create attachment with standard response format."""
         asset_id = self.kwargs.get('asset_id')
+        import uuid
+        from django.shortcuts import get_object_or_404
+        
+        try:
+            uuid.UUID(str(asset_id))
+        except ValueError:
+            asset = get_object_or_404(Asset, asset_code=asset_id, is_active=True)
+            asset_id = asset.id
+            
         data = request.data.copy()
         data['asset'] = asset_id
         

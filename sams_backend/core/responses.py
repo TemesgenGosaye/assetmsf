@@ -49,8 +49,8 @@ class StandardResponse:
 
     @staticmethod
     def no_content(message="Resource deleted successfully"):
-        """Return a no content response."""
-        return StandardResponse.success(None, message, status.HTTP_204_NO_CONTENT)
+        """Return a success response for deletion (200 instead of 204 so JSON body is delivered)."""
+        return StandardResponse.success(None, message, status.HTTP_200_OK)
 
     @staticmethod
     def not_found(message="Resource not found"):

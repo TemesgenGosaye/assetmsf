@@ -16,9 +16,10 @@ from core.responses import StandardResponse
 from .serializers import (
     UserSerializer, UserCreateSerializer, UserUpdateSerializer,
     ChangePasswordSerializer, LoginSerializer, UserSettingsSerializer,
-    UserPermissionSerializer, UserPropertyAccessSerializer, UserDepartmentAccessSerializer
+    UserPermissionSerializer, UserPropertyAccessSerializer, UserDepartmentAccessSerializer,
+    FinalApproverSerializer
 )
-from .models import UserSettings, UserPermission, UserPropertyAccess, UserDepartmentAccess, PasswordResetOTP
+from .models import UserSettings, UserPermission, UserPropertyAccess, UserDepartmentAccess, PasswordResetOTP, FinalApprover
 
 
 # ======================
@@ -216,10 +217,6 @@ class CustomTokenObtainPairView(generics.GenericAPIView):
         email = request.data.get('email')
         password = request.data.get('password')
         
-        # Debug logging
-        print(f"DEBUG: Login attempt - Email: {email}, Password: {'*' * len(password) if password else 'None'}")
-        print(f"DEBUG: Request data: {request.data}")
-        
         if not email or not password:
             return StandardResponse.bad_request("Email and password are required")
         
@@ -227,20 +224,15 @@ class CustomTokenObtainPairView(generics.GenericAPIView):
         from django.contrib.auth import authenticate
         user = authenticate(request, username=email, password=password)
         
-        print(f"DEBUG: Auth result: {user}")
-        
         if not user:
             # Fallback: try to get user by email and check password manually
             try:
                 user_obj = User.objects.get(email__iexact=email)
-                print(f"DEBUG: Found user by email: {user_obj.email}")
-                print(f"DEBUG: Password check: {user_obj.check_password(password)}")
                 if user_obj.check_password(password):
                     user = user_obj
                 else:
                     return StandardResponse.unauthorized("Invalid credentials")
             except User.DoesNotExist:
-                print(f"DEBUG: User not found for email: {email}")
                 return StandardResponse.unauthorized("Invalid credentials")
         
         if not user.is_active:
@@ -525,6 +517,10 @@ def password_reset_request(request):
     """
     Request a password reset OTP to be sent to the user's email.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Password reset request received. Data: {request.data}")
+    
     email = request.data.get('email')
     if not email:
         return StandardResponse.bad_request("Email is required")
@@ -532,10 +528,7 @@ def password_reset_request(request):
     try:
         user = User.objects.get(email__iexact=email)
     except User.DoesNotExist:
-        return StandardResponse.success(
-            None,
-            "If this email exists, a code has been sent"
-        )
+        return StandardResponse.not_found("No account found with this email address")
     
     # Rate limiting: max 3 requests per hour
     one_hour_ago = timezone.now() - timezone.timedelta(hours=1)
@@ -558,31 +551,138 @@ def password_reset_request(request):
         otp=otp_code
     )
     
-    # Send email
+    # Send email with HTML template for professional appearance
     subject = "MSF — Password Reset Code"
-    message = f"""
+    html_message = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Password Reset</title>
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background-color: #f5f5f5;
+                margin: 0;
+                padding: 20px;
+            }}
+            .container {{
+                max-width: 600px;
+                margin: 0 auto;
+                background-color: #ffffff;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                overflow: hidden;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #0B4F2F 0%, #0E5A37 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+            }}
+            .header h1 {{
+                margin: 0;
+                font-size: 24px;
+                font-weight: 600;
+            }}
+            .content {{
+                padding: 40px 30px;
+            }}
+            .code {{
+                background-color: #f8f9fa;
+                border: 2px dashed #0B4F2F;
+                border-radius: 8px;
+                padding: 20px;
+                text-align: center;
+                font-size: 32px;
+                font-weight: bold;
+                color: #0B4F2F;
+                letter-spacing: 5px;
+                margin: 20px 0;
+            }}
+            .info {{
+                color: #666;
+                font-size: 14px;
+                line-height: 1.6;
+            }}
+            .warning {{
+                background-color: #fff3cd;
+                border-left: 4px solid #ffc107;
+                padding: 15px;
+                margin-top: 20px;
+                font-size: 13px;
+                color: #856404;
+            }}
+            .footer {{
+                background-color: #f8f9fa;
+                padding: 20px;
+                text-align: center;
+                font-size: 12px;
+                color: #999;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Password Reset Request</h1>
+            </div>
+            <div class="content">
+                <p class="info">Hello {user.name or 'User'},</p>
+                <p class="info">You have requested to reset your password for the MSF Asset Management System. Use the verification code below to proceed:</p>
+                
+                <div class="code">{otp_code}</div>
+                
+                <p class="info"><strong>This code will expire in 10 minutes.</strong></p>
+                <p class="info">If you didn't request this password reset, you can safely ignore this email.</p>
+                
+                <div class="warning">
+                    <strong>Security Notice:</strong> Never share this code with anyone. MSF staff will never ask for your verification code.
+                </div>
+            </div>
+            <div class="footer">
+                <p>This is an automated message from MSF Asset Management System.</p>
+                <p>Metahara Sugar Factory • Oromia, Ethiopia</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text_message = f"""
     Your password reset code is: {otp_code}
     
     This code will expire in 10 minutes.
     
     If you didn't request this, you can safely ignore this email.
+    
+    Security Notice: Never share this code with anyone. MSF staff will never ask for your verification code.
     """
     
     try:
         send_mail(
             subject=subject,
-            message=message,
+            message=text_message,
+            html_message=html_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
             fail_silently=False
         )
     except Exception as e:
-        # Don't expose email sending errors to client
-        pass
+        # Log the error but don't expose to client
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to send password reset email to {email}: {str(e)}")
+        return StandardResponse.error(
+            None,
+            "Failed to send email. Please contact support.",
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
     
     return StandardResponse.success(
-        None,
-        "If this email exists, a code has been sent"
+        {'email': email},
+        "Password reset code sent successfully"
     )
 
 
@@ -633,3 +733,100 @@ def password_reset_verify(request):
     user.save()
     
     return StandardResponse.success(None, "Password reset successfully")
+
+
+# ======================
+# Final Approver Views (frontend compat)
+# ======================
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_final_approver(request, property_id):
+    """Get final approver for a property."""
+    try:
+        fa = FinalApprover.objects.get(property_id=property_id)
+        serializer = FinalApproverSerializer(fa)
+        return StandardResponse.success(serializer.data, "Final approver retrieved successfully")
+    except FinalApprover.DoesNotExist:
+        return StandardResponse.success(None, "No final approver set")
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def list_final_approvers(request):
+    """List final approvers or set a final approver for a property."""
+    if request.method == 'POST':
+        property_id = request.data.get('property_id')
+        user_id = request.data.get('user_id')
+        if not property_id or not user_id:
+            return StandardResponse.bad_request("property_id and user_id are required")
+        FinalApprover.objects.update_or_create(
+            property_id=property_id,
+            defaults={'user_id': user_id}
+        )
+        return StandardResponse.success(None, "Final approver set successfully")
+    # GET
+    user_id = request.query_params.get('user_id')
+    email = request.query_params.get('email')
+    qs = FinalApprover.objects.select_related('user').all()
+    if user_id:
+        qs = qs.filter(user_id=user_id)
+    if email:
+        qs = qs.filter(user__email=email)
+    serializer = FinalApproverSerializer(qs, many=True)
+    return StandardResponse.success(serializer.data, "Final approvers retrieved successfully")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def set_final_approver_props_for_user(request):
+    """Batch-set final approver properties for a user."""
+    user_id = request.data.get('user_id')
+    property_ids = request.data.get('property_ids', [])
+    if not user_id:
+        return StandardResponse.bad_request("user_id is required")
+    FinalApprover.objects.filter(user_id=user_id).exclude(property_id__in=property_ids).delete()
+    for pid in property_ids:
+        FinalApprover.objects.update_or_create(
+            property_id=pid,
+            defaults={'user_id': user_id}
+        )
+    return StandardResponse.success(None, "Final approver properties set successfully")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def set_final_approver_by_email(request):
+    """Batch-set final approver properties by email."""
+    email = request.data.get('email')
+    user_name = request.data.get('user_name')
+    property_ids = request.data.get('property_ids', [])
+    if not email:
+        return StandardResponse.bad_request("email is required")
+    User = get_user_model()
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return StandardResponse.not_found("User with this email not found")
+    FinalApprover.objects.filter(user=user).exclude(property_id__in=property_ids).delete()
+    for pid in property_ids:
+        FinalApprover.objects.update_or_create(
+            property_id=pid,
+            defaults={'user': user}
+        )
+    return StandardResponse.success(None, "Final approver properties set successfully")
+
+
+# ======================
+# User Settings Compat View (frontend compat)
+# ======================
+class CompatUserSettingsView(generics.RetrieveUpdateAPIView):
+    """Retrieve or update user settings for a given user_id (frontend compat)."""
+    serializer_class = UserSettingsSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        user_id = self.kwargs.get('user_id') or self.request.user.id
+        settings, created = UserSettings.objects.get_or_create(
+            user_id=user_id
+        )
+        return settings

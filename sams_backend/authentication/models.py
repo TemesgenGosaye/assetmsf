@@ -78,6 +78,8 @@ class User(AbstractUser):
         MANAGER = "MANAGER", _("Manager")
         FIELD_STAFF = "FIELD_STAFF", _("Field Staff")
         AUDITOR = "AUDITOR", _("Auditor")
+        REQUESTER = "REQUESTER", _("Requester")
+        APPLICANT = "APPLICANT", _("Applicant")
 
 
     class Status(models.TextChoices):
@@ -231,6 +233,9 @@ class User(AbstractUser):
 
     def is_auditor(self):
         return self.role == self.Role.AUDITOR
+
+    def is_requester(self):
+        return self.role == self.Role.REQUESTER
 
 
 

@@ -15,7 +15,7 @@ from .serializers import (
 )
 from .models import MaintenanceTicket, TicketEvent, TicketAttachment, MaintenanceSchedule
 from assets.models import Asset
-from authentication.models import UserPropertyAccess
+from authentication.models import User, UserPropertyAccess
 
 
 class MaintenanceTicketListView(generics.ListCreateAPIView):
@@ -69,18 +69,48 @@ class MaintenanceTicketListView(generics.ListCreateAPIView):
     
     def create(self, request, *args, **kwargs):
         """Create ticket with standard response format."""
-        serializer = self.get_serializer(data=request.data)
+        data = request.data.copy()
+        
+        # Map frontend 'assignee' to model 'assigned_to'
+        assignee = data.pop('assignee', None)
+        if assignee and assignee != 'null':
+            try:
+                user_obj = User.objects.get(id=assignee)
+                data['assigned_to'] = str(user_obj.id)
+            except (User.DoesNotExist, ValueError):
+                pass
+        
+        # Map frontend 'created_by' to model 'created_by'
+        created_by_val = data.pop('created_by', None)
+        creator_user = request.user
+        if created_by_val:
+            try:
+                creator_user = User.objects.get(id=created_by_val)
+            except (User.DoesNotExist, ValueError):
+                pass
+        
+        # Map frontend 'sla_due_at' to model 'due_date'
+        sla = data.pop('sla_due_at', None)
+        if sla and sla != 'null':
+            data['due_date'] = sla
+        
+        # Remove fields not in serializer
+        data.pop('created_at', None)
+        data.pop('updated_at', None)
+        
+        serializer = self.get_serializer(data=data)
         if serializer.is_valid():
-            ticket = serializer.save(requester=request.user, created_by=request.user)
+            ticket = serializer.save(created_by=creator_user)
             
             # Create initial event
+            actor_name = creator_user.name or creator_user.email
             TicketEvent.objects.create(
                 ticket=ticket,
-                event_type=TicketEvent.EventType.SUBMITTED,
-                actor=request.user,
-                actor_name=request.user.name or request.user.email,
-                actor_email=request.user.email,
-                message=f"Ticket submitted by {request.user.name or request.user.email}"
+                event_type=TicketEvent.EventType.SYSTEM,
+                author=creator_user,
+                author_name=actor_name,
+                author_email=creator_user.email,
+                message=f"Ticket submitted by {actor_name}"
             )
             
             return StandardResponse.created(

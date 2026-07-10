@@ -9,12 +9,14 @@ from authentication.models import User
 
 class MaintenanceTicketSerializer(serializers.ModelSerializer):
     """Serializer for MaintenanceTicket model."""
-    asset_name = serializers.CharField(source='asset.name', read_only=True)
-    asset_code = serializers.CharField(source='asset.asset_code', read_only=True)
+    asset_name = serializers.CharField(source='asset.name', read_only=True, allow_null=True)
+    asset_code = serializers.CharField(source='asset.asset_code', read_only=True, allow_null=True)
     assigned_to_name = serializers.CharField(source='assigned_to.name', read_only=True, allow_null=True)
     assigned_to_email = serializers.CharField(source='assigned_to.email', read_only=True, allow_null=True)
     assigned_by_name = serializers.CharField(source='assigned_by.name', read_only=True, allow_null=True)
     resolved_by_name = serializers.CharField(source='resolved_by.name', read_only=True, allow_null=True)
+    created_by_name = serializers.CharField(source='created_by.name', read_only=True, allow_null=True)
+    assignee = serializers.UUIDField(source='assigned_to', read_only=True, allow_null=True)
     is_closed = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
     
@@ -22,38 +24,39 @@ class MaintenanceTicketSerializer(serializers.ModelSerializer):
         model = MaintenanceTicket
         fields = [
             'id', 'title', 'description', 'asset', 'asset_name', 'asset_code',
-            'assigned_to', 'assigned_to_name', 'assigned_to_email', 'assigned_by',
+            'property_id', 'target_role', 'close_note',
+            'assigned_to', 'assignee', 'assigned_to_name', 'assigned_to_email', 'assigned_by',
             'assigned_by_name', 'assigned_at', 'status', 'priority', 'resolution',
             'resolved_at', 'resolved_by', 'resolved_by_name', 'due_date',
             'sla_breach', 'location', 'estimated_cost', 'actual_cost',
-            'metadata', 'is_closed', 'is_overdue', 'created_at', 'updated_at', 'is_active'
+            'metadata', 'is_closed', 'is_overdue', 'created_at', 'updated_at', 'is_active',
+            'created_by', 'created_by_name',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_active']
     
     def get_is_closed(self, obj):
-        """Check if ticket is closed."""
         return obj.is_closed()
     
     def get_is_overdue(self, obj):
-        """Check if ticket is overdue."""
         return obj.is_overdue()
 
 
 class MaintenanceTicketCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating maintenance tickets."""
+    """Serializer for creating maintenance tickets from frontend."""
     
     class Meta:
         model = MaintenanceTicket
         fields = [
-            'title', 'description', 'asset', 'assigned_to', 'priority',
-            'due_date', 'location', 'estimated_cost'
+            'id', 'title', 'description', 'property_id', 'target_role', 'close_note',
+            'assigned_to', 'priority', 'due_date', 'status',
         ]
-    
-    def validate_asset(self, value):
-        """Validate asset exists."""
-        if not Asset.objects.filter(id=value.id, is_active=True).exists():
-            raise serializers.ValidationError("Asset not found or inactive.")
-        return value
+        extra_kwargs = {
+            'id': {'required': False, 'allow_null': True},
+            'assigned_to': {'required': False, 'allow_null': True},
+            'priority': {'required': False},
+            'status': {'required': False},
+            'due_date': {'required': False, 'allow_null': True},
+        }
 
 
 class MaintenanceTicketUpdateSerializer(serializers.ModelSerializer):
@@ -63,7 +66,8 @@ class MaintenanceTicketUpdateSerializer(serializers.ModelSerializer):
         model = MaintenanceTicket
         fields = [
             'title', 'description', 'assigned_to', 'status', 'priority',
-            'resolution', 'due_date', 'location', 'estimated_cost', 'actual_cost'
+            'resolution', 'due_date', 'location', 'estimated_cost', 'actual_cost',
+            'property_id', 'target_role', 'close_note',
         ]
     
     def validate_status(self, value):

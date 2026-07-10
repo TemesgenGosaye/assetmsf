@@ -17,8 +17,23 @@ class Property(BaseModel):
         INACTIVE = 'inactive', _('Inactive')
         UNDER_MAINTENANCE = 'under_maintenance', _('Under Maintenance')
 
+    class Type(models.TextChoices):
+        """Property type."""
+        OFFICE = 'office', _('Office')
+        STORAGE = 'storage', _('Storage')
+        MANUFACTURING = 'manufacturing', _('Manufacturing')
+        SITE_OFFICE = 'site_office', _('Site Office')
+        OTHER = 'other', _('Other')
+
     id = models.CharField(_('property code'), max_length=50, primary_key=True)
     name = models.CharField(_('name'), max_length=255, db_index=True)
+    type = models.CharField(
+        _('type'),
+        max_length=20,
+        choices=Type.choices,
+        default=Type.OFFICE,
+        db_index=True,
+    )
     address = models.TextField(_('address'), null=True, blank=True)
     city = models.CharField(_('city'), max_length=100, null=True, blank=True, db_index=True)
     state = models.CharField(_('state'), max_length=100, null=True, blank=True)

@@ -13,8 +13,14 @@ from authentication.views import (
     list_permissions, set_permissions,
     user_preferences,
     list_user_access, set_user_access,
-    list_user_dept_access, set_user_dept_access
+    list_user_dept_access, set_user_dept_access,
+    get_final_approver, list_final_approvers,
+    set_final_approver_props_for_user,
+    set_final_approver_by_email,
+    CompatUserSettingsView,
 )
+from dashboard.views import RecentActivityListView, log_activity, SystemSettingsView
+from common.views import QRCodeListView, QRCodeDetailView, delete_all_qr_codes
 
 urlpatterns = [
     # Admin
@@ -52,6 +58,8 @@ urlpatterns = [
     # Additional paths for frontend compatibility
     path('api/approvals/', include('requests.urls')),
     path('api/tickets/', include('maintenance.urls')),
+    path('api/item-types/', include('categories.urls')),
+    path('api/categories/item-types/', include('categories.urls')),
     
     # Frontend-compatible user management endpoints
     path('api/permissions/', list_permissions, name='list_permissions'),
@@ -61,4 +69,24 @@ urlpatterns = [
     path('api/user-access/set/', set_user_access, name='set_user_access'),
     path('api/user-dept-access/', list_user_dept_access, name='list_user_dept_access'),
     path('api/user-dept-access/set/', set_user_dept_access, name='set_user_dept_access'),
+    
+    # Frontend-compatible settings endpoints
+    path('api/settings/system/', SystemSettingsView.as_view(), name='compat_system_settings'),
+    path('api/settings/user/<str:user_id>/', CompatUserSettingsView.as_view(), name='compat_user_settings'),
+    
+    # Frontend-compatible activity endpoints
+    path('api/activity/', RecentActivityListView.as_view(), name='compat_activity_list'),
+    path('api/activity/log/', log_activity, name='compat_activity_log'),
+    
+    # Frontend-compatible QR code endpoints
+    path('api/qr-codes/', QRCodeListView.as_view(), name='compat_qr_code_list'),
+    path('api/qr-codes/<uuid:id>/', QRCodeDetailView.as_view(), name='compat_qr_code_detail'),
+    path('api/qr-codes/delete-all/', delete_all_qr_codes, name='compat_qr_code_delete_all'),
+    path('api/qr-codes/clear/', delete_all_qr_codes, name='compat_qr_code_clear'),
+    
+    # Frontend-compatible final approver endpoints
+    path('api/final-approvers/', list_final_approvers, name='compat_final_approver_list'),
+    path('api/final-approvers/<str:property_id>/', get_final_approver, name='compat_final_approver_detail'),
+    path('api/final-approvers/set/', set_final_approver_props_for_user, name='compat_final_approver_set'),
+    path('api/final-approvers/set-by-email/', set_final_approver_by_email, name='compat_final_approver_set_email'),
 ]

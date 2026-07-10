@@ -19,10 +19,11 @@ class RecentActivityListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """Filter activity for current user."""
+        """Filter activity for a user (accepts user_id from query param or uses current user)."""
         limit = self.request.query_params.get('limit', 20)
+        user_id = self.request.query_params.get('user_id') or self.request.user.id
         return RecentActivity.objects.filter(
-            user=self.request.user,
+            user_id=user_id,
             is_active=True
         ).order_by('-created_at')[:int(limit)]
     

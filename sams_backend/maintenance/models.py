@@ -37,10 +37,15 @@ class MaintenanceTicket(BaseModel):
     # Asset Reference
     asset = models.ForeignKey(
         Asset,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='maintenance_tickets',
         verbose_name=_('asset')
     )
+    property_id = models.CharField(_('property ID'), max_length=100, null=True, blank=True, db_index=True)
+    target_role = models.CharField(_('target role'), max_length=20, null=True, blank=True)
+    close_note = models.TextField(_('close note'), null=True, blank=True)
     
     # Assignment
     assigned_to = models.ForeignKey(
