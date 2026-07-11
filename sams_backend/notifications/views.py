@@ -78,6 +78,38 @@ class NotificationDetailView(generics.RetrieveUpdateAPIView):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+def create_role_notification(request):
+    """Create notifications for all users with a given role."""
+    data = request.data.copy()
+    title = data.get('title', '')
+    message = data.get('message', '')
+    ntype = data.get('type', 'system')
+    role = data.get('role', '').upper()
+    user_name = data.get('user_name', '')
+
+    if not title or not role:
+        return StandardResponse.validation_error("title and role are required")
+
+    users = User.objects.filter(role=role, is_active=True)
+    created = []
+    for u in users:
+        notif = Notification(
+            user=u,
+            title=title,
+            message=message,
+            type=ntype,
+            read=False,
+            user_name=user_name,
+        )
+        notif.save()
+        created.append(notif)
+
+    serializer = NotificationSerializer(created, many=True)
+    return StandardResponse.created(serializer.data, f"Notifications sent to {len(created)} users with role {role}")
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def mark_all_read(request):
     """Mark all notifications as read for current user."""
     Notification.objects.filter(

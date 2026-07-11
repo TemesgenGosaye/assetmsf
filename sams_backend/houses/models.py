@@ -1,40 +1,42 @@
 """
 House model – tracks individual housing units.
 """
+
 import os
-from django.utils.translation import gettext_lazy as _
-from django.db import models
+
 from core.models import BaseModel
 from django.conf import settings
+from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 
 def application_document_path(instance, filename):
-    ext = filename.split('.')[-1] if '.' in filename else ''
+    ext = filename.split(".")[-1] if "." in filename else ""
     return os.path.join(
-        'house_applications',
-        f'app_{instance.application_no or "new"}_{instance.requester_id}_.{ext}'
+        "house_applications",
+        f"app_{instance.application_no or 'new'}_{instance.requester_id}_.{ext}",
     )
 
 
 class House(BaseModel):
     """
     Represents a physical housing unit available for staff allocation.
-    HID is auto-generated (HID-0001 format).
+    HID is auto-generated in the 90-000-00 format.
     """
 
     class HouseType(models.TextChoices):
-        STAFF    = "Staff",   _("Staff")
-        TYPE_A   = "A",       _("Type A")
-        TYPE_B   = "B",       _("Type B")
-        TYPE_C   = "C",       _("Type C")
-        TYPE_D   = "D",       _("Type D")
-        TYPE_E   = "E",       _("Type E (Barrack)")
+        STAFF = "Staff", _("Staff")
+        TYPE_A = "A", _("Type A")
+        TYPE_B = "B", _("Type B")
+        TYPE_C = "C", _("Type C")
+        TYPE_D = "D", _("Type D")
+        TYPE_E = "E", _("Type E (Barrack)")
 
     class Status(models.TextChoices):
-        ACTIVE   = "Active",   _("Active")
+        ACTIVE = "Active", _("Active")
         INACTIVE = "Inactive", _("Inactive")
 
-    # Auto-generated human-readable ID  e.g. HID-0001
+    # Auto-generated human-readable ID e.g. 90-000-00
     house_id = models.CharField(
         _("house ID"),
         max_length=20,
@@ -67,22 +69,23 @@ class House(BaseModel):
     )
 
     # Damage assessment (only relevant when status == Inactive)
-    damaged_door    = models.BooleanField(_("damaged door"),    default=False)
+    damaged_door = models.BooleanField(_("damaged door"), default=False)
     damaged_windows = models.BooleanField(_("damaged windows"), default=False)
-    damaged_walls   = models.BooleanField(_("damaged walls"),   default=False)
-    damaged_switch  = models.BooleanField(_("damaged switch"),  default=False)
-    damaged_bulb    = models.BooleanField(_("damaged bulb"),    default=False)
-    damaged_water   = models.BooleanField(_("damaged water"),   default=False)
+    damaged_walls = models.BooleanField(_("damaged walls"), default=False)
+    damaged_switch = models.BooleanField(_("damaged switch"), default=False)
+    damaged_bulb = models.BooleanField(_("damaged bulb"), default=False)
+    damaged_water = models.BooleanField(_("damaged water"), default=False)
 
     # Optional extra fields
     description = models.TextField(_("description"), blank=True, default="")
-    capacity     = models.PositiveSmallIntegerField(
-        _("capacity"), default=1,
-        help_text=_("Maximum number of residents this unit can hold.")
+    capacity = models.PositiveSmallIntegerField(
+        _("capacity"),
+        default=1,
+        help_text=_("Maximum number of residents this unit can hold."),
     )
 
     class Meta:
-        db_table     = "houses"
+        db_table = "houses"
         verbose_name = _("house")
         verbose_name_plural = _("houses")
         ordering = ["house_id"]
@@ -101,18 +104,18 @@ class House(BaseModel):
     def save(self, *args, **kwargs):
         if not self.house_id:
             last = (
-                House.objects.filter(house_id__startswith="HID-")
+                House.objects.filter(house_id__regex=r"^90-\d{3}-00$")
                 .order_by("-house_id")
                 .first()
             )
             if last:
                 try:
-                    num = int(last.house_id.split("-")[1]) + 1
+                    seq = int(last.house_id.split("-")[1]) + 1
                 except (IndexError, ValueError):
-                    num = 9
+                    seq = 0
             else:
-                num = 9
-            self.house_id = f"HID-{num:04d}"
+                seq = 0
+            self.house_id = f"90-{seq:03d}-00"
         super().save(*args, **kwargs)
 
 
@@ -122,24 +125,24 @@ class HouseApplication(BaseModel):
     """
 
     class Gender(models.TextChoices):
-        MALE   = "Male",   _("Male")
+        MALE = "Male", _("Male")
         FEMALE = "Female", _("Female")
 
     class MaritalStatus(models.TextChoices):
-        SINGLE   = "Single",   _("Single")
-        MARRIED  = "Married",  _("Married")
+        SINGLE = "Single", _("Single")
+        MARRIED = "Married", _("Married")
         DIVORCED = "Divorced", _("Divorced")
-        WIDOWED  = "Widowed",  _("Widowed")
+        WIDOWED = "Widowed", _("Widowed")
 
     class Status(models.TextChoices):
-        DRAFT                  = "Draft",                  _("Draft")
-        SUBMITTED              = "Submitted",              _("Submitted")
-        UNDER_REVIEW           = "Under Review",           _("Under Review")
-        VERIFIED               = "Verified",               _("Verified")
+        DRAFT = "Draft", _("Draft")
+        SUBMITTED = "Submitted", _("Submitted")
+        UNDER_REVIEW = "Under Review", _("Under Review")
+        VERIFIED = "Verified", _("Verified")
         WAITING_FOR_ALLOCATION = "Waiting for Allocation", _("Waiting for Allocation")
-        ALLOCATED              = "Allocated",              _("Allocated")
-        REJECTED               = "Rejected",               _("Rejected")
-        RETURNED               = "Returned",               _("Returned")
+        ALLOCATED = "Allocated", _("Allocated")
+        REJECTED = "Rejected", _("Rejected")
+        RETURNED = "Returned", _("Returned")
 
     application_no = models.CharField(
         _("application number"),
