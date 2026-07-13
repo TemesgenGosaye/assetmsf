@@ -1,0 +1,1669 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, no-empty */
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { 
+  FileBarChart, 
+  Download, 
+  CalendarIcon, 
+  BarChart3,
+  FileText,
+  ChevronDown
+} from "lucide-react";
+// format no longer needed after centralizing date range picker
+import { cn } from "@/lib/utils";
+import DateRangePicker from "@/components/ui/date-range-picker";
+import { toast } from "sonner";
+import { isDemoMode } from "@/lib/demo";
+import { listProperties, type Property } from "@/services/properties";
+import { ITEM_TYPE_PREFIXES } from "@/services/itemTypes";
+import { listReports, createReport, clearReports, type Report } from "@/services/reports";
+import { logActivity } from "@/services/activity";
+import { addNotification } from "@/services/notifications";
+import { listAssets, type Asset } from "@/services/assets";
+import { listApprovals, type ApprovalRequest } from "@/services/approvals";
+import { listDepartments, type Department } from "@/services/departments";
+import { listSessions, listReviewsForSession, getSessionById, formatAuditSessionName, type AuditSession } from "@/services/audit";
+import { listTickets, type Ticket } from "@/services/tickets";
+import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import StatusChip from "@/components/ui/status-chip";
+import Breadcrumbs from "@/components/layout/Breadcrumbs";
+import MetricCard from "@/components/ui/metric-card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+const reportTypes = [
+  {
+    id: "asset-summary",
+    name: "Asset Summary Report",
+    description: "Complete overview of all assets by property and type",
+    icon: BarChart3
+  },
+  {
+    id: "property-wise",
+    name: "Property-wise Asset Report", 
+    description: "Detailed breakdown of assets for each property",
+    icon: FileText
+  },
+  {
+    id: "department-wise",
+    name: "Department-wise Asset Report",
+    description: "Detailed breakdown of assets for each department",
+    icon: FileText
+  },
+  {
+    id: "month-wise",
+    name: "Month-wise Asset Report",
+    description: "Monthly summary of assets by purchase date",
+    icon: CalendarIcon
+  },
+  {
+    id: "expiry-tracking",
+    name: "Expiry Tracking Report",
+    description: "Assets approaching expiry dates with timeline",
+    icon: CalendarIcon
+  }
+  ,
+  {
+    id: "audit-review",
+    name: "Audit Review Report",
+    description: "Audit session reviews (by department or all) with issues highlighted",
+    icon: FileBarChart
+  }
+];
+
+type CurrentUser = { id?: string; email?: string; name?: string; fullName?: string; role?: string; department?: string | null };
+
+export default function Reports() {
+  // Identify user & role early (used for defaults below)
+  const currentUser: CurrentUser = (() => {
+    try {
+      const raw = (isDemoMode() ? (sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user')) : null) || localStorage.getItem('auth_user');
+      return raw ? JSON.parse(raw) as CurrentUser : {} as CurrentUser;
+    } catch {
+      // ignore parse errors
+      return {} as CurrentUser;
+    }
+  })();
+  const role: string = (currentUser?.role || '').toLowerCase();
+  const isAdminRole = (role || '').includes('admin');
+  const myDept: string | null = currentUser?.department ?? null;
+  const [selectedReportType, setSelectedReportType] = useState("");
+  const [dateFrom, setDateFrom] = useState<Date>();
+  const [dateTo, setDateTo] = useState<Date>();
+  const [selectedProperty, setSelectedProperty] = useState("all");
+  const [selectedAssetType, setSelectedAssetType] = useState("all");
+  const [reportFormat, setReportFormat] = useState("pdf");
+  const [emailReport, setEmailReport] = useState(false);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [itemTypes, setItemTypes] = useState<string[]>([]);
+  const [recentReports, setRecentReports] = useState<Report[] | null>(null);
+  const [assetsCache, setAssetsCache] = useState<Asset[] | null>(null);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [deptForReport, setDeptForReport] = useState<string>("ALL");
+  const [auditSessions, setAuditSessions] = useState<AuditSession[]>([]);
+  const [selectedAuditSessionId, setSelectedAuditSessionId] = useState<string>("");
+  // Allowed property scope for non-admins
+  const [allowedProps, setAllowedProps] = useState<Set<string>>(new Set());
+  // Quick Generate dialog state for Audit Review Report
+  const [auditQuickOpen, setAuditQuickOpen] = useState<boolean>(false);
+  const [qrSessionId, setQrSessionId] = useState<string>("");
+  const [qrDept, setQrDept] = useState<string>("ALL");
+  const [qrProperty, setQrProperty] = useState<string>("all");
+  // Recent Reports filters
+  const [rrRange, setRrRange] = useState<'all' | 'today' | '7d' | 'custom'>('all');
+  const [rrFrom, setRrFrom] = useState<Date | undefined>();
+  const [rrTo, setRrTo] = useState<Date | undefined>();
+
+  // Scope recent reports to current user (non-admin) and allowed properties.
+  const scopeRecentReports = (reports: Report[] | null | undefined, allowed: Set<string>): Report[] => {
+    const list = Array.isArray(reports) ? reports : [];
+    // Treat as admin if role indicates admin OR if no property restrictions are recorded
+    const treatAsAdmin = isAdminRole;
+    if (treatAsAdmin) return list;
+    const uid = String(currentUser?.id || '');
+    const email = String(currentUser?.email || '');
+    const name = String(currentUser?.name || currentUser?.fullName || '');
+    const me = (v: unknown) => {
+      const s = String(v || '');
+      return !!s && (s === uid || s === email || s === name);
+    };
+    return list.filter((r) => (me((r as any).created_by_id) || me((r as any).created_by)) && (!((r as any).filter_property) || allowed.has(String((r as any).filter_property))));
+  };
+
+  // Approvals Log state (admin/manager only)
+  const [approvalsAll, setApprovalsAll] = useState<ApprovalRequest[] | null>(null);
+  const [apStatus, setApStatus] = useState<'all'|'pending'|'approved'|'rejected'>('all');
+  const [apDateFrom, setApDateFrom] = useState<Date | undefined>();
+  const [apDateTo, setApDateTo] = useState<Date | undefined>();
+  const [apDepartments, setApDepartments] = useState<Department[]>([]);
+  const [apDeptFilter, setApDeptFilter] = useState<string>('ALL');
+  const [showApprovalsLog, setShowApprovalsLog] = useState<boolean>(false);
+  // Tickets Report state
+  const [tkScope, setTkScope] = useState<string>(() => (isAdminRole ? 'all' : 'mine-received'));
+  const [tkFrom, setTkFrom] = useState<Date | undefined>();
+  const [tkTo, setTkTo] = useState<Date | undefined>();
+
+  // Load properties, item types, and recent reports
+  // When Supabase is enabled, pull live data; else use light fallbacks
+  useEffect(() => {
+    (async () => {
+      // Load allowed property IDs for current user
+      const isAdmin = isAdminRole;
+      const allowed = new Set<string>();
+      if (!isAdmin) {
+        try {
+          const raw = await getAccessiblePropertyIdsForCurrentUser();
+          if (raw) {
+            for (const value of raw as any) {
+              allowed.add(String(value));
+            }
+          }
+        } catch {
+          // ignore; keep empty set
+        }
+      }
+      setAllowedProps(allowed);
+      try {
+
+          const [props] = await Promise.all([
+            listProperties().catch(() => []),
+          ]);
+          const propsScoped = isAdmin
+            ? (props as Property[])
+            : (allowed.size ? (props as Property[]).filter((p) => allowed.has(String(p.id))) : []);
+          setProperties(propsScoped);
+          setItemTypes(Object.keys(ITEM_TYPE_PREFIXES));
+          // Preload assets for downloads/export
+          try {
+            const assets = await listAssets();
+            const assetsScoped = isAdmin
+              ? (assets as Asset[])
+              : (allowed.size ? (assets as Asset[]).filter((a) => allowed.has(String(a.property || a.property_id || ''))) : []);
+            setAssetsCache(assetsScoped);
+          } catch { /* ignore */ }
+          // Load departments for admin Approvals Log filter and for department-wise reports
+          try {
+            const depts = await listDepartments() as Department[];
+            setDepartments(depts);
+            if (isAdminRole) setApDepartments(depts);
+          } catch { /* ignore */ }
+
+      } catch (e) {
+        console.error(e);
+      }
+      try {
+          const reports = await listReports();
+          setRecentReports(scopeRecentReports(reports, allowed));
+      } catch (e) {
+        console.error(e);
+      }
+      // Load audit sessions for audit-review report
+      try {
+          const sess = await listSessions(200);
+          const scoped = isAdmin
+            ? (sess || [])
+            : (allowed.size ? (sess || []).filter((s: any) => s?.property_id && allowed.has(String(s.property_id))) : []);
+          setAuditSessions(scoped);
+      } catch (e) {
+        console.error(e);
+        setAuditSessions([]);
+      }
+    })();
+  }, []);
+
+  // Load approvals for the Approvals Log whenever department filter or role changes
+  useEffect(() => {
+    (async () => {
+      try {
+        const dept = isAdminRole ? (apDeptFilter === 'ALL' ? null : apDeptFilter) : (role === 'manager' ? (myDept || null) : null);
+        if (role === 'manager') {
+          // Property-scope approvals to properties this manager has access to
+          try {
+            const allowed = allowedProps; // already loaded on mount
+            let assets = assetsCache;
+            if (!assets) {
+              try { assets = await listAssets(); } catch { assets = []; }
+            }
+            const allowedAssetIds = (assets || [])
+              .filter(a => a.property_id && allowed && allowed.has(String(a.property_id)))
+              .map(a => a.id);
+            const list = await listApprovals(undefined, dept as any, undefined, allowedAssetIds);
+            setApprovalsAll(list);
+          } catch {
+            const list = await listApprovals(undefined, dept as any, undefined, []);
+            setApprovalsAll(list);
+          }
+        } else {
+          const list = await listApprovals(undefined, dept as any, undefined);
+          setApprovalsAll(list);
+        }
+      } catch (e) {
+        console.error(e);
+        setApprovalsAll([]);
+      }
+    })();
+  }, [role, myDept, apDeptFilter, allowedProps, assetsCache]);
+
+  // Export Tickets CSV (role-aware)
+  const exportTicketsCsv = async () => {
+    try {
+      const id = (currentUser?.id || '').toString();
+      const email = (currentUser?.email || '').toString();
+      const scope = tkScope;
+      const tasks: Promise<Ticket[]>[] = [];
+      if (scope === 'mine-received') {
+        if (id) tasks.push(listTickets({ assignee: id }));
+        if (email && email !== id) tasks.push(listTickets({ assignee: email }));
+      } else if (scope === 'mine-raised') {
+        if (id) tasks.push(listTickets({ createdBy: id }));
+        if (email && email !== id) tasks.push(listTickets({ createdBy: email }));
+      } else if (scope === 'all') {
+        tasks.push(listTickets({}));
+      } else if (scope === 'target-admin') {
+        tasks.push(listTickets({ targetRole: 'admin' as any }));
+      } else if (scope === 'target-manager') {
+        tasks.push(listTickets({ targetRole: 'manager' as any }));
+      } else {
+        tasks.push(listTickets({}));
+      }
+      const results = (await Promise.all(tasks)).flat();
+      // de-duplicate by id
+      const map = new Map<string, Ticket>();
+      results.forEach(t => { map.set(t.id, t); });
+      const list = Array.from(map.values());
+      // date filter on createdAt
+      const from = tkFrom ? new Date(new Date(tkFrom).setHours(0,0,0,0)) : null;
+      const to = tkTo ? new Date(new Date(tkTo).setHours(23,59,59,999)) : null;
+      const inRange = (iso?: string | null) => {
+        if (!from && !to) return true;
+        if (!iso) return false;
+        const d = new Date(iso);
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      };
+      const filtered = list.filter(t => inRange(t.createdAt)).sort((a,b) => (a.createdAt < b.createdAt ? 1 : -1));
+      if (!filtered.length) { toast.info('No tickets found for the selected filters'); return; }
+      const rows = filtered.map(t => ({
+        id: t.id,
+        title: t.title,
+        description: (t.description || '').toString().replace(/\n/g, ' '),
+        status: t.status,
+        targetRole: t.targetRole,
+        priority: t.priority || 'medium',
+        assignee: t.assignee || '',
+        createdBy: t.createdBy,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt || '',
+        slaDueAt: t.slaDueAt || '',
+        closeNote: t.closeNote || '',
+      }));
+      const nameParts = ['Tickets Report'];
+      if (scope === 'mine-received') nameParts.push('(Received by me)');
+      else if (scope === 'mine-raised') nameParts.push('(Raised by me)');
+      else if (scope === 'target-admin') nameParts.push('(Target: Admin)');
+      else if (scope === 'target-manager') nameParts.push('(Target: Manager)');
+      const name = `${nameParts.join(' ')} - ${new Date().toISOString().slice(0,10)}`;
+      downloadCsvFromRows(name, rows);
+      toast.success('Tickets report downloaded');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to export tickets');
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    if (!selectedReportType) {
+      toast.error("Please select a report type");
+      return;
+    }
+
+    const reportData = {
+      type: selectedReportType,
+      dateFrom,
+      dateTo,
+      property: selectedProperty,
+      assetType: selectedAssetType,
+      department: selectedReportType === 'department-wise' ? (deptForReport === 'ALL' ? undefined : deptForReport) : (selectedReportType === 'audit-review' ? (deptForReport === 'ALL' ? undefined : deptForReport) : undefined),
+      format: reportFormat,
+      email: emailReport
+    };
+
+  try {
+        const displayName = `${reportTypes.find(r => r.id === selectedReportType)?.name}${selectedReportType === 'audit-review' ? (selectedAuditSessionId ? ` - Session ${selectedAuditSessionId}` : '') : ''}${reportData.department ? ` - ${reportData.department}` : ''} - ${new Date().toISOString().slice(0,10)}`;
+        await createReport({
+          name: displayName,
+          type: selectedReportType,
+          format: reportFormat.toUpperCase(),
+          status: "Completed",
+          date_from: dateFrom ? new Date(dateFrom).toISOString().slice(0,10) : null,
+          date_to: dateTo ? new Date(dateTo).toISOString().slice(0,10) : null,
+          file_url: null,
+          filter_session_id: selectedReportType === 'audit-review' ? (selectedAuditSessionId || null) : null,
+          filter_department: reportData.department ?? null,
+          filter_property: selectedProperty !== 'all' ? selectedProperty : null,
+          filter_asset_type: selectedAssetType !== 'all' ? selectedAssetType : null,
+          // Note: backend may not persist this, but keep in name for parsing later
+          // filter_session_id: selectedReportType === 'audit-review' ? selectedAuditSessionId : null,
+          created_by: (currentUser?.name || currentUser?.fullName || currentUser?.email || currentUser?.id || null) as any,
+          created_by_id: (currentUser?.id || null) as any,
+        } as any);
+        let reports = await listReports();
+        // Enrich top record with creator info if backend omitted columns
+        try {
+          if (reports && reports.length) {
+            const top = { ...reports[0] } as any;
+            const justNow = top.created_at ? (Date.now() - new Date(top.created_at).getTime() < 60_000) : true;
+            if (justNow && !top.created_by) {
+              top.created_by = (currentUser?.name || currentUser?.fullName || currentUser?.email || currentUser?.id || null);
+              top.created_by_id = (currentUser?.id || null);
+            }
+            reports = [top, ...reports.slice(1) as any];
+          }
+        } catch {}
+        setRecentReports(scopeRecentReports(reports as any, allowedProps));
+        // Log activity that a report was generated
+        try {
+          const rname = `${reportTypes.find(r => r.id === selectedReportType)?.name}${reportData.department ? ` - ${reportData.department}` : ''}`;
+          await logActivity('report_generated', `${rname} generated${reportFormat ? ` (${reportFormat.toUpperCase()})` : ''}`, (currentUser?.name || currentUser?.email || null));
+        } catch {}
+        await addNotification({
+          title: "Report generated",
+          message: `${reportTypes.find(r => r.id === selectedReportType)?.name} is ready for download`,
+          type: "report",
+        });
+      // Also generate a client-side export immediately using current selections
+      try {
+        if (selectedReportType === 'audit-review') {
+          if (!selectedAuditSessionId) { toast.error('Please select an audit session'); return; }
+          const rows = await buildAuditRows(selectedAuditSessionId, reportData.department, (selectedProperty !== 'all' ? selectedProperty : undefined));
+          if (rows.length) {
+            const name = `${reportTypes.find(r => r.id === selectedReportType)?.name} - Session ${selectedAuditSessionId}${reportData.department ? ` - ${reportData.department}` : ''} - ${new Date().toISOString().slice(0,10)}`;
+            if (reportFormat === 'pdf') {
+              try {
+                const sessMeta = await getSessionById(selectedAuditSessionId);
+                const friendly = formatAuditSessionName(sessMeta || { id: selectedAuditSessionId } as any);
+                downloadAuditPdfFromRows(friendly, rows);
+              } catch {
+                downloadAuditPdfFromRows(selectedAuditSessionId, rows);
+              }
+            }
+            else downloadCsvFromRows(name, rows);
+          } else { toast.info('No reviews found for that selection'); }
+        } else {
+          const assetsAll = assetsCache ?? await listAssets().catch(() => [] as Asset[]);
+          const isAdmin = isAdminRole;
+          const assets = isAdmin
+            ? (assetsAll as Asset[])
+            : (allowedProps.size ? (assetsAll as Asset[]).filter((a) => allowedProps.has(String(a.property || a.property_id || ''))) : []);
+          const rows = buildRows({
+            type: selectedReportType,
+            assets: assets as Asset[],
+            dateFrom,
+            dateTo,
+            department: reportData.department,
+            propertyId: selectedProperty !== 'all' ? selectedProperty : undefined,
+            assetType: selectedAssetType !== 'all' ? selectedAssetType : undefined,
+          });
+          if (rows.length) {
+            const name = `${reportTypes.find(r => r.id === selectedReportType)?.name}${reportData.department ? ` - ${reportData.department}` : ''} - ${new Date().toISOString().slice(0,10)}`;
+            if (reportFormat === 'pdf') downloadPdfFromRows(name, rows);
+            else downloadCsvFromRows(name, rows);
+          } else {
+            toast.info('No data matched your filters');
+          }
+        }
+      } catch { /* ignore */ }
+      toast.success(`${reportTypes.find(r => r.id === selectedReportType)?.name} generated.`);
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Failed to generate report");
+    }
+  };
+
+  const handleQuickReport = (reportType: string) => {
+  const report = reportTypes.find(r => r.id === reportType);
+  (async () => {
+    try {
+      // Ensure assets are loaded
+      if (reportType === 'audit-review') {
+        // Open website-style modal to select filters
+        let sid = selectedAuditSessionId;
+        try {
+          if (!sid && !auditSessions.length) {
+            const sess = await listSessions(200);
+            const scoped = isAdminRole
+              ? (sess || [])
+              : (allowedProps.size ? (sess || []).filter((s: any) => s?.property_id && allowedProps.has(String(s.property_id))) : []);
+            setAuditSessions(scoped);
+            if (scoped && scoped.length) sid = scoped[0].id;
+          } else if (!sid && auditSessions.length) {
+            sid = auditSessions[0].id;
+          }
+        } catch {}
+        setQrSessionId(sid || "");
+        setQrDept(deptForReport || 'ALL');
+        setQrProperty(selectedProperty || 'all');
+        setAuditQuickOpen(true);
+        return;
+      } else {
+        const assetsAll = assetsCache ?? await listAssets().catch(() => [] as Asset[]);
+        const isAdmin = isAdminRole;
+        const assets = isAdmin
+          ? (assetsAll as Asset[])
+          : (allowedProps.size ? (assetsAll as Asset[]).filter((a) => allowedProps.has(String(a.property || a.property_id || ''))) : []);
+        setAssetsCache(Array.isArray(assets) ? assets : []);
+        // Build rows
+        const rows = buildRows({
+          type: reportType,
+          assets: assets as Asset[],
+          dateFrom: undefined,
+          dateTo: undefined,
+          department: reportType === 'department-wise' ? (deptForReport === 'ALL' ? undefined : deptForReport) : undefined,
+        });
+        if (!rows.length) { toast.info('No data for this report'); return; }
+        downloadCsvFromRows(`${report?.name || 'Report'} - ${new Date().toISOString().slice(0,10)}`, rows);
+      }
+      // Log the quick report for Recent Reports with filter metadata
+      try {
+        await createReport({
+          name: `${report?.name}${(reportType === 'department-wise' && deptForReport && deptForReport !== 'ALL') ? ` - ${deptForReport}` : ''} - ${new Date().toISOString().slice(0,10)}`,
+          type: reportType,
+          format: 'CSV',
+          status: 'Completed',
+          date_from: null,
+          date_to: null,
+          file_url: null,
+          filter_session_id: null,
+          filter_department: reportType === 'department-wise' ? (deptForReport === 'ALL' ? null : deptForReport) : null,
+          filter_property: null,
+          filter_asset_type: null,
+          created_by: (currentUser?.name || currentUser?.fullName || currentUser?.email || currentUser?.id || null),
+          created_by_id: (currentUser?.id || null),
+        });
+        let reports = await listReports();
+        try {
+          if (reports && reports.length) {
+            const top = { ...reports[0] } as any;
+            const justNow = top.created_at ? (Date.now() - new Date(top.created_at).getTime() < 60_000) : true;
+            if (justNow && !top.created_by) {
+              top.created_by = (currentUser?.name || currentUser?.fullName || currentUser?.email || currentUser?.id || null);
+              top.created_by_id = (currentUser?.id || null);
+            }
+            reports = [top, ...reports.slice(1) as any];
+          }
+        } catch {}
+        setRecentReports(scopeRecentReports(reports, allowedProps));
+      } catch (e) { /* ignore logging failure */ }
+      toast.success(`${report?.name} generated`);
+    } catch (e:any) {
+      console.error(e);
+      toast.error(e?.message || 'Failed to generate quick report');
+    }
+  })();
+  };
+
+  async function confirmQuickAudit() {
+    try {
+      const sid = qrSessionId;
+      if (!sid) { toast.error('Please select an audit session'); return; }
+      const dep = qrDept === 'ALL' ? undefined : qrDept;
+      const propId = qrProperty !== 'all' ? qrProperty : undefined;
+      const rows = await buildAuditRows(sid, dep, propId);
+      if (!rows.length) { toast.info('No data for this report'); return; }
+      const name = `Audit Review Report - Session ${sid}${(dep ? ` - ${dep}` : '')} - ${new Date().toISOString().slice(0,10)}`;
+      downloadCsvFromRows(name, rows);
+      // Log recent report
+      try {
+        await createReport({
+          name,
+          type: 'audit-review',
+          format: 'CSV',
+          status: 'Completed',
+          date_from: null,
+          date_to: null,
+          file_url: null,
+          filter_session_id: sid,
+          filter_department: dep || null,
+          filter_property: propId || null,
+          filter_asset_type: null,
+          created_by: (currentUser?.name || currentUser?.fullName || currentUser?.email || currentUser?.id || null),
+          created_by_id: (currentUser?.id || null),
+        });
+        const reports = await listReports();
+        setRecentReports(scopeRecentReports(reports, allowedProps));
+      } catch {}
+      // Persist choices into main filters for consistency
+      setSelectedAuditSessionId(sid);
+      setDeptForReport(qrDept);
+      setSelectedProperty(qrProperty);
+      setAuditQuickOpen(false);
+      toast.success('Audit review report generated');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to generate audit review report');
+    }
+  }
+
+  // Build rows for report export
+  function buildRows(opts: { type: string; assets: Asset[]; dateFrom?: Date; dateTo?: Date; department?: string; propertyId?: string; assetType?: string; }) {
+    const { type, assets, dateFrom, dateTo, department, propertyId, assetType } = opts;
+    const from = dateFrom ? new Date(dateFrom) : null;
+    const to = dateTo ? new Date(dateTo) : null;
+    const inRange = (d: string | null) => {
+      if (!d) return true;
+      const dt = new Date(d);
+      if (from && dt < from) return false;
+      if (to && dt > to) return false;
+      return true;
+    };
+    const byDept = (a: any) => !department || (String(a.department || '').toLowerCase() === String(department).toLowerCase());
+    const byProp = (a: any) => !propertyId || String(a.property_id || a.property) === propertyId;
+    const byType = (a: any) => !assetType || String(a.type) === assetType;
+
+    switch (type) {
+      case 'asset-summary':
+        return assets.filter(a => inRange(a.purchaseDate) && byProp(a) && byType(a)).map(a => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          property: a.property,
+          department: (a as any).department || '',
+          quantity: a.quantity,
+          purchaseDate: a.purchaseDate,
+          expiryDate: a.expiryDate,
+          status: a.status,
+        }));
+      case 'property-wise':
+        return assets.filter(a => inRange(a.purchaseDate) && byProp(a) && byType(a)).map(a => ({
+          property: a.property,
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          department: (a as any).department || '',
+          quantity: a.quantity,
+          status: a.status,
+        }));
+      case 'department-wise':
+        return assets.filter(a => inRange(a.purchaseDate) && byDept(a) && byProp(a) && byType(a)).map(a => ({
+          department: (a as any).department || '',
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          property: a.property,
+          quantity: a.quantity,
+          status: a.status,
+        }));
+      case 'month-wise': {
+        // Group assets by month (YYYY-MM) using purchaseDate; fallback to created_at
+        const monthKey = (iso: string | null): string => {
+          if (!iso) return 'Unknown';
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return 'Unknown';
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          return `${y}-${m}`;
+        };
+        const rows = new Map<string, { month: string; assets: number; quantity: number }>();
+        for (const a of assets) {
+          const dateStr = (a.purchaseDate as any) || (a as any).created_at || null;
+          if (!inRange(dateStr) || !byProp(a) || !byType(a) || !byDept(a)) continue;
+          const key = monthKey(dateStr);
+          const prev = rows.get(key) || { month: key, assets: 0, quantity: 0 };
+          prev.assets += 1;
+          prev.quantity += Number((a as any).quantity || 0) || 0;
+          rows.set(key, prev);
+        }
+        // Sort by month ascending, Unknown last
+        const sorted = Array.from(rows.values()).sort((a, b) => {
+          if (a.month === 'Unknown') return 1;
+          if (b.month === 'Unknown') return -1;
+          return a.month.localeCompare(b.month);
+        });
+        return sorted;
+      }
+      case 'expiry-tracking':
+        return assets.filter(a => a.expiryDate && inRange(a.expiryDate) && byProp(a) && byType(a)).map(a => ({
+          id: a.id,
+          name: a.name,
+          property: a.property,
+          department: (a as any).department || '',
+          expiryDate: a.expiryDate,
+          status: a.status,
+        }));
+      default:
+        return [];
+    }
+  }
+
+  const toCsv = (data: any[]) => {
+    if (!data.length) return '';
+    const cols = Object.keys(data[0]);
+    const header = cols.join(',');
+    const lines = data.map(r => cols.map(c => {
+      const v = (r[c] ?? '').toString().replace(/"/g, '""');
+      return /[",\n]/.test(v) ? `"${v}"` : v;
+    }).join(','));
+    return [header, ...lines].join('\n');
+  };
+
+  function downloadCsvFromRows(name: string, rows: any[]) {
+    const csv = toCsv(rows);
+    if (!csv) { toast.info('No data to download for this report'); return; }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+  a.href = url; a.download = `${name.replace(/\s+/g, '_')}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadPdfFromRows(name: string, rows: any[]) {
+    if (!rows.length) { toast.info('No data to download for this report'); return; }
+    // Build simple printable HTML table
+    const cols = Object.keys(rows[0]);
+    const thead = `<tr>${cols.map(c => `<th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">${c}</th>`).join('')}</tr>`;
+    const tbody = rows.map(r => `<tr>${cols.map(c => `<td style="padding:8px;border-bottom:1px solid #f0f0f0;">${(r[c] ?? '')}</td>`).join('')}</tr>`).join('');
+    // Use app base to resolve public path for favicon
+    const logoSrc = `${window.location.origin}/favicon.png`;
+    const title = name.replace(/\s+/g, '_');
+    const userName = currentUser?.name || currentUser?.fullName || 'Unknown';
+    const dateStr = new Date().toLocaleString();
+    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${title}</title>
+    <style>@page{size:A4;margin:16mm} body{font-family:Inter,system-ui,-apple-system,sans-serif;color:#111} h1{font-size:18px;margin:12px 0 12px} table{border-collapse:collapse;width:100%;font-size:12px} .meta{color:#666;font-size:12px;margin-bottom:8px} .brand{display:flex;align-items:center;gap:10px;margin-bottom:8px} .brand img{height:28px;width:28px;object-fit:contain} .pill{display:inline-block;padding:4px 12px;border-radius:999px;background-color:#f8ece6;color:#5e3a2a;border:1px solid #b97b5b;font-size:12px;font-weight:500;margin-right:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>
+    </head><body>
+    <div class="brand"><img src='${logoSrc}' onerror="this.src='/favicon.ico'" alt='logo' /><h1>${name}</h1></div>
+    <div class="meta"><span class="pill">Generated at ${dateStr}</span><span class="pill">Generated by ${userName}</span></div>
+    <table><thead>${thead}</thead><tbody>${tbody}</tbody></table>
+    </body></html>`;
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.bottom = '0'; iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    doc?.open(); doc?.write(html); doc?.close();
+    const trigger = () => { try { iframe.contentWindow?.focus(); setTimeout(() => iframe.contentWindow?.print(), 50); } finally { setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 1000); } };
+    setTimeout(trigger, 200);
+  }
+
+  // Build rows for Audit Review Report from audit_reviews
+  async function buildAuditRows(sessionId: string, department?: string, propertyId?: string): Promise<any[]> {
+    try {
+
+      const reviews = await listReviewsForSession(sessionId).catch(() => []);
+      // Resolve session property to use as a fallback when asset metadata is unavailable due to RLS
+      let sessionPropertyId: string | null = null;
+      try {
+        const sess = await getSessionById(sessionId);
+        sessionPropertyId = ((sess as any)?.property_id ?? null) ? String((sess as any).property_id) : null;
+      } catch {}
+      const filtered = (reviews || []).filter((r: any) => !department || String(r.department || '').toLowerCase() === String(department).toLowerCase());
+      // Enrich with asset details when available
+      let assets: Asset[] = assetsCache || [];
+      if (!assets.length) {
+        try { assets = await listAssets().catch(() => [] as any); setAssetsCache(assets); } catch {}
+      }
+      const byId = new Map((assets || []).map(a => [String(a.id), a]));
+    const rows = filtered.map((r: any) => {
+        const a = byId.get(String(r.asset_id));
+        return {
+          session_id: r.session_id,
+          department: r.department || '',
+          asset_id: r.asset_id,
+          asset_name: a?.name || '',
+          property: (a as any)?.property || '',
+      // Fall back to session property when asset metadata is unavailable
+      property_id: ((a as any)?.property_id ?? null) ? String((a as any).property_id) : (sessionPropertyId ?? null),
+          type: a?.type || '',
+          status: r.status,
+          comment: r.comment || '',
+          updated_at: r.updated_at || ''
+        };
+      });
+    // If a specific property is selected, apply it; otherwise, for non-admins apply allowed property scoping
+    const isAdmin = isAdminRole;
+    // Be tolerant when property_id is unreadable due to RLS; don't drop rows just because property can't be resolved
+    const rows2Unscoped = rows.filter(r => !propertyId || !r.property_id || String(r.property_id) === String(propertyId));
+    const rows2 = (isAdmin || propertyId)
+      ? rows2Unscoped
+      : (allowedProps.size ? rows2Unscoped.filter((r) => r.property_id && allowedProps.has(String(r.property_id))) : []);
+      // Put issues first to make them prominent
+      const order = { missing: 0, damaged: 1, verified: 2 } as any;
+    return rows2.sort((a,b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+    } catch {
+      return [];
+    }
+  }
+
+  // PDF with highlighting for missing/damaged
+  function downloadAuditPdfFromRows(name: string, rows: any[]) {
+    if (!rows.length) { toast.info('No data to download for this report'); return; }
+    const cols = Object.keys(rows[0]);
+    const thead = `<tr>${cols.map(c => `<th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">${c}</th>`).join('')}</tr>`;
+    const tbody = rows.map(r => {
+      const status = String(r.status || '').toLowerCase();
+      const bg = status === 'missing' ? '#fee2e2' : (status === 'damaged' ? '#fef3c7' : 'transparent');
+      const fw = status === 'missing' ? '600' : 'normal';
+      return `<tr style="background:${bg};font-weight:${fw};">${cols.map(c => {
+        const val = (r[c] ?? '');
+        return `<td style="padding:8px;border-bottom:1px solid #f0f0f0;">${val}</td>`;
+      }).join('')}</tr>`;
+    }).join('');
+    const totals = rows.reduce((acc, r) => { const s = String(r.status || '').toLowerCase(); acc[s] = (acc[s]||0)+1; return acc; }, {} as Record<string, number>);
+    const summary = `<div class="summary"><span class="chip ok">Verified: ${totals['verified'] || 0}</span><span class="chip warn">Damaged: ${totals['damaged'] || 0}</span><span class="chip err">Missing: ${totals['missing'] || 0}</span></div>`;
+    const logoSrc = `${window.location.origin}/favicon.png`;
+  const titleName = `SAMS-AuditReport-${name}`;
+  const title = titleName.replace(/\s+/g, '_');
+  const userName = currentUser?.name || currentUser?.fullName || 'Unknown';
+  const dateStr = new Date().toLocaleString();
+  const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${title}</title>
+    <style>@page{size:A4;margin:16mm} body{font-family:Inter,system-ui,-apple-system,sans-serif;color:#111} h1{font-size:18px;margin:6px 0 8px} table{border-collapse:collapse;width:100%;font-size:12px} .meta{color:#666;font-size:12px;margin-bottom:8px} .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px} .brand img{height:28px;width:28px;object-fit:contain} .summary{display:flex;gap:8px;margin:8px 0 12px} .chip{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid rgba(0,0,0,0.08);-webkit-print-color-adjust:exact;print-color-adjust:exact} .chip.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0} .chip.warn{background:#fffbeb;color:#92400e;border-color:#fde68a} .chip.err{background:#fef2f2;color:#991b1b;border-color:#fecaca} .pill{display:inline-block;padding:4px 12px;border-radius:999px;background-color:#f8ece6;color:#5e3a2a;border:1px solid #b97b5b;font-size:12px;font-weight:500;margin-right:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>
+    </head><body>
+  <div class="brand"><img src='${logoSrc}' onerror="this.src='/favicon.ico'" alt='logo' /><h1>SAMS Audit Report — ${name}</h1></div>
+    <div class="meta"><span class="pill">Generated at ${dateStr}</span><span class="pill">Generated by ${userName}</span></div>
+    ${summary}
+    <table><thead>${thead}</thead><tbody>${tbody}</tbody></table>
+    </body></html>`;
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.bottom = '0'; iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    doc?.open(); doc?.write(html); doc?.close();
+    const trigger = () => { try { iframe.contentWindow?.focus(); setTimeout(() => iframe.contentWindow?.print(), 50); } finally { setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 1000); } };
+    setTimeout(trigger, 200);
+  }
+
+  // Download a CSV for a given recent report (client-side export snapshot)
+  const downloadReportCsv = async (report: any) => {
+    try {
+      // Prepare data set
+      if (String(report.type || '') === 'audit-review') {
+        const sid = (report as any).filter_session_id || (() => {
+          const n = String(report.name || '');
+          const m = n.match(/Session\s+([\w-]+)/i);
+          return m ? m[1] : '';
+        })();
+        const dep = (report as any).filter_department || (() => {
+          const n = String(report.name || '');
+          const m = n.match(/-\s([^-]+)\s-\s\d{4}-\d{2}-\d{2}$/);
+          const v = m ? m[1].trim() : undefined;
+          if (!v || /^all$/i.test(v)) return undefined;
+          return v;
+        })();
+        if (!sid) { toast.error('No session ID found on this report'); return; }
+  const rows = await buildAuditRows(sid, dep, ((report as any).filter_property || undefined));
+        if (!rows.length) { toast.info('No data to download for this report'); return; }
+        downloadCsvFromRows(String(report.name || 'report'), rows);
+        toast.success('Report downloaded');
+        return;
+      }
+      let rows: any[] = [];
+      const assets: Asset[] = (assetsCache && assetsCache.length)
+        ? assetsCache
+        : (await listAssets().catch(() => [])) as Asset[];
+      if (!assetsCache || (assetsCache && !assetsCache.length)) {
+        try { setAssetsCache(assets); } catch {}
+      }
+      const from = report.date_from ? new Date(report.date_from) : undefined;
+      const to = report.date_to ? new Date(report.date_to) : undefined;
+      // Prefer stored filter metadata
+      const depStored = (report as any).filter_department || undefined;
+      const propStored = (report as any).filter_property || undefined;
+      const typeStored = (report as any).filter_asset_type || undefined;
+      // Fallback to parsing from name if needed
+      const dep = depStored ?? (() => {
+        const n = String(report.name || '');
+        const m = n.match(/Department-wise[^-]*-\s*([^\-\n]+)/i);
+        const v = m ? m[1].trim() : undefined;
+        if (!v) return undefined;
+        if (/^all\b/i.test(v)) return undefined;
+        return v;
+      })();
+      rows = buildRows({ type: String(report.type || ''), assets, dateFrom: from, dateTo: to, department: dep, propertyId: propStored, assetType: typeStored });
+      if (!rows.length) { toast.info('No data to download for this report'); return; }
+      downloadCsvFromRows(String(report.name || 'report'), rows);
+      toast.success('Report downloaded');
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to download report");
+    }
+  };
+  const downloadReportPdf = async (report: any) => {
+    try {
+      if (String(report.type || '') === 'audit-review') {
+        const sid = (report as any).filter_session_id || (() => {
+          const n = String(report.name || '');
+          const m = n.match(/Session\s+([\w-]+)/i);
+          return m ? m[1] : '';
+        })();
+        const dep = (report as any).filter_department || (() => {
+          const n = String(report.name || '');
+          const m = n.match(/-\s([^-]+)\s-\s\d{4}-\d{2}-\d{2}$/);
+          const v = m ? m[1].trim() : undefined;
+          if (!v || /^all$/i.test(v)) return undefined;
+          return v;
+        })();
+        if (!sid) { toast.error('No session ID found on this report'); return; }
+  const rows = await buildAuditRows(sid, dep, ((report as any).filter_property || undefined));
+        if (!rows.length) { toast.info('No data to download for this report'); return; }
+        try {
+          const sessMeta = await getSessionById(sid);
+          const friendly = formatAuditSessionName(sessMeta || { id: sid } as any);
+          downloadAuditPdfFromRows(friendly, rows);
+        } catch {
+          downloadAuditPdfFromRows(String(report.name || 'report'), rows);
+        }
+        return;
+      }
+      const assets: Asset[] = (assetsCache && assetsCache.length)
+        ? assetsCache
+        : (await listAssets().catch(() => [])) as Asset[];
+      if (!assetsCache || (assetsCache && !assetsCache.length)) {
+        try { setAssetsCache(assets); } catch {}
+      }
+      const from = report.date_from ? new Date(report.date_from) : undefined;
+      const to = report.date_to ? new Date(report.date_to) : undefined;
+      const depStored = (report as any).filter_department || undefined;
+      const propStored = (report as any).filter_property || undefined;
+      const typeStored = (report as any).filter_asset_type || undefined;
+      const dep = depStored ?? (() => {
+        const n = String(report.name || '');
+        const m = n.match(/Department-wise[^-]*-\s*([^\-\n]+)/i);
+        const v = m ? m[1].trim() : undefined;
+        if (!v) return undefined;
+        if (/^all\b/i.test(v)) return undefined;
+        return v;
+      })();
+      const rows = buildRows({ type: String(report.type || ''), assets, dateFrom: from, dateTo: to, department: dep, propertyId: propStored, assetType: typeStored });
+      if (!rows.length) { toast.info('No data to download for this report'); return; }
+      downloadPdfFromRows(String(report.name || 'report'), rows);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to export PDF');
+    }
+  };
+
+  // Derived approvals filtered dataset for the Approvals Log
+  const approvalsFiltered = (() => {
+    const list = approvalsAll ?? [];
+    const from = apDateFrom ? new Date(apDateFrom.setHours(0,0,0,0)) : null;
+    const to = apDateTo ? new Date(apDateTo.setHours(23,59,59,999)) : null;
+    return list.filter(a => {
+      const when = a?.requestedAt ? new Date(a.requestedAt) : null;
+      if (from && (!when || when < from)) return false;
+      if (to && (!when || when > to)) return false;
+      if (apStatus === 'approved') return a.status === 'approved';
+      if (apStatus === 'rejected') return a.status === 'rejected';
+      if (apStatus === 'pending') return a.status === 'pending_manager' || a.status === 'pending_admin';
+      return true; // all
+    }).sort((a,b) => (new Date(b.requestedAt).getTime()) - (new Date(a.requestedAt).getTime()));
+  })();
+
+  const reportSummary = useMemo(() => {
+    const list = Array.isArray(recentReports) ? recentReports : [];
+    let completed = 0;
+    let latest = 0;
+    list.forEach((entry: any) => {
+      const status = String(entry?.status || 'completed').toLowerCase();
+      if (status === 'completed' || status === 'complete' || status === 'done') completed += 1;
+      const stamp = entry?.created_at || entry?.createdAt || entry?.createdAtUtc || entry?.createdDate;
+      if (stamp) {
+        const value = new Date(stamp).getTime();
+        if (!Number.isNaN(value) && value > latest) latest = value;
+      }
+    });
+    const total = list.length;
+    const pending = Math.max(total - completed, 0);
+    const lastGeneratedLabel = latest ? new Date(latest).toLocaleString() : '—';
+    return { total, completed, pending, lastGeneratedLabel };
+  }, [recentReports]);
+
+  const pendingApprovalsCount = useMemo(() => {
+    return approvalsFiltered.filter((approval) => {
+      const status = String(approval.status || '').toLowerCase();
+      return status.includes('pending');
+    }).length;
+  }, [approvalsFiltered]);
+
+  const activeAuditSessions = useMemo(() => {
+    return auditSessions.filter((session) => Boolean(session?.is_active)).length;
+  }, [auditSessions]);
+
+  const heroTiles = useMemo(() => {
+    return [
+      {
+        key: 'generated',
+        label: 'Reports Generated',
+        value: reportSummary.total.toLocaleString(),
+        hint: reportSummary.total
+          ? `Last generated ${reportSummary.lastGeneratedLabel}`
+          : 'Create your first report to populate this feed',
+        icon: FileBarChart,
+        iconClass: 'text-primary h-4 w-4',
+      },
+      {
+        key: 'completed',
+        label: 'Completed Reports',
+        value: reportSummary.completed.toLocaleString(),
+        hint: reportSummary.pending
+          ? `${reportSummary.pending.toLocaleString()} pending`
+          : 'No pending reports',
+        icon: Download,
+        iconClass: 'text-primary h-4 w-4',
+      },
+      {
+        key: 'approvals',
+        label: 'Pending Approvals',
+        value: pendingApprovalsCount.toLocaleString(),
+        hint: pendingApprovalsCount ? 'Awaiting review' : 'All approvals up to date',
+        icon: FileText,
+        iconClass: 'text-primary h-4 w-4',
+      },
+      {
+        key: 'audits',
+        label: 'Active Audit Sessions',
+        value: activeAuditSessions.toLocaleString(),
+        hint: `${auditSessions.length.toLocaleString()} total sessions`,
+        icon: BarChart3,
+        iconClass: 'text-primary h-4 w-4',
+      },
+    ];
+  }, [reportSummary, pendingApprovalsCount, activeAuditSessions, auditSessions]);
+
+  const exportApprovalsCsv = () => {
+    try {
+      const rows = approvalsFiltered.map(a => ({
+        id: a.id,
+        assetId: a.assetId,
+        action: a.action,
+        status: a.status,
+        department: a.department ?? '',
+        requestedBy: a.requestedBy,
+        requestedAt: a.requestedAt,
+        reviewedBy: a.reviewedBy ?? '',
+        reviewedAt: a.reviewedAt ?? '',
+  notes: (a.notes ?? '').toString().replace(/\n/g,' '),
+      }));
+      const toCsv = (data: any[]) => {
+        if (!data.length) return '';
+        const cols = Object.keys(data[0]);
+        const header = cols.join(',');
+        const lines = data.map(r => cols.map(c => {
+          const v = (r[c] ?? '').toString().replace(/"/g, '""');
+          return /[",\n]/.test(v) ? `"${v}"` : v;
+        }).join(','));
+        return [header, ...lines].join('\n');
+      };
+      const csv = toCsv(rows);
+      if (!csv) { toast.info('No approvals to export'); return; }
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `approvals_log_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Approvals log downloaded');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to export approvals');
+    }
+  };
+
+  const toggleApprovalsLog = () => {
+    setShowApprovalsLog((prev) => {
+      const next = !prev;
+      if (!prev) {
+        setTimeout(() => {
+          const el = document.getElementById('approvals-log');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 120);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-6" id="reports-top">
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Reports" }]} />
+
+      <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm">
+        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
+        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Reports & Insights</h1>
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              Generate compliance-ready exports, enrich audit reviews, and keep your teams informed.
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {(isAdminRole || role === 'manager') && (
+              <Button
+                className="gap-2"
+                variant="outline"
+                size="sm"
+                onClick={toggleApprovalsLog}
+              >
+                <FileText className="h-4 w-4" /> Approvals Log
+              </Button>
+            )}
+            <Button onClick={handleGenerateReport} className="gap-2" size="sm">
+              <Download className="h-4 w-4" /> Generate Report
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {heroTiles.map((tile) => (
+          <MetricCard
+            key={tile.key}
+            icon={tile.icon}
+            title={tile.label}
+            value={tile.value}
+            caption={tile.hint}
+            iconClassName={tile.iconClass}
+          />
+        ))}
+      </div>
+
+      {/* Quick Report Cards */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {reportTypes.map((report) => (
+            <Card
+              key={report.id}
+              className="group relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/30 shadow-sm transition-all hover:border-primary/20 hover:shadow-md"
+            >
+              <CardHeader className="pb-3">
+                <div className="space-y-1">
+                  <CardTitle className="text-base font-bold text-foreground">{report.name}</CardTitle>
+                  <CardDescription className="line-clamp-2 text-xs font-medium text-muted-foreground">
+                    {report.description}
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="flex items-center gap-2 pt-0">
+                <Button
+                  onClick={() => handleQuickReport(report.id)}
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 w-full gap-2 text-xs font-medium"
+                >
+                  <Download className="h-3.5 w-3.5" /> Quick Generate
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-full gap-2 text-xs font-medium sm:w-auto"
+                  onClick={() => {
+                    setSelectedReportType(report.id);
+                    const el = document.getElementById('custom-report-generator');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
+                  Configure
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+      </div>
+
+        {/* Quick Generate — Audit Review Picker */}
+        <Dialog open={auditQuickOpen} onOpenChange={setAuditQuickOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Audit Review — Quick Generate</DialogTitle>
+              <DialogDescription>Select filters to generate CSV</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Label>Audit Session</Label>
+                <Select value={qrSessionId} onValueChange={setQrSessionId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select audit session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {auditSessions.filter(s => s.id).map(s => (
+                      <SelectItem key={s.id} value={s.id}>{formatAuditSessionName(s)} {s.is_active ? '(Active)' : ''}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select value={qrDept} onValueChange={setQrDept}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All departments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Departments</SelectItem>
+                    {departments.filter(d => d.name).map((d) => (
+                      <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Property</Label>
+                <Select value={qrProperty} onValueChange={setQrProperty}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All properties" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Properties</SelectItem>
+                    {properties.filter(p => p.id).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAuditQuickOpen(false)}>Cancel</Button>
+              <Button onClick={confirmQuickAudit} disabled={!qrSessionId}>Generate CSV</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Custom Report Generator */}
+        <Card id="custom-report-generator" className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+          <CardHeader className="border-b border-border/40 bg-muted/20 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <FileText className="h-4 w-4" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold">Custom Report Generator</CardTitle>
+                <CardDescription className="text-xs font-medium">
+                  Configure and generate custom reports with specific filters and date ranges
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6 p-6">
+            {/* Report Type Selection */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Report Configuration</Label>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Report Type</Label>
+                  <Select value={selectedReportType} onValueChange={setSelectedReportType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select report type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reportTypes.filter(r => r.id).map((report) => (
+                        <SelectItem key={report.id} value={report.id}>
+                          {report.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date Range</Label>
+                  <DateRangePicker
+                    value={{ from: dateFrom, to: dateTo }}
+                    onChange={(r) => { setDateFrom(r.from); setDateTo(r.to); }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Filters & Scope</Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {selectedReportType === 'audit-review' && (
+                  <div className="space-y-2 md:col-span-1">
+                    <Label>Audit Session</Label>
+                    <Select value={selectedAuditSessionId} onValueChange={setSelectedAuditSessionId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select audit session" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {auditSessions.filter(s => s.id).map(s => (
+                          <SelectItem key={s.id} value={s.id}>{formatAuditSessionName(s)} {s.is_active ? '(Active)' : ''}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Property</Label>
+                  <Select value={selectedProperty} onValueChange={setSelectedProperty}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select property" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Properties</SelectItem>
+                      {properties.filter(p => p.id).map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Asset Type</Label>
+                  <Select value={selectedAssetType} onValueChange={setSelectedAssetType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select asset type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      {itemTypes.filter(Boolean).map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {(selectedReportType === 'department-wise' || selectedReportType === 'audit-review' || selectedReportType === 'month-wise') && (
+                  <div className="space-y-2">
+                    <Label>Department</Label>
+                    <Select value={deptForReport} onValueChange={setDeptForReport}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All Departments</SelectItem>
+                        {departments.filter(d => d.name).map((d) => (
+                          <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Output Options */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Export Options</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <div className="space-y-2">
+                  <Label>Format</Label>
+                  <Select value={reportFormat} onValueChange={setReportFormat}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select format" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pdf">PDF Document</SelectItem>
+                      <SelectItem value="excel">Excel Spreadsheet</SelectItem>
+                      <SelectItem value="csv">CSV File</SelectItem>
+                      <SelectItem value="json">JSON Data</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 p-2.5">
+                    <Checkbox
+                      id="email-report"
+                      checked={emailReport}
+                      onCheckedChange={(v) => setEmailReport(Boolean(v))}
+                    />
+                    <Label htmlFor="email-report" className="text-sm font-medium cursor-pointer">
+                      Email report to administrators
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Generate Button */}
+            <div className="pt-2">
+              <Button onClick={handleGenerateReport} className="w-full gap-2 sm:w-auto" size="lg">
+                <Download className="h-4 w-4" />
+                Generate Custom Report
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Recent Reports */}
+        <Card className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+          <CardHeader className="border-b border-border/40 bg-muted/20 pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <BarChart3 className="h-4 w-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-bold">Recent Reports</CardTitle>
+                  <CardDescription className="text-xs font-medium">Previously generated reports and scheduled reports</CardDescription>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <div className="w-32">
+                  <Select value={rrRange} onValueChange={(v: any) => setRrRange(v)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Range" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Time</SelectItem>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="7d">Last 7 days</SelectItem>
+                      <SelectItem value="custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {rrRange === 'custom' && (
+                  <div className="min-w-[240px]">
+                    <DateRangePicker
+                      value={{ from: rrFrom, to: rrTo }}
+                      onChange={(r) => { setRrFrom(r.from); setRrTo(r.to); }}
+                    />
+                  </div>
+                )}
+                {isAdminRole && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={async () => {
+                      const ok = window.confirm('Clear all recent report logs? This cannot be undone.');
+                      if (!ok) return;
+                      try {
+                        await clearReports();
+                        // Refetch to verify cleared server-side
+                        try {
+                          const fresh = await listReports();
+                          setRecentReports(scopeRecentReports(fresh as any, allowedProps));
+                          if (!fresh || fresh.length === 0) {
+                            toast.success('Recent report logs cleared');
+                          } else {
+                            toast.error('Could not clear all logs. Check Supabase RLS/policies.');
+                          }
+                        } catch {
+                          setRecentReports([]);
+                          toast.success('Recent report logs cleared');
+                        }
+                      } catch (e) {
+                        console.error(e);
+                        toast.error('Failed to clear logs');
+                      }
+                    }}
+                  >
+                    Clear Logs
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-border/40">
+              {(() => {
+                const list = (recentReports ?? []) as any[];
+                const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+                const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7); sevenDaysAgo.setHours(0,0,0,0);
+                const from = rrRange === 'today' ? todayStart : rrRange === '7d' ? sevenDaysAgo : (rrRange === 'custom' ? (rrFrom ? new Date(new Date(rrFrom).setHours(0,0,0,0)) : undefined) : undefined);
+                const to = rrRange === 'custom' ? (rrTo ? new Date(new Date(rrTo).setHours(23,59,59,999)) : undefined) : undefined;
+                const filtered = list.filter(r => {
+                  const when = r.created_at ? new Date(r.created_at) : null;
+                  if (rrRange === 'all') return true;
+                  if (rrRange === 'today') return when && when >= todayStart;
+                  if (rrRange === '7d') return when && when >= sevenDaysAgo;
+                  if (rrRange === 'custom') {
+                    if (from && (!when || when < from)) return false;
+                    if (to && (!when || when > to)) return false;
+                    return true;
+                  }
+                  return true;
+                });
+                if (!filtered.length) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="rounded-full bg-muted/50 p-3">
+                        <FileText className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <p className="mt-2 text-sm font-medium text-foreground">No recent reports</p>
+                      <p className="text-xs text-muted-foreground">Generate a report to see it here</p>
+                    </div>
+                  );
+                }
+                const limited = rrRange === 'all' ? filtered.slice(0, 5) : filtered;
+                return limited.map((report: any, index: number) => (
+                  <div key={report.id ?? index} className="group flex items-center justify-between p-4 transition-colors hover:bg-muted/30">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-medium text-foreground">{report.name}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-medium uppercase tracking-wider">{report.type}</span>
+                          <span>•</span>
+                          <span>{report.created_at ? new Date(report.created_at).toLocaleString() : "-"}</span>
+                          <span>•</span>
+                          <span>{report.format}</span>
+                          <span>•</span>
+                          <span>by {report.created_by || 'Unknown'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <StatusChip status={report.status || "Completed"} size="sm" titleCase />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Open menu</span>
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => downloadReportCsv(report)}>
+                            <Download className="mr-2 h-4 w-4" /> Download CSV
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => downloadReportPdf(report)}>
+                            <Download className="mr-2 h-4 w-4" /> Download PDF
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                ));
+              })()}
+              {(() => {
+                if (rrRange === 'all') {
+                  const total = (recentReports ?? []).length;
+                  if (total > 5) {
+                    return (
+                      <div className="p-2 text-center bg-muted/10">
+                        <Button variant="ghost" size="sm" onClick={() => setRrRange('7d')} className="text-xs text-muted-foreground hover:text-foreground">
+                          Show more reports
+                        </Button>
+                      </div>
+                    );
+                  }
+                }
+                return null;
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tickets Report (Managers/Admins) */}
+        {(isAdminRole || role === 'manager') && (
+          <Card id="tickets-report" className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+            <CardHeader className="border-b border-border/40 bg-muted/20 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-bold">Tickets Report</CardTitle>
+                  <CardDescription className="text-xs font-medium">Export tickets with scope and date filters</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 p-6">
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-2">
+                  <Label>Scope</Label>
+                  <div className="w-48">
+                    <Select value={tkScope} onValueChange={setTkScope}>
+                      <SelectTrigger><SelectValue placeholder="Scope" /></SelectTrigger>
+                      <SelectContent>
+                        {/* Manager scopes */}
+                        <SelectItem value="mine-received">Received by me</SelectItem>
+                        <SelectItem value="mine-raised">Raised by me</SelectItem>
+                        {/* Admin extra scopes */}
+                        {isAdminRole && (
+                          <>
+                            <SelectItem value="all">All (everyone)</SelectItem>
+                            <SelectItem value="target-admin">Target: Admin</SelectItem>
+                            <SelectItem value="target-manager">Target: Manager</SelectItem>
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date Range</Label>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <DateRangePicker value={{ from: tkFrom, to: tkTo }} onChange={(r) => { setTkFrom(r.from); setTkTo(r.to); }} />
+                  </div>
+                </div>
+                <Button variant="outline" className="gap-2" onClick={exportTicketsCsv}>
+                  <Download className="h-4 w-4" /> Export CSV
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Approvals Log (restricted to admin/manager) */}
+        {(isAdminRole || role === 'manager') && showApprovalsLog && (
+          <Card id="approvals-log" className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+            <CardHeader className="border-b border-border/40 bg-muted/20 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-bold">Approvals Log</CardTitle>
+                  <CardDescription className="text-xs font-medium">Department-scoped approvals with status and date filters</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6 p-6">
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <div className="w-40">
+                    <Select value={apStatus} onValueChange={(v: any) => setApStatus(v)}>
+                      <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {isAdminRole ? (
+                  <div className="space-y-2">
+                    <Label>Department</Label>
+                    <div className="w-48">
+                      <Select value={apDeptFilter} onValueChange={setApDeptFilter}>
+                        <SelectTrigger><SelectValue placeholder="All departments" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">All departments</SelectItem>
+                          {apDepartments.filter(d => d.name).map(d => (
+                            <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ) : (
+                  myDept ? <div className="text-sm text-muted-foreground pb-3">Department: <span className="font-medium text-foreground">{myDept}</span></div> : null
+                )}
+                <div className="space-y-2">
+                  <Label>Date Range</Label>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <DateRangePicker
+                      value={{ from: apDateFrom, to: apDateTo }}
+                      onChange={(r) => { setApDateFrom(r.from); setApDateTo(r.to); }}
+                    />
+                  </div>
+                </div>
+                <Button variant="outline" className="gap-2" onClick={exportApprovalsCsv} disabled={!approvalsFiltered.length}>
+                  <Download className="h-4 w-4" /> Export CSV
+                </Button>
+              </div>
+
+              <div className="rounded-md border border-border/40 overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">ID</TableHead>
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">Asset</TableHead>
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">Action</TableHead>
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">Status</TableHead>
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">Department</TableHead>
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">Requested By</TableHead>
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">Requested At</TableHead>
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">Reviewed By</TableHead>
+                      <TableHead className="h-10 text-xs font-semibold uppercase tracking-wider">Reviewed At</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {approvalsFiltered.map(a => (
+                      <TableRow key={a.id} className="hover:bg-muted/30">
+                        <TableCell className="font-mono text-xs text-muted-foreground">{a.id}</TableCell>
+                        <TableCell className="font-mono text-xs">{a.assetId}</TableCell>
+                        <TableCell className="capitalize text-xs font-medium">{a.action}</TableCell>
+                        <TableCell className="capitalize"><StatusChip status={a.status} /></TableCell>
+                        <TableCell className="text-xs">{a.department || '-'}</TableCell>
+                        <TableCell className="text-xs">{a.requestedBy}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{a.requestedAt?.slice(0,19).replace('T',' ')}</TableCell>
+                        <TableCell className="text-xs">{a.reviewedBy || '-'}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{a.reviewedAt ? a.reviewedAt.slice(0,19).replace('T',' ') : '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                    {!approvalsFiltered.length && (
+                      <TableRow>
+                        <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">No approvals found for the selected filters</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+
+    </div>
+  );
+}

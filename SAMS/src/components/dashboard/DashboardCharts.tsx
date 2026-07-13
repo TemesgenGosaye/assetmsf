@@ -1,0 +1,585 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  Area,
+  AreaChart,
+  LabelList,
+  Legend,
+} from "recharts";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import type { Asset } from "@/services/assets";
+import type { Property } from "@/services/properties";
+import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
+
+const palette = [
+  "hsl(221, 83%, 53%)", // Blue
+  "hsl(142, 71%, 45%)", // Green
+  "hsl(262, 83%, 58%)", // Purple
+  "hsl(31, 97%, 55%)",  // Orange
+  "hsl(339, 90%, 51%)", // Pink
+  "hsl(191, 91%, 46%)", // Cyan
+  "hsl(47, 95%, 57%)",  // Yellow
+];
+
+function monthLabel(d: Date) {
+  return d.toLocaleString(undefined, { month: "short" });
+}
+
+const CustomTooltip = ({ active, payload, label, formatter }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border border-border/50 bg-background/95 p-3 shadow-xl backdrop-blur-sm">
+        {label && <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>}
+        {payload.map((entry: any, index: number) => (
+          <div key={index} className="flex items-center gap-2 text-xs">
+            <div 
+              className="h-2 w-2 rounded-full" 
+              style={{ backgroundColor: entry.color || entry.fill || entry.stroke }} 
+            />
+            <span className="font-medium text-foreground">
+              {formatter ? formatter(entry.value, entry.name, entry)[0] : entry.value}
+            </span>
+            <span className="text-muted-foreground">
+              {formatter ? formatter(entry.value, entry.name, entry)[1] : entry.name}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
+export interface DashboardChartsProps {
+  assets: Asset[];
+  properties: Property[];
+}
+
+export function DashboardCharts({ assets, properties }: DashboardChartsProps) {
+  const role = useMemo(() => {
+    try {
+      const raw = (typeof window !== 'undefined' && (sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user'))) || localStorage.getItem("auth_user");
+      const r = raw ? (JSON.parse(raw).role || "") : "";
+      return String(r || '').toLowerCase();
+    } catch { return ''; }
+  }, []);
+
+  const [accessibleProps, setAccessibleProps] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const ids = await getAccessiblePropertyIdsForCurrentUser();
+        setAccessibleProps(ids);
+      } catch {
+        setAccessibleProps(new Set());
+      }
+    })();
+  }, []);
+
+  // Scope visible properties and assets for non-admins
+  const visibleProperties = useMemo(() => {
+    if (role === 'admin') return properties;
+    if (accessibleProps && accessibleProps.size) return properties.filter(p => accessibleProps.has(String(p.id)));
+    return properties;
+  }, [role, properties, accessibleProps]);
+
+  const scopedAssets = useMemo(() => {
+    if (role === 'admin') return assets;
+    if (accessibleProps && accessibleProps.size) {
+      return assets.filter((a: any) => {
+        const pid = String(a?.property_id || a?.property || "");
+        return pid ? accessibleProps.has(pid) : false;
+      });
+    }
+    return assets;
+  }, [role, assets, accessibleProps]);
+
+  const activePropertyIds = useMemo(() => {
+    const list = visibleProperties || [];
+    return new Set(list.filter(p => (p.status || '').toLowerCase() !== 'disabled').map(p => p.id));
+  }, [visibleProperties]);
+
+  // Asset Distribution by Type
+  const chartAssetsByType = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of scopedAssets) {
+      const pid = String((a as any).property_id || (a as any).property || "");
+      if (activePropertyIds.size && pid && !activePropertyIds.has(pid)) continue;
+      const key = a.type || "Other";
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    const entries = Array.from(map.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+    const TOP = 6;
+    let list = entries;
+    if (entries.length > TOP) {
+      const top = entries.slice(0, TOP);
+      const other = entries.slice(TOP).reduce((sum, e) => sum + e.value, 0);
+      list = [...top, { name: 'Other', value: other }];
+    }
+    return list.map((item, idx) => ({ ...item, color: palette[idx % palette.length] }));
+  }, [scopedAssets, activePropertyIds]);
+
+  // Purchase Trends (last 6 months purchases count)
+  const chartPurchaseTrend = useMemo(() => {
+    const now = new Date();
+    const months: { key: string; start: Date; end: Date }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = new Date(d.getFullYear(), d.getMonth(), 1);
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      months.push({ key: monthLabel(d), start, end });
+    }
+    return months.map(m => {
+      const purchases = scopedAssets.filter(a => a.purchaseDate && new Date(a.purchaseDate) >= m.start && new Date(a.purchaseDate) < m.end).length;
+      return { month: m.key, purchases };
+    });
+  }, [scopedAssets]);
+
+  const chartPurchaseTrendExtended = useMemo(() => {
+    let runningTotal = 0;
+    return chartPurchaseTrend.map((point) => {
+      runningTotal += point.purchases;
+      return { ...point, runningTotal };
+    });
+  }, [chartPurchaseTrend]);
+
+  // Assets by Property
+  const propsById = useMemo(() => Object.fromEntries(visibleProperties.map(p => [p.id, p])), [visibleProperties]);
+  const chartPropertyAssets = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of scopedAssets) {
+      const pid = String((a as any).property_id || (a as any).property || "");
+      if (activePropertyIds.size && pid && !activePropertyIds.has(pid)) continue;
+      const key = pid || "Unknown";
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    // Sort by count desc and take top N, grouping the rest as "Other"
+    const entries = Array.from(map.entries())
+      .map(([pid, count]) => ({ pid, name: propsById[pid]?.name || pid, assets: count }))
+      .sort((a, b) => b.assets - a.assets);
+    const TOP = 8;
+    if (entries.length <= TOP) return entries;
+    const top = entries.slice(0, TOP);
+    const otherTotal = entries.slice(TOP).reduce((sum, e) => sum + e.assets, 0);
+    return [...top, { pid: "__OTHER__", name: "Other", assets: otherTotal }];
+  }, [scopedAssets, activePropertyIds, propsById]);
+
+  // Asset Expiry Tracking (last 6 months: expired vs expiring counts per month)
+  const chartExpiryData = useMemo(() => {
+    const now = new Date();
+    const months: { label: string; start: Date; end: Date }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = new Date(d.getFullYear(), d.getMonth(), 1);
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+      months.push({ label: monthLabel(d), start, end });
+    }
+    return months.map(m => {
+      let expired = 0;
+      let expiring = 0;
+      for (const a of scopedAssets) {
+        if (!a.expiryDate) continue;
+        const ed = new Date(a.expiryDate);
+        if (ed >= m.start && ed <= m.end) {
+          if (ed < now) expired += 1; else expiring += 1;
+        }
+      }
+      return { month: m.label, expired, expiring };
+    });
+  }, [scopedAssets]);
+
+  const hasData = (scopedAssets.length > 0);
+
+  const totalAssetsCount = useMemo(() => {
+    return chartAssetsByType.reduce((sum, item) => sum + (item.value || 0), 0);
+  }, [chartAssetsByType]);
+
+  const topAssetType = useMemo(() => {
+    if (!chartAssetsByType.length) return null;
+    return chartAssetsByType.reduce((best, item) => (item.value > (best?.value ?? -1) ? item : best), chartAssetsByType[0]);
+  }, [chartAssetsByType]);
+
+  const purchaseSummary = useMemo(() => {
+    const total = chartPurchaseTrend.reduce((sum, item) => sum + (item.purchases || 0), 0);
+    const current = chartPurchaseTrend.length ? chartPurchaseTrend[chartPurchaseTrend.length - 1].purchases : 0;
+    return { total, current };
+  }, [chartPurchaseTrend]);
+
+  const topProperty = useMemo(() => {
+    if (!chartPropertyAssets.length) return null;
+    return chartPropertyAssets.reduce((best, item) => (item.assets > (best?.assets ?? -1) ? item : best), chartPropertyAssets[0]);
+  }, [chartPropertyAssets]);
+
+  const expirySummary = useMemo(() => {
+    return chartExpiryData.reduce(
+      (acc, item) => ({ expiring: acc.expiring + (item.expiring || 0), expired: acc.expired + (item.expired || 0) }),
+      { expiring: 0, expired: 0 }
+    );
+  }, [chartExpiryData]);
+
+  return (
+    <div className="grid gap-4 sm:gap-5 md:gap-6 md:grid-cols-2 min-w-0">
+      {/* Asset Distribution Pie Chart */}
+      <Card className="rounded-2xl border border-border/60 bg-card shadow-sm min-w-0">
+        <CardHeader className="flex flex-col gap-3 pb-0">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-base text-foreground">Asset Distribution by Type</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs gap-1 sm:flex-shrink-0"
+              onClick={() => window.location.assign('/assets')}
+            >
+              View assets
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant="outline" className="bg-muted/30 font-medium">
+              Total assets
+              <span className="ml-1 text-foreground">{totalAssetsCount.toLocaleString()}</span>
+            </Badge>
+            {topAssetType && totalAssetsCount ? (
+              <Badge variant="outline" className="bg-muted/30 font-medium">
+                Top type
+                <span className="ml-1 text-foreground">
+                  {topAssetType.name} ({Math.round(((topAssetType.value || 0) / totalAssetsCount) * 100)}%)
+                </span>
+              </Badge>
+            ) : null}
+            <Badge variant="outline" className="bg-muted/30 font-medium">
+              Types
+              <span className="ml-1 text-foreground">{chartAssetsByType.length}</span>
+            </Badge>
+          </div>
+          <div className="relative h-[240px] sm:h-[260px] md:h-[300px]">
+            {/* Center total */}
+            {hasData && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="text-3xl font-bold tracking-tighter text-foreground">
+                    {chartAssetsByType.reduce((sum, it) => sum + (it.value || 0), 0)}
+                  </div>
+                  <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total</div>
+                </div>
+              </div>
+            )}
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={hasData ? chartAssetsByType : []}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={65}
+                  outerRadius={95}
+                  startAngle={90}
+                  endAngle={-270}
+                  paddingAngle={4}
+                  cornerRadius={6}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {(hasData ? chartAssetsByType : []).map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.color} 
+                      className="stroke-background hover:opacity-80 transition-opacity"
+                      strokeWidth={2}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip formatter={(value: any, name: any) => [value, name]} />} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Legend */}
+          <div className="grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
+            {(hasData ? chartAssetsByType : []).map((item, index, arr) => {
+              const total = arr.reduce((s, x) => s + (x.value || 0), 0) || 1;
+              const pct = Math.round(((item.value || 0) / total) * 100);
+              return (
+                <div key={index} className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                  <span className="text-muted-foreground truncate">
+                    {item.name}: {item.value} ({pct}%)
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+      </CardContent>
+      </Card>
+
+      {/* Purchase Trend Line Chart */}
+  <Card className="rounded-2xl border border-border/60 bg-card shadow-sm min-w-0">
+        <CardHeader className="flex flex-col gap-3 pb-0">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-base text-foreground">Purchase Trends</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs gap-1 sm:flex-shrink-0"
+              onClick={() => window.location.assign('/reports')}
+            >
+              View reports
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant="outline" className="bg-muted/30 font-medium">
+              6‑month total
+              <span className="ml-1 text-foreground">{purchaseSummary.total.toLocaleString()}</span>
+            </Badge>
+            <Badge variant="outline" className="bg-muted/30 font-medium">
+              Latest month
+              <span className="ml-1 text-foreground">{purchaseSummary.current.toLocaleString()}</span>
+            </Badge>
+          </div>
+          <div className="h-[240px] sm:h-[260px] md:h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={hasData ? chartPurchaseTrendExtended : []} margin={{ top: 16, right: 20, left: 12, bottom: 12 }}>
+              <defs>
+                <linearGradient id="purchaseGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(191, 91%, 46%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(191, 91%, 46%)" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
+              <XAxis
+                dataKey="month"
+                stroke="hsl(var(--muted-foreground))"
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                dy={10}
+              />
+              <YAxis
+                yAxisId="left"
+                stroke="hsl(var(--muted-foreground))"
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+                dx={-10}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke="hsl(var(--muted-foreground))"
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+                dx={10}
+              />
+              <Tooltip
+                content={<CustomTooltip formatter={(value: number, name: string) => {
+                  return name === 'runningTotal'
+                    ? [value.toLocaleString(), 'Cumulative']
+                    : [value.toLocaleString(), 'Purchases'];
+                }} />}
+              />
+              <Area
+                yAxisId="left"
+                type="monotone"
+                dataKey="purchases"
+                stroke="hsl(191, 91%, 46%)"
+                strokeWidth={3}
+                fill="url(#purchaseGrad)"
+                activeDot={{ r: 6, strokeWidth: 0 }}
+              />
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="runningTotal"
+                stroke="hsl(142, 71%, 45%)"
+                strokeWidth={3}
+                dot={false}
+                activeDot={{ r: 6, strokeWidth: 0 }}
+              />
+            </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Property Assets Bar Chart (horizontal, top-N with gradient) */}
+  <Card className="rounded-2xl border border-border/60 bg-card shadow-sm min-w-0">
+        <CardHeader className="flex flex-col gap-3 pb-0">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-base text-foreground">Assets by Property</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs gap-1 sm:flex-shrink-0"
+              onClick={() => window.location.assign('/properties')}
+            >
+              Manage properties
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          {topProperty && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant="outline" className="bg-muted/30 font-medium">
+                Top property
+                <span className="ml-1 text-foreground">{topProperty.name}</span>
+              </Badge>
+              <Badge variant="outline" className="bg-muted/30 font-medium">
+                Assets
+                <span className="ml-1 text-foreground">{topProperty.assets.toLocaleString()}</span>
+              </Badge>
+            </div>
+          )}
+          <div className="h-[260px] sm:h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={hasData ? chartPropertyAssets.map(x => ({ property: x.name, assets: x.assets })) : []}
+              layout="vertical"
+              margin={{ top: 10, right: 30, left: 12, bottom: 10 }}
+              barSize={24}
+            >
+              <defs>
+                <linearGradient id="barGradient" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0.6} />
+                  <stop offset="100%" stopColor="hsl(142, 71%, 45%)" stopOpacity={1} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+              <XAxis
+                type="number"
+                stroke="hsl(var(--muted-foreground))"
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                dy={10}
+              />
+              <YAxis
+                type="category"
+                dataKey="property"
+                width={120}
+                stroke="hsl(var(--muted-foreground))"
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip content={<CustomTooltip formatter={(v: any) => [v, 'Assets']} />} />
+              <Bar 
+                dataKey="assets" 
+                fill="url(#barGradient)" 
+                radius={[0, 4, 4, 0]}
+              >
+                <LabelList 
+                  dataKey="assets" 
+                  position="right" 
+                  className="text-[10px] font-medium fill-foreground" 
+                  offset={8}
+                />
+              </Bar>
+            </BarChart>
+            </ResponsiveContainer>
+          </div>
+      </CardContent>
+      </Card>
+
+      {/* Expiry Tracking (stacked area with gradients) */}
+  <Card className="rounded-2xl border border-border/60 bg-card shadow-sm min-w-0">
+        <CardHeader className="flex flex-col gap-3 pb-0">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-base text-foreground">Asset Expiry Tracking</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs gap-1 sm:flex-shrink-0"
+              onClick={() => window.location.assign('/assets')}
+            >
+              View expiring list
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant="outline" className="bg-muted/30 font-medium">
+              Expiring soon
+              <span className="ml-1 text-foreground">{expirySummary.expiring.toLocaleString()}</span>
+            </Badge>
+            <Badge variant="outline" className="bg-muted/30 font-medium">
+              Already expired
+              <span className="ml-1 text-foreground">{expirySummary.expired.toLocaleString()}</span>
+            </Badge>
+          </div>
+          <div className="h-[240px] sm:h-[260px] md:h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={hasData ? chartExpiryData : []} margin={{ top: 10, right: 12, left: 12, bottom: 10 }}>
+              <defs>
+                <linearGradient id="expiringGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(47, 95%, 57%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(47, 95%, 57%)" stopOpacity={0.0} />
+                </linearGradient>
+                <linearGradient id="expiredGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(339, 90%, 51%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(339, 90%, 51%)" stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
+              <XAxis
+                dataKey="month"
+                stroke="hsl(var(--muted-foreground))"
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                dy={10}
+              />
+              <YAxis
+                stroke="hsl(var(--muted-foreground))"
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+                dx={-10}
+              />
+              <Tooltip
+                content={<CustomTooltip formatter={(value: any, name: any) => [value, name === 'expiring' ? 'Expiring' : 'Expired']} />}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="expiring" 
+                stackId="1" 
+                stroke="hsl(47, 95%, 57%)" 
+                strokeWidth={2}
+                fill="url(#expiringGrad)" 
+              />
+              <Area 
+                type="monotone" 
+                dataKey="expired" 
+                stackId="1" 
+                stroke="hsl(339, 90%, 51%)" 
+                strokeWidth={2}
+                fill="url(#expiredGrad)" 
+              />
+            </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,1 @@
+"""Vendors App - Vendor management."""

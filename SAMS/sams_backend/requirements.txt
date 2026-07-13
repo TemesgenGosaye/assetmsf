@@ -1,0 +1,35 @@
+# Core Django
+Django==5.1.4
+djangorestframework==3.14.0
+django-filter==23.5
+
+# Authentication
+djangorestframework-simplejwt==5.4.0
+
+# Database
+psycopg2-binary==2.9.10
+
+# Security & CORS
+django-cors-headers==4.6.0
+
+# Configuration
+python-dotenv==1.0.1
+
+# API Documentation
+drf-spectacular==0.28.0
+
+# Utilities
+Pillow==11.0.0
+python-dateutil==2.9.0.post0
+requests==2.32.3
+urllib3==2.2.3
+
+# Testing
+pytest==8.3.4
+pytest-django==4.9.0
+pytest-cov==6.0.0
+factory-boy==3.3.1
+
+# Real-time
+channels==4.1.0
+daphne==4.1.2

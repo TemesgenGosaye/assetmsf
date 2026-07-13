@@ -1,0 +1,1294 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import type React from "react";
+import { isDemoMode } from "@/lib/demo";
+import { cn } from "@/lib/utils";
+import { trackActivity } from "@/services/notifications";
+import { createTicket, listTickets, updateTicket, listTicketEvents, listAssigneesForProperty, type Ticket } from "@/services/tickets";
+import { listUsers, type AppUser } from "@/services/users";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { Ticket as TicketIcon, Mail, ShieldCheck } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import MetricCard from "@/components/ui/metric-card";
+
+import DateRangePicker, { type DateRange } from "@/components/ui/date-range-picker";
+import Breadcrumbs from "@/components/layout/Breadcrumbs";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { listTicketComments, addTicketComment, type TicketComment } from "@/services/ticketComments";
+import { PageSkeleton } from "@/components/ui/page-skeletons";
+import { listProperties } from "@/services/properties";
+import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  PieChart,
+  Pie,
+  Cell,
+  LabelList,
+  LineChart,
+  Line,
+} from "recharts";
+
+export default function Tickets() {
+  const location = useLocation();
+  const [items, setItems] = useState<Ticket[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [events, setEvents] = useState<Record<string, { id: string; createdAt: string; author: string; message: string; eventType: string }[]>>({});
+  const [userMap, setUserMap] = useState<Record<string, { label: string }>>({});
+  const [viewMode, setViewMode] = useState<'received' | 'raised'>('received');
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closingId, setClosingId] = useState<string | null>(null);
+  const [closeNote, setCloseNote] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  // Property-aware assignment
+  const [propertyId, setPropertyId] = useState<string>("");
+  const [propertyOpts, setPropertyOpts] = useState<Array<{ id: string; name: string }>>([]);
+  const [assigneeId, setAssigneeId] = useState<string>("");
+  const [assigneeOpts, setAssigneeOpts] = useState<Array<{ id: string; label: string }>>([]);
+  const [assigneeRoleMap, setAssigneeRoleMap] = useState<Record<string, 'admin' | 'manager'>>({});
+  const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [range, setRange] = useState<DateRange>();
+  const [layout, setLayout] = useState<'list' | 'board'>('list');
+  const [template, setTemplate] = useState<'none' | 'create_user' | 'license_upgrade' | 'bug' | 'feature_request' | 'audit_query' | 'request_report' | 'request_rights'>('none');
+  const [showClosedOnly, setShowClosedOnly] = useState(false);
+  const [commentText, setCommentText] = useState<Record<string, string>>({});
+  const [comments, setComments] = useState<Record<string, TicketComment[]>>({});
+  // Per-ticket description expand/collapse state
+  const [descExpanded, setDescExpanded] = useState<Record<string, boolean>>({});
+  // Track per-comment expand/collapse for long messages
+  const [expandedComment, setExpandedComment] = useState<Record<string, boolean>>({});
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState<Record<string, boolean>>({});
+  const [assigning, setAssigning] = useState<Record<string, boolean>>({});
+  const [closing, setClosing] = useState(false);
+  const [posting, setPosting] = useState<Record<string, boolean>>({});
+  const [draftBanner, setDraftBanner] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const lastRefreshKey = useRef(0);
+  const hasLoadedTicketsRef = useRef(false);
+
+  // Load license upgrade draft if present via query param
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('draft') === 'license-upgrade') {
+      try {
+        const raw = localStorage.getItem('ticket_draft_license_upgrade');
+        if (raw) {
+          const draft = JSON.parse(raw);
+          // Prefill sensible defaults only if fields empty
+          if (!title) setTitle('License Upgrade Request');
+          const lines: string[] = [];
+          lines.push('Requesting upgrade of asset license limits.');
+          if (draft.reason === 'GLOBAL_LIMIT') {
+            lines.push(`Global usage ${draft.globalUsage ?? '?'} / ${draft.globalLimit ?? '?'}`);
+          } else if (draft.reason === 'PROPERTY_LIMIT') {
+            lines.push(`Property ${draft.propertyId || ''} usage ${draft.propertyUsage ?? '?'} / ${draft.propertyLimit ?? '?'}`);
+          }
+          lines.push('Please review and extend the allocation.');
+          const desc = lines.join('\n');
+          if (!description) setDescription(desc);
+          setDraftBanner('Loaded license upgrade draft. Complete the details and click Create.');
+          // We intentionally keep draft in storage until ticket created so a refresh doesn't lose it
+        } else {
+          setDraftBanner('License upgrade draft not found.');
+        }
+      } catch {
+        setDraftBanner('Failed to load draft.');
+      }
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    (async () => {
+      const forceReload = refreshKey !== 0 && refreshKey !== lastRefreshKey.current;
+      lastRefreshKey.current = refreshKey;
+      if (!hasLoadedTicketsRef.current) {
+        setInitialLoading(true);
+      }
+      const raw =
+        (isDemoMode() ? sessionStorage.getItem("demo_auth_user") || localStorage.getItem("demo_auth_user") : null) ||
+        localStorage.getItem("auth_user");
+      let role: string | null = null;
+      let me: string | null = null;
+      let meId: string | null = null;
+      try {
+        const u = raw ? JSON.parse(raw) : null;
+        role = (u?.role || "").toLowerCase() || null;
+        me = u?.email || u?.id || null;
+        meId = u?.id || null;
+      } catch {}
+
+      // Build user directory for assignee display (refresh when forced or first load)
+      if (!hasLoadedTicketsRef.current || forceReload) {
+        try {
+          const users = await listUsers();
+          const map: Record<string, { label: string }> = {};
+          (users as AppUser[]).forEach((u) => {
+            const label = u.name || u.email || u.id;
+            map[u.id] = { label };
+          });
+          setUserMap(map);
+        } catch {}
+      }
+
+      const meEmail = me;
+      const fetchOpts = forceReload ? { force: true } : undefined;
+      try {
+        if (role === "admin") {
+          const assignedById = meId ? await listTickets({ assignee: meId }, fetchOpts) : [];
+          const assignedByEmail = meEmail ? await listTickets({ assignee: meEmail }, fetchOpts) : [];
+          const createdById = meId ? await listTickets({ createdBy: meId }, fetchOpts) : [];
+          const createdByEmail = meEmail ? await listTickets({ createdBy: meEmail }, fetchOpts) : [];
+          const mapMerge = new Map<string, Ticket>();
+          [...assignedById, ...assignedByEmail, ...createdById, ...createdByEmail].forEach((t) => mapMerge.set(t.id, t));
+          setItems(Array.from(mapMerge.values()));
+        } else if (role === "manager") {
+          const assignedById = meId ? await listTickets({ assignee: meId }, fetchOpts) : [];
+          const assignedByEmail = meEmail ? await listTickets({ assignee: meEmail }, fetchOpts) : [];
+          const createdById = meId ? await listTickets({ createdBy: meId }, fetchOpts) : [];
+          const createdByEmail = meEmail ? await listTickets({ createdBy: meEmail }, fetchOpts) : [];
+          const mapMerge = new Map<string, Ticket>();
+          [...assignedById, ...assignedByEmail, ...createdById, ...createdByEmail].forEach((t) => mapMerge.set(t.id, t));
+          setItems(Array.from(mapMerge.values()));
+        } else {
+          // Regular user: only tickets they created
+          const createdById = meId ? await listTickets({ createdBy: meId }, fetchOpts) : [];
+          const createdByEmail = meEmail ? await listTickets({ createdBy: meEmail }, fetchOpts) : [];
+          const mapMerge = new Map<string, Ticket>();
+          [...createdById, ...createdByEmail].forEach((t) => mapMerge.set(t.id, t));
+          setItems(Array.from(mapMerge.values()));
+        }
+      } catch {
+        setItems([]);
+      }
+
+      if (!hasLoadedTicketsRef.current) {
+        try {
+          const accessible = await getAccessiblePropertyIdsForCurrentUser();
+          const allProps = await listProperties();
+          const filtered = allProps.filter((p) => accessible.size === 0 || accessible.has(String(p.id)));
+          setPropertyOpts(filtered.map((p) => ({ id: p.id, name: p.name })));
+          if (filtered[0]) setPropertyId(filtered[0].id);
+        } catch {}
+      }
+
+      hasLoadedTicketsRef.current = true;
+      setInitialLoading(false);
+    })();
+  }, [refreshKey]);
+
+  // Refresh assignee options when property changes
+  useEffect(() => {
+    (async () => {
+      if (!propertyId) { setAssigneeOpts([]); setAssigneeRoleMap({}); setAssigneeId(""); return; }
+      try {
+        const list = await listAssigneesForProperty(propertyId);
+        setAssigneeOpts(list.map(a => ({ id: a.id, label: a.label })));
+        const map: Record<string, 'admin' | 'manager'> = {};
+        list.forEach(a => { map[a.id] = a.role; });
+        setAssigneeRoleMap(map);
+        setAssigneeId("");
+      } catch {
+        setAssigneeOpts([]);
+        setAssigneeRoleMap({});
+      }
+    })();
+  }, [propertyId]);
+
+  // If navigated with a ticket id (e.g., /tickets?id=TCK-123456), auto-expand and scroll to it.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const focusId = params.get('id');
+    if (!focusId || items.length === 0) return;
+    const t = items.find(i => i.id === focusId);
+    if (!t) return;
+    // If the ticket is closed and closed are hidden, switch to show only closed so it is visible
+    if (t.status === 'closed') {
+      // Delay to next tick to avoid filtering race on initial load
+      setTimeout(() => setShowClosedOnly(true), 0);
+    }
+    setExpanded(s => ({ ...s, [focusId]: true }));
+    // Smooth scroll into view if present in DOM
+    setTimeout(() => {
+      const el = document.getElementById(`ticket-${focusId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }, [location.search, items]);
+
+
+
+  const add = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!title.trim() || !description.trim() || !propertyId) { toast.error('Please enter title, description, and select a property.'); return; }
+    setCreating(true);
+    const currentUser = (() => { try { const raw = (isDemoMode() ? (sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user')) : null) || localStorage.getItem('auth_user'); return raw ? JSON.parse(raw) : {}; } catch { return {}; } })();
+    const createdBy = (currentUser?.email || currentUser?.id || 'user');
+    const tempId = `temp_${Date.now()}`;
+    const optimistic: Ticket = { id: tempId, title: title.trim(), description: description.trim(), targetRole: (assigneeId ? (assigneeRoleMap[assigneeId] || 'manager') : 'manager'), createdBy, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: 'open', assignee: assigneeId || null, priority, slaDueAt: null, closeNote: null, propertyId } as any;
+    setItems((s) => [optimistic, ...s]);
+    toast.message('Creating ticket…');
+    try {
+      const t = await createTicket({ title: title.trim(), description: description.trim(), createdBy, priority, propertyId, assignee: assigneeId || null, targetRole: assigneeId ? assigneeRoleMap[assigneeId] : undefined });
+      setItems((s) => [t, ...s.filter(i => i.id !== tempId)]);
+      setTitle("");
+      setDescription("");
+      setPriority('medium');
+      setAssigneeId("");
+      // keep property selected
+      toast.success('Ticket created');
+      trackActivity("ticket", "create", { entityName: t.title, entityId: t.id }).catch(() => {});
+      try {
+        if (localStorage.getItem('ticket_draft_license_upgrade')) {
+          localStorage.removeItem('ticket_draft_license_upgrade');
+          setDraftBanner(null);
+        }
+      } catch {}
+    } catch (err) {
+      setItems((s) => s.filter(i => i.id !== tempId));
+      toast.error('Failed to create ticket');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const setStatus = async (id: string, status: Ticket["status"]) => {
+    const prev = items.find(i => i.id === id)?.status;
+    setUpdatingStatus(s => ({ ...s, [id]: true }));
+    setItems((s) => s.map(i => i.id === id ? { ...i, status } : i));
+    try {
+      const t = await updateTicket(id, { status });
+      if (t) setItems((s) => s.map(i => i.id === id ? t : i));
+      toast.success(`Marked as ${status.replace('_',' ')}`);
+      trackActivity("ticket", "update", { entityId: id, oldValue: prev, newValue: status }).catch(() => {});
+    } catch (e: any) {
+      setItems((s) => s.map(i => i.id === id ? { ...i, status: prev as any } : i));
+      const msg = (e?.message || '').toString();
+      if (msg.includes('NOT_AUTHORIZED')) {
+        toast.error('Only the assigned person can change the status.');
+      } else {
+        toast.error('Failed to update status.');
+      }
+    } finally {
+      setUpdatingStatus(s => ({ ...s, [id]: false }));
+    }
+  };
+
+  const openCloseDialog = (id: string) => {
+    setClosingId(id);
+    setCloseNote("");
+    setCloseDialogOpen(true);
+  };
+  const confirmClose = async () => {
+    if (!closingId) return;
+    try {
+      const t = await updateTicket(closingId, { status: 'closed' }, { message: closeNote.trim() || undefined });
+      if (t) setItems((s) => s.map(i => i.id === closingId ? t : i));
+      setCloseDialogOpen(false);
+      setClosingId(null);
+      setCloseNote("");
+      toast.success('Ticket closed');
+      trackActivity("ticket", "update", { entityId: closingId, oldValue: "open", newValue: "closed" }).catch(() => {});
+    } catch (e: any) {
+      const msg = (e?.message || '').toString();
+      if (msg.includes('NOT_AUTHORIZED')) toast.error('Only the assigned person can close this ticket.');
+      else toast.error('Failed to close ticket.');
+    }
+  };
+
+  const toggleEvents = async (id: string) => {
+    setExpanded(s => ({ ...s, [id]: !s[id] }));
+    if (!events[id]) {
+      const evs = await listTicketEvents(id);
+      setEvents(s => ({ ...s, [id]: evs.map(e => ({ id: e.id, createdAt: e.createdAt, author: e.author, message: e.message, eventType: e.eventType })) }));
+    }
+    // Lazy load comments the first time we expand
+    if (!comments[id]) {
+      try { const list = await listTicketComments(id); setComments((s)=>({ ...s, [id]: list })); } catch {}
+    }
+  };
+
+  // Current actor details (used by filters and permissions)
+  const currentUser = (() => { try { const raw = (isDemoMode() ? (sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user')) : null) || localStorage.getItem('auth_user'); return raw ? JSON.parse(raw) : {}; } catch { return {}; } })();
+  const currentActorId = (currentUser?.id || '') as string;
+  const currentActorEmail = (currentUser?.email || '') as string;
+  const currentRole = String(currentUser?.role || '').toLowerCase();
+  const canAssign = currentRole === 'admin' || currentRole === 'manager';
+
+  const filteredItems = useMemo(() => {
+    // Date filter
+    let base = items;
+    // Mode filter: received vs raised
+    const ids = [currentActorId, currentActorEmail].filter(Boolean).map(String);
+    if (viewMode === 'received') {
+      base = base.filter(t => t.assignee && ids.some(v => String(t.assignee) === v));
+    } else {
+      base = base.filter(t => ids.some(v => String(t.createdBy) === v));
+    }
+    if (showClosedOnly) {
+      base = base.filter(t => t.status === 'closed');
+    } else {
+      // Hide closed by default
+      base = base.filter(t => t.status !== 'closed');
+    }
+    if (!range?.from) return base;
+    const start = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate()).getTime();
+    const to = range.to ?? range.from;
+    const end = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999).getTime();
+    return base.filter(t => {
+      const ts = t?.createdAt ? new Date(t.createdAt).getTime() : NaN;
+      return !isNaN(ts) && ts >= start && ts <= end;
+    });
+  }, [items, range, viewMode, currentActorId, currentActorEmail, showClosedOnly]);
+
+  // Helpers
+  const canChangeStatus = (t: Ticket) => {
+    if (!t.assignee) return false;
+    return [currentActorId, currentActorEmail].filter(Boolean).some(v => String(t.assignee) === String(v));
+  };
+  const assigneeLabel = (t: Ticket) => {
+    if (!t.assignee) return 'Unassigned';
+    const key = String(t.assignee);
+    // If it's an email, show as-is; if it looks like an id, map to name/email
+    if (key.includes('@')) return key;
+    return userMap[key]?.label || key;
+  };
+  const initials = (nameOrEmail: string) => {
+    try {
+      const s = (nameOrEmail || '').trim();
+      if (!s) return '?';
+      const at = s.indexOf('@');
+      const base = at > 0 ? s.slice(0, at) : s;
+      const parts = base.split(/[\s._-]+/).filter(Boolean);
+      const first = (parts[0] || base)[0] || '?';
+      const second = parts.length > 1 ? (parts[1][0] || '') : '';
+      return (first + second).toUpperCase();
+    } catch { return '?'; }
+  };
+  const assignToMe = async (id: string) => {
+    const assignee = currentActorEmail || currentActorId;
+    if (!assignee) { toast.error('Cannot determine your user identity.'); return; }
+    try {
+      setAssigning(s => ({ ...s, [id]: true }));
+      const prev = items.find(i => i.id === id)?.assignee;
+      setItems((s) => s.map(i => i.id === id ? { ...i, assignee } : i));
+      const t = await updateTicket(id, { assignee });
+      if (t) {
+        setItems((s) => s.map(i => i.id === id ? t : i));
+        toast.success('Assigned to you.');
+      }
+    } catch {
+      const prev = items.find(i => i.id === id)?.assignee;
+      setItems((s) => s.map(i => i.id === id ? { ...i, assignee: prev || null } : i));
+      toast.error('Failed to assign.');
+    } finally {
+      setAssigning(s => ({ ...s, [id]: false }));
+    }
+  };
+
+  const ticketMetrics = useMemo(() => {
+    const base = filteredItems;
+    const statusCounts: Record<Ticket['status'], number> = {
+      open: 0,
+      in_progress: 0,
+      resolved: 0,
+      closed: 0,
+    };
+    const priorityCounts: Record<'low' | 'medium' | 'high' | 'urgent', number> = {
+      low: 0,
+      medium: 0,
+      high: 0,
+      urgent: 0,
+    };
+    let totalAgeMs = 0;
+    let ageCount = 0;
+    let totalResolutionMs = 0;
+    let resolutionCount = 0;
+    const now = Date.now();
+
+    base.forEach((ticket) => {
+      statusCounts[ticket.status] += 1;
+      if (ticket.priority && priorityCounts[ticket.priority] !== undefined) {
+        priorityCounts[ticket.priority] += 1;
+      }
+
+      if (ticket.createdAt) {
+        const createdTs = new Date(ticket.createdAt).getTime();
+        if (!Number.isNaN(createdTs)) {
+          totalAgeMs += Math.max(0, now - createdTs);
+          ageCount += 1;
+          if ((ticket.status === 'resolved' || ticket.status === 'closed') && ticket.updatedAt) {
+            const resolvedTs = new Date(ticket.updatedAt).getTime();
+            if (!Number.isNaN(resolvedTs) && resolvedTs >= createdTs) {
+              totalResolutionMs += resolvedTs - createdTs;
+              resolutionCount += 1;
+            }
+          }
+        }
+      }
+    });
+
+    const total = base.length;
+    const completed = statusCounts.resolved + statusCounts.closed;
+    const backlog = statusCounts.open + statusCounts.in_progress;
+
+    return {
+      total,
+      statusCounts,
+      priorityCounts,
+      backlog,
+      completionRate: total ? Math.round((completed / total) * 100) : 0,
+      avgAgeHours: ageCount ? totalAgeMs / ageCount / (1000 * 60 * 60) : 0,
+      avgResolutionHours: resolutionCount ? totalResolutionMs / resolutionCount / (1000 * 60 * 60) : null,
+    };
+  }, [filteredItems]);
+
+  const statusChartData = useMemo(() => {
+    const colors: Record<Ticket['status'], string> = {
+      open: 'hsl(31, 97%, 55%)',
+      in_progress: 'hsl(221, 83%, 53%)',
+      resolved: 'hsl(142, 71%, 45%)',
+      closed: 'hsl(220, 15%, 60%)',
+    };
+    return (Object.entries(ticketMetrics.statusCounts) as Array<[Ticket['status'], number]>).map(([key, value]) => ({
+      key,
+      label: key === 'in_progress' ? 'In Progress' : key.charAt(0).toUpperCase() + key.slice(1),
+      value,
+      fill: colors[key],
+    }));
+  }, [ticketMetrics.statusCounts]);
+
+  const priorityChartData = useMemo(() => {
+    const colors: Record<'low' | 'medium' | 'high' | 'urgent', string> = {
+      low: 'hsl(191, 91%, 46%)',
+      medium: 'hsl(221, 83%, 53%)',
+      high: 'hsl(31, 97%, 55%)',
+      urgent: 'hsl(339, 90%, 51%)',
+    };
+    return (Object.entries(ticketMetrics.priorityCounts) as Array<['low' | 'medium' | 'high' | 'urgent', number]>).map(([key, value]) => ({
+      key,
+      label: key.charAt(0).toUpperCase() + key.slice(1),
+      value,
+      fill: colors[key],
+    }));
+  }, [ticketMetrics.priorityCounts]);
+
+  const monthlyTrend = useMemo(() => {
+    const map = new Map<string, { label: string; created: number; resolved: number; sort: number }>();
+    filteredItems.forEach((ticket) => {
+      const created = ticket.createdAt ? new Date(ticket.createdAt) : null;
+      if (created && !Number.isNaN(created.getTime())) {
+        const key = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`;
+        const sort = created.getFullYear() * 100 + created.getMonth();
+        if (!map.has(key)) {
+          map.set(key, {
+            label: created.toLocaleString(undefined, { month: 'short', year: '2-digit' }),
+            created: 0,
+            resolved: 0,
+            sort,
+          });
+        }
+        map.get(key)!.created += 1;
+      }
+
+      if ((ticket.status === 'resolved' || ticket.status === 'closed') && ticket.updatedAt) {
+        const resolvedAt = new Date(ticket.updatedAt);
+        if (!Number.isNaN(resolvedAt.getTime())) {
+          const key = `${resolvedAt.getFullYear()}-${String(resolvedAt.getMonth() + 1).padStart(2, '0')}`;
+          const sort = resolvedAt.getFullYear() * 100 + resolvedAt.getMonth();
+          if (!map.has(key)) {
+            map.set(key, {
+              label: resolvedAt.toLocaleString(undefined, { month: 'short', year: '2-digit' }),
+              created: 0,
+              resolved: 0,
+              sort,
+            });
+          }
+          map.get(key)!.resolved += 1;
+        }
+      }
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => a.sort - b.sort)
+      .slice(-6);
+  }, [filteredItems]);
+
+  const ChartTooltip = ({ active, payload, label, formatter }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="rounded-lg border border-border/50 bg-background/95 p-3 shadow-xl backdrop-blur-sm">
+          {label && <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>}
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex items-center gap-2 text-xs">
+              <div 
+                className="h-2 w-2 rounded-full" 
+                style={{ backgroundColor: entry.color || entry.fill || entry.stroke }} 
+              />
+              <span className="font-medium text-foreground">
+                {formatter ? formatter(entry.value, entry.name, entry)[0] : entry.value}
+              </span>
+              <span className="text-muted-foreground">
+                {formatter ? formatter(entry.value, entry.name, entry)[1] : entry.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+  const fmt = (iso?: string | null) => {
+    if (!iso) return '—';
+    try { const d = new Date(iso); return d.toLocaleString(); } catch { return iso as string; }
+  };
+  const slaBadge = (t: Ticket) => {
+    if (!t.slaDueAt) return null;
+    let label = "";
+    let tone = "badge-pill-muted";
+    try {
+      const now = Date.now();
+      const due = new Date(t.slaDueAt).getTime();
+      const diffMs = due - now;
+      const abs = Math.abs(diffMs);
+      const hrs = Math.floor(abs / 3600000);
+      const mins = Math.floor((abs % 3600000) / 60000);
+      if (diffMs < 0) {
+        label = `Overdue ${hrs}h ${mins}m`;
+        tone = "badge-pill-danger";
+      } else if (diffMs <= 24 * 3600000) {
+        label = `Due in ${hrs}h ${mins}m`;
+        tone = "badge-pill-warning";
+      } else {
+        const days = Math.ceil(diffMs / (24 * 3600000));
+        label = `Due in ${days}d`;
+        tone = "badge-pill-success";
+      }
+    } catch {
+      label = fmt(t.slaDueAt);
+    }
+    return <span className={tone}>SLA: {label}</span>;
+  };
+  const statusColor = (status: Ticket["status"]) => {
+    switch (status) {
+      case 'open':
+        return 'bg-primary/10 text-primary border-primary/30';
+      case 'in_progress':
+        return 'bg-warning/10 text-warning border-warning/40';
+      case 'resolved':
+        return 'bg-success/10 text-success border-success/30';
+      case 'closed':
+        return 'bg-muted/40 text-muted-foreground border-muted/40';
+      default:
+        return 'bg-muted/50 text-muted-foreground border-muted/50';
+    }
+  };
+  const priorityColor = (priority: NonNullable<Ticket["priority"]>) => {
+    switch (priority) {
+      case 'low':
+        return 'bg-muted/40 text-muted-foreground border-muted/40';
+      case 'medium':
+        return 'bg-primary/10 text-primary border-primary/30';
+      case 'high':
+        return 'bg-warning/10 text-warning border-warning/40';
+      case 'urgent':
+        return 'bg-destructive/10 text-destructive border-destructive/40';
+      default:
+        return 'bg-muted/50 text-muted-foreground border-muted/50';
+    }
+  };
+  const addComment = async (id: string) => {
+    const msg = (commentText[id] || '').trim();
+    if (!msg) return;
+    // Prevent commenting on closed tickets
+    const ticket = items.find(i => i.id === id);
+    if (ticket?.status === 'closed') {
+      toast.error('Ticket is closed; comments are disabled.');
+      return;
+    }
+    try {
+      const c = await addTicketComment(id, msg);
+      setComments(s => ({ ...s, [id]: [...(s[id]||[]), c] }));
+      setCommentText(s => ({ ...s, [id]: '' }));
+    } catch { toast.error('Failed to add comment'); }
+  };
+  
+
+  // Kanban helpers
+  const columns: { key: Ticket["status"]; label: string }[] = [
+    { key: 'open', label: 'Open' },
+    { key: 'in_progress', label: 'In Progress' },
+    { key: 'resolved', label: 'Resolved' },
+    { key: 'closed', label: 'Closed' },
+  ];
+  const grouped = useMemo(() => {
+    const map: Record<string, Ticket[]> = { open: [], in_progress: [], resolved: [], closed: [] };
+    for (const t of filteredItems) map[t.status].push(t);
+    return map as Record<Ticket['status'], Ticket[]>;
+  }, [filteredItems]);
+  const onDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const onDropTo = (e: React.DragEvent, status: Ticket['status']) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain');
+    if (!id) return;
+    if (status === 'closed') { openCloseDialog(id); return; }
+    setStatus(id, status);
+  };
+
+  const formatDuration = (hours: number | null | undefined) => {
+    if (hours == null || Number.isNaN(hours)) return '—';
+    if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+    if (hours < 24) return `${Math.round(hours)}h`;
+    return `${Math.round(hours / 24)}d`;
+  };
+
+  return (
+    <div className="space-y-6">
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Tickets" }]} />
+      <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm">
+        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
+        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Maintenance Tickets</h1>
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              Monitor, triage, and resolve maintenance issues across your properties
+            </p>
+          </div>
+          <Button asChild variant="outline" className="gap-2">
+            <a href="mailto:karthik@samsproject.in">
+              <Mail className="h-4 w-4" />
+              Email Support
+            </a>
+          </Button>
+        </div>
+      </div>
+      <section className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            icon={TicketIcon}
+            title="Tickets in View"
+            value={ticketMetrics.total.toLocaleString()}
+            caption="Filtered by mode, date, and closed toggle"
+            iconClassName="text-primary h-4 w-4"
+          />
+          <MetricCard
+            icon={TicketIcon}
+            title="Active Backlog"
+            value={ticketMetrics.backlog.toLocaleString()}
+            caption="Open plus in-progress tickets"
+            iconClassName="text-primary h-4 w-4"
+            valueClassName="text-foreground"
+          />
+          <MetricCard
+            icon={TicketIcon}
+            title="Completion Rate"
+            value={`${ticketMetrics.completionRate}%`}
+            caption="Resolved or closed in the current view"
+            iconClassName="text-primary h-4 w-4"
+            valueClassName="text-foreground"
+          />
+          <MetricCard
+            icon={TicketIcon}
+            title="Avg Resolution"
+            value={formatDuration(ticketMetrics.avgResolutionHours)}
+            caption="Mean time from open to finished"
+            iconClassName="text-primary h-4 w-4"
+          />
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[1.5fr,1fr]">
+          <Card className="rounded-2xl border border-border/60 bg-card shadow-sm min-w-0">
+            <CardHeader className="pb-1">
+              <CardTitle>Status Overview</CardTitle>
+              <CardDescription>Tickets split across workflow stages</CardDescription>
+            </CardHeader>
+            <CardContent className="px-0 pb-0">
+              <div className="h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={statusChartData} margin={{ top: 12, right: 24, left: 24, bottom: 12 }}>
+                    <CartesianGrid stroke="hsl(var(--border) / 0.5)" strokeDasharray="3 3" vertical={false} horizontal={true} />
+                    <XAxis 
+                      dataKey="label" 
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} 
+                      axisLine={false} 
+                      tickLine={false} 
+                      dy={10}
+                    />
+                    <YAxis 
+                      allowDecimals={false} 
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} 
+                      axisLine={false} 
+                      tickLine={false} 
+                    />
+                    <RechartsTooltip content={<ChartTooltip formatter={(v: any) => [v, 'Tickets']} />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.2 }} />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40}>
+                      {statusChartData.map((entry) => (
+                        <Cell key={entry.key} fill={entry.fill} />
+                      ))}
+                      <LabelList dataKey="value" position="top" className="text-[10px] font-medium" fill="hsl(var(--foreground))" offset={8} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl border border-border/60 bg-card shadow-sm min-w-0">
+            <CardHeader className="pb-1">
+              <CardTitle>Priority Mix</CardTitle>
+              <CardDescription>Relative share of priorities in the filtered list</CardDescription>
+            </CardHeader>
+            <CardContent className="px-0 pb-4 space-y-4">
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie 
+                      data={priorityChartData} 
+                      dataKey="value" 
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={65} 
+                      outerRadius={95} 
+                      paddingAngle={4}
+                      cornerRadius={6}
+                      stroke="none"
+                    >
+                      {priorityChartData.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.fill} 
+                          className="stroke-background hover:opacity-80 transition-opacity"
+                          strokeWidth={2}
+                        />
+                      ))}
+                      <LabelList dataKey="value" position="outside" className="text-[10px] font-medium" fill="hsl(var(--foreground))" />
+                    </Pie>
+                    <RechartsTooltip content={<ChartTooltip formatter={(value: any, name: any) => [value, name]} />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex flex-wrap gap-2 px-6 text-xs text-muted-foreground justify-center">
+                {priorityChartData.map((entry) => (
+                  <span key={entry.key} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.fill }} />
+                    <span>{entry.label}</span>
+                    <span className="font-semibold text-foreground">{entry.value}</span>
+                  </span>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {monthlyTrend.length ? (
+          <Card className="rounded-2xl border border-border/70 bg-card/95 shadow-sm">
+            <CardHeader className="pb-1">
+              <CardTitle>Monthly Throughput</CardTitle>
+              <CardDescription>Created versus resolved tickets across the last six months</CardDescription>
+            </CardHeader>
+            <CardContent className="px-0 pb-0">
+              <div className="h-[240px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyTrend} margin={{ top: 12, right: 24, left: 24, bottom: 12 }}>
+                    <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="4 4" strokeOpacity={0.35} vertical={false} horizontal={true} />
+                    <XAxis 
+                      dataKey="label" 
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} 
+                      axisLine={false} 
+                      tickLine={false} 
+                      dy={10}
+                    />
+                    <YAxis 
+                      allowDecimals={false} 
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} 
+                      axisLine={false} 
+                      tickLine={false} 
+                    />
+                    <RechartsTooltip content={<ChartTooltip />} />
+                    <Line 
+                      type="monotone" 
+                      dataKey="created" 
+                      name="Created" 
+                      stroke="hsl(221, 83%, 53%)" 
+                      strokeWidth={3} 
+                      dot={{ r: 4, strokeWidth: 0 }} 
+                      activeDot={{ r: 6, strokeWidth: 0 }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="resolved" 
+                      name="Resolved" 
+                      stroke="hsl(142, 71%, 45%)" 
+                      strokeWidth={3} 
+                      dot={{ r: 4, strokeWidth: 0 }} 
+                      activeDot={{ r: 6, strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+      </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>New Ticket</CardTitle>
+          {draftBanner && (
+            <div className="mt-2 rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-xs text-primary-foreground/90 dark:text-primary/90">
+              {draftBanner}
+            </div>
+          )}
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="grid gap-3 md:grid-cols-6">
+            <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} className="md:col-span-2" />
+            <Select value={propertyId} onValueChange={(v) => setPropertyId(v)}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Property" /></SelectTrigger>
+              <SelectContent>
+                {propertyOpts.filter(p => p.id).map(p => (
+                  <SelectItem key={p.id} value={p.id}>{p.id} • {p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={assigneeId} onValueChange={(v) => setAssigneeId(v)}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Assign to (Managers for property, or Admin)" /></SelectTrigger>
+              <SelectContent>
+                {assigneeOpts.filter(a => a.id).map(a => (
+                  <SelectItem key={a.id} value={a.id}>{a.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={priority} onValueChange={(v) => setPriority(v as any)}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Priority" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={add} disabled={!propertyId || creating}>{creating ? 'Creating…' : 'Create'}</Button>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="template">Insert template</Label>
+            <Select
+              value={template}
+              onValueChange={(v) => {
+                const val = (v as typeof template);
+                if (val === 'create_user') {
+                  setTitle('User Account Request');
+                  const lines = [
+                    'Please create a new user account.',
+                    '',
+                    'User details:',
+                    '- Email: user@example.com',
+                    '- Full name: First Last',
+                    '- Department: <Department>',
+                    '',
+                    'Access needed:',
+                    '- Role: <Admin/Manager/User>',
+                    '- Properties: <Property 1, Property 2>',
+                    '',
+                    'Notes (optional):',
+                    '-'
+                  ].join('\n');
+                  setDescription(lines);
+                } else if (val === 'license_upgrade') {
+                  setTitle('License Upgrade');
+                  const lines = [
+                    'Requesting an increase to license capacity.',
+                    '',
+                    'Details:',
+                    '- Current usage: <global/property> <usage>/<limit>',
+                    '- Requested increase: <describe target or unlimited>',
+                    '- Reason: <brief reason>',
+                    '',
+                    'Notes (optional):',
+                    '-'
+                  ].join('\n');
+                  setDescription(lines);
+                } else if (val === 'bug') {
+                  setTitle('Bug: <short summary>');
+                  const lines = [
+                    'Steps to reproduce:',
+                    '1.',
+                    '2.',
+                    '3.',
+                    '',
+                    'Expected result:',
+                    '-',
+                    '',
+                    'Actual result:',
+                    '-',
+                    '',
+                    'Environment (browser/device):',
+                    '-',
+                  ].join('\n');
+                  setDescription(lines);
+                } else if (val === 'feature_request') {
+                  setTitle('Feature Request: <short summary>');
+                  const lines = [
+                    'Summary:',
+                    '-',
+                    '',
+                    'Problem to solve:',
+                    '-',
+                    '',
+                    'Proposed solution/idea:',
+                    '-',
+                    '',
+                    'Benefits/impact:',
+                    '-',
+                    '',
+                    'Priority/urgency:',
+                    '- Low/Medium/High/Urgent',
+                  ].join('\n');
+                  setDescription(lines);
+                } else if (val === 'audit_query') {
+                  setTitle('Audit Query: <property/session>');
+                  const lines = [
+                    'Context:',
+                    '- Property/Session: <id or name>',
+                    '- Date/Range: <dates>',
+                    '',
+                    'Question/clarification:',
+                    '-',
+                    '',
+                    'Attachments (optional):',
+                    '-',
+                  ].join('\n');
+                  setDescription(lines);
+                } else if (val === 'request_report') {
+                  setTitle('Report Request: <report name>');
+                  const lines = [
+                    'Purpose:',
+                    '-',
+                    '',
+                    'Filters/Scope:',
+                    '- Properties: <list>',
+                    '- Date range: <range>',
+                    '- Other filters: <list>',
+                    '',
+                    'Format & delivery:',
+                    '- Format: CSV/PDF',
+                    '- Frequency: one-time/recurring <if recurring, how often?>',
+                  ].join('\n');
+                  setDescription(lines);
+                } else if (val === 'request_rights') {
+                  setTitle('Access Rights Request');
+                  const lines = [
+                    'User:',
+                    '- Name/Email: <user>',
+                    '',
+                    'Requested access:',
+                    '- Role: <Admin/Manager/User>',
+                    '- Properties: <list>',
+                    '- Duration (if temporary): <e.g., 2 weeks>',
+                    '',
+                    'Business reason:',
+                    '-',
+                  ].join('\n');
+                  setDescription(lines);
+                }
+                // Reset selector back to none for a lightweight UX
+                setTemplate('none');
+              }}
+            >
+              <SelectTrigger id="template" className="w-56">
+                <SelectValue placeholder="Choose Template" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="create_user">Create User</SelectItem>
+                <SelectItem value="license_upgrade">License Upgrade</SelectItem>
+                <SelectItem value="bug">Bug</SelectItem>
+                <SelectItem value="feature_request">Feature Request</SelectItem>
+                <SelectItem value="audit_query">Audit Query</SelectItem>
+                <SelectItem value="request_report">Request Report</SelectItem>
+                <SelectItem value="request_rights">Request Rights</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Textarea
+            placeholder="Describe the issue in detail..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="min-h-48 resize-y"
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <CardTitle>Tickets</CardTitle>
+              <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v as any)} className="bg-muted/50 p-1 rounded-full border border-border/50">
+                <ToggleGroupItem value="received" aria-label="Received tickets" className="rounded-full px-4 data-[state=on]:bg-background data-[state=on]:shadow-sm data-[state=on]:text-primary">Received</ToggleGroupItem>
+                <ToggleGroupItem value="raised" aria-label="Raised tickets" className="rounded-full px-4 data-[state=on]:bg-background data-[state=on]:shadow-sm data-[state=on]:text-primary">Raised</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <DateRangePicker value={range} onChange={setRange} />
+              <Button
+                variant={showClosedOnly ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowClosedOnly(v => !v)}
+                aria-pressed={showClosedOnly}
+                aria-label="Toggle closed-only filter"
+              >
+                {showClosedOnly ? 'Closed only' : 'Show closed'}
+              </Button>
+              <ToggleGroup type="single" value={layout} onValueChange={(v) => v && setLayout(v as any)} className="bg-muted/50 p-1 rounded-full border border-border/50">
+                <ToggleGroupItem value="list" aria-label="List view" className="rounded-full px-3 data-[state=on]:bg-background data-[state=on]:shadow-sm data-[state=on]:text-primary">List</ToggleGroupItem>
+                <ToggleGroupItem value="board" aria-label="Board view" className="rounded-full px-3 data-[state=on]:bg-background data-[state=on]:shadow-sm data-[state=on]:text-primary">Board</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {initialLoading ? (
+            <PageSkeleton />
+          ) : layout === 'list' ? (
+            filteredItems.map(t => (
+              <div key={t.id} id={`ticket-${t.id}`} className="group relative rounded-xl border border-border/60 bg-card p-4 shadow-sm transition-all hover:shadow-md hover:border-primary/20">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">{t.id}</span>
+                      <span className="font-semibold text-base tracking-tight">{t.title}</span>
+                      {slaBadge(t)}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline" className="font-normal bg-background/50">To: {t.targetRole}</Badge>
+                      <Badge variant="outline" className={cn("font-normal bg-background/50", statusColor(t.status))}>
+                        {t.status.replace('_', ' ')}
+                      </Badge>
+                      <Badge variant="outline" className={cn("font-normal bg-background/50", priorityColor(t.priority || 'medium'))}>
+                        {t.priority || 'medium'}
+                      </Badge>
+                      <div className="flex items-center gap-1.5 ml-1 px-2 py-0.5 rounded-full bg-muted/30 border border-border/40">
+                        <Avatar className="h-4 w-4"><AvatarFallback className="text-[9px]">{initials(assigneeLabel(t))}</AvatarFallback></Avatar>
+                        <span>{assigneeLabel(t)}</span>
+                      </div>
+                      <span className="ml-auto sm:ml-0">Created by {t.createdBy} • {fmt(t.createdAt)}</span>
+                    </div>
+                    <div className="text-sm text-foreground/90 mt-3 pl-1 border-l-2 border-border/60">
+                      <div className={`whitespace-pre-wrap break-words ${descExpanded[t.id] ? '' : 'line-clamp-2'}`}>{t.description}</div>
+                      {((t.description || '').length > 160 || (t.description || '').split('\n').length > 3) && (
+                        <button
+                          type="button"
+                          className="mt-1 text-xs font-medium text-primary hover:underline"
+                          aria-expanded={!!descExpanded[t.id]}
+                          onClick={() => setDescExpanded(s => ({ ...s, [t.id]: !s[t.id] }))}
+                        >
+                          {descExpanded[t.id] ? 'Show less' : 'Show more'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="flex gap-2">
+                      {t.status !== 'closed' && canChangeStatus(t) && (
+                        <>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="sm" disabled={!!updatingStatus[t.id]}>
+                                {updatingStatus[t.id] ? 'Updating…' : 'Update Status'}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setStatus(t.id, 'open')} disabled={t.status === 'open'}>Mark Open</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setStatus(t.id, 'in_progress')} disabled={t.status === 'in_progress'}>Mark In Progress</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setStatus(t.id, 'resolved')} disabled={t.status === 'resolved'}>Mark Resolved</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => openCloseDialog(t.id)} className="text-destructive focus:text-destructive">Close Ticket</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </>
+                      )}
+                      {t.status !== 'closed' && !canChangeStatus(t) && canAssign && (
+                        <Button size="sm" variant="outline" onClick={() => assignToMe(t.id)}>Assign to me</Button>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => toggleEvents(t.id)}>
+                        {expanded[t.id] ? 'Hide Log' : 'View Log'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                {expanded[t.id] && (
+                  <div className="mt-4 border-t border-border/60 pt-4 space-y-4 bg-muted/10 -mx-4 px-4 pb-2">
+                    <div className="space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Activity Log</div>
+                      <div className="space-y-2 pl-2 border-l border-border/60">
+                        {(events[t.id] || []).map(e => (
+                          <div key={e.id} className="text-xs flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                            <span className="text-muted-foreground min-w-[140px]">{fmt(e.createdAt)}</span>
+                            <span className="font-medium text-foreground/80">{e.author}</span>
+                            <span className="text-muted-foreground hidden sm:inline">•</span>
+                            <span><span className="font-medium">{e.eventType}:</span> {e.message}</span>
+                          </div>
+                        ))}
+                        {!events[t.id]?.length && <div className="text-xs text-muted-foreground italic">No events recorded.</div>}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Comments</div>
+                      <div className="space-y-3">
+                        {(comments[t.id]||[]).map(c => {
+                          const expanded = !!expandedComment[c.id];
+                          const isLong = (c.message?.length || 0) > 160 || (c.message?.split('\n').length || 0) > 3;
+                          return (
+                            <div key={c.id} className="flex gap-3 bg-background p-3 rounded-lg border border-border/50">
+                              <Avatar className="h-6 w-6 mt-0.5"><AvatarFallback className="text-[10px]">{initials(c.author)}</AvatarFallback></Avatar>
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-medium">{c.author}</span>
+                                  <span className="text-[10px] text-muted-foreground">{fmt(c.createdAt)}</span>
+                                </div>
+                                <div className={`text-sm text-foreground/90 whitespace-pre-wrap break-words ${expanded ? '' : 'line-clamp-3'}`}>{c.message}</div>
+                                {isLong && (
+                                  <button
+                                    type="button"
+                                    className="text-xs text-primary hover:underline"
+                                    aria-expanded={expanded}
+                                    onClick={() => setExpandedComment(s => ({ ...s, [c.id]: !s[c.id] }))}
+                                  >
+                                    {expanded ? 'Show less' : 'Show more'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {t.status !== 'closed' ? (
+                          <div className="flex gap-2 mt-2">
+                            <Input 
+                              className="bg-background"
+                              aria-label={`Add comment to ticket ${t.id}`} 
+                              placeholder="Write a comment..." 
+                              value={commentText[t.id]||''} 
+                              onChange={(e)=> setCommentText(s=>({ ...s, [t.id]: e.target.value }))} 
+                              onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addComment(t.id); } }}
+                            />
+                            <Button aria-label={`Post comment on ticket ${t.id}`} size="sm" onClick={() => addComment(t.id)} disabled={posting[t.id] || !(commentText[t.id]||'').trim()}>
+                              {posting[t.id] ? 'Posting…' : 'Post'}
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center p-2 rounded bg-muted/30 text-xs text-muted-foreground border border-dashed border-border">
+                            <span className="flex items-center gap-1.5"><ShieldCheck className="h-3 w-3" /> Ticket is closed. Comments are disabled.</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 h-full items-start">
+              {columns.map(col => (
+                <div key={col.key} className="rounded-xl border bg-muted/30 flex flex-col">
+                  <div className="px-3 py-3 border-b bg-background/50 text-sm font-medium flex items-center justify-between rounded-t-xl backdrop-blur-sm">
+                    <span className="flex items-center gap-2">
+                      <span className={cn("w-2 h-2 rounded-full", statusColor(col.key as any))} />
+                      {col.label}
+                    </span>
+                    <Badge variant="secondary" className="bg-background/80">{grouped[col.key].length}</Badge>
+                  </div>
+                  <div
+                    className="p-2 flex-1 space-y-2 min-h-[150px]"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => onDropTo(e, col.key)}
+                  >
+                    {grouped[col.key].map(t => (
+                      <Card
+                        key={t.id}
+                        id={`ticket-${t.id}`}
+                        className="cursor-grab hover:shadow-md transition-all active:cursor-grabbing"
+                        draggable={t.status !== 'closed' && canChangeStatus(t)}
+                        onDragStart={(e) => onDragStart(e, t.id)}
+                      >
+                        <CardContent className="p-3 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                             <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{t.id}</span>
+                             <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 h-5 font-normal", priorityColor(t.priority || 'medium'))}>{t.priority || 'medium'}</Badge>
+                          </div>
+                          <div className="font-medium text-sm leading-snug line-clamp-3">{t.title}</div>
+                          
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40 mt-2">
+                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <Avatar className="h-4 w-4"><AvatarFallback className="text-[8px]">{initials(assigneeLabel(t))}</AvatarFallback></Avatar>
+                                <span className="truncate max-w-[80px]">{assigneeLabel(t)}</span>
+                             </div>
+                             <div className="scale-90 origin-right">{slaBadge(t)}</div>
+                          </div>
+                          
+                          {(t.status !== 'closed' && !canChangeStatus(t) && canAssign) && (
+                             <Button size="sm" variant="outline" className="w-full h-7 text-xs mt-1" onClick={() => assignToMe(t.id)}>Assign to me</Button>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                    {grouped[col.key].length === 0 && (
+                      <div className="h-24 flex items-center justify-center text-xs text-muted-foreground border-2 border-dashed border-border/40 rounded-lg">
+                        No tickets
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={closeDialogOpen} onOpenChange={setCloseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Close ticket</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Optional: add a closing note.</p>
+            <Textarea
+              placeholder="Add closing description (optional)"
+              value={closeNote}
+              onChange={(e) => setCloseNote(e.target.value)}
+              className="min-h-[6rem]"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCloseDialogOpen(false)} disabled={closing}>Cancel</Button>
+            <Button aria-label="Confirm close ticket" onClick={confirmClose} disabled={closing}>{closing ? 'Closing…' : 'Close Ticket'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

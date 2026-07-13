@@ -1,0 +1,720 @@
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
+import {
+  CalendarIcon,
+  Package,
+  Save,
+  ClipboardList,
+  MapPin,
+  Info,
+  AlertTriangle,
+} from "lucide-react";
+import { toast } from "sonner";
+import { listProperties, type Property } from "@/services/properties";
+import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
+import { getLicenseSnapshot, type LicenseSnapshot } from "@/services/license";
+import { ITEM_TYPE_PREFIXES } from "@/services/itemTypes";
+import { listDepartments, type Department } from "@/services/departments";
+import { listUserDepartmentAccess } from "@/services/userDeptAccess";
+import { isDemoMode } from "@/lib/demo";
+import { Checkbox } from "@/components/ui/checkbox";
+
+interface AssetFormProps {
+  onSubmit?: (data: any) => boolean | void | Promise<boolean | void>;
+  initialData?: any;
+  mode?: "page" | "modal";
+  onCancel?: () => void;
+}
+
+export function AssetForm({
+  onSubmit,
+  initialData,
+  mode = "page",
+  onCancel,
+}: AssetFormProps) {
+  const [formData, setFormData] = useState({
+    itemName: initialData?.itemName || "",
+    description: initialData?.description || "",
+    purchaseDate: initialData?.purchaseDate || undefined,
+    quantity: initialData?.quantity || "",
+    itemType: initialData?.itemType || "",
+    expiryDate: initialData?.expiryDate || undefined,
+    poNumber: initialData?.poNumber || "",
+    property: initialData?.property || "",
+    condition: initialData?.condition || "",
+    serialNumber: initialData?.serialNumber || "",
+    location: initialData?.location || "",
+    department: initialData?.department || "",
+    amcEnabled: initialData?.amcEnabled ?? false,
+    amcStartDate: initialData?.amcStartDate || undefined,
+    amcEndDate: initialData?.amcEndDate || undefined,
+  });
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [itemTypes, setItemTypes] = useState<string[]>(
+    Object.keys(ITEM_TYPE_PREFIXES),
+  );
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [allowedDeptNames, setAllowedDeptNames] = useState<string[] | null>(
+    null,
+  );
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [licenseSnap, setLicenseSnap] = useState<LicenseSnapshot | null>(null);
+  const [licenseLoading, setLicenseLoading] = useState(false);
+
+  useEffect(() => {
+    setFormData({
+      itemName: initialData?.itemName || "",
+      description: initialData?.description || "",
+      purchaseDate: initialData?.purchaseDate || undefined,
+      quantity: initialData?.quantity || "",
+      itemType: initialData?.itemType || "",
+      expiryDate: initialData?.expiryDate || undefined,
+      poNumber: initialData?.poNumber || "",
+      property: initialData?.property || "",
+      condition: initialData?.condition || "",
+      serialNumber: initialData?.serialNumber || "",
+      location: initialData?.location || "",
+      department: initialData?.department || "",
+      amcEnabled: initialData?.amcEnabled ?? false,
+      amcStartDate: initialData?.amcStartDate || undefined,
+      amcEndDate: initialData?.amcEndDate || undefined,
+    });
+  }, [initialData]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        // Properties from Django (or fallback handled in page state)
+        if (!isDemoMode()) {
+          let props = await listProperties();
+          // Filter by access for non-admin users
+          try {
+            const raw =
+              (isDemoMode()
+                ? sessionStorage.getItem("demo_auth_user") ||
+                  localStorage.getItem("demo_auth_user")
+                : null) || localStorage.getItem("auth_user");
+            const cu = raw ? JSON.parse(raw) : null;
+            const role = (cu?.role || "").toLowerCase();
+            if (role !== "admin") {
+              const access = await getAccessiblePropertyIdsForCurrentUser();
+              const accessIds = new Set(Array.from(access).map(String));
+              const filtered = props.filter((p) => accessIds.has(String(p.id)));
+              // If editing and initialData property not in filtered, include it for visibility only
+              if (
+                initialData?.property &&
+                !filtered.find((p) => p.id === initialData.property)
+              ) {
+                const keep = props.find((p) => p.id === initialData.property);
+                if (keep) filtered.unshift(keep);
+              }
+              props = filtered;
+            }
+          } catch {}
+          setProperties(props);
+        } else {
+          // fallback to common names in demo mode
+          setProperties([
+            {
+              id: "PROP-001",
+              name: "Main Office",
+              type: "Office",
+              status: "Active",
+              address: "",
+              manager: "",
+            } as any,
+            {
+              id: "PROP-002",
+              name: "Warehouse",
+              type: "Storage",
+              status: "Active",
+              address: "",
+              manager: "",
+            } as any,
+            {
+              id: "PROP-003",
+              name: "Branch Office",
+              type: "Office",
+              status: "Active",
+              address: "",
+              manager: "",
+            } as any,
+            {
+              id: "PROP-004",
+              name: "Factory",
+              type: "Manufacturing",
+              status: "Active",
+              address: "",
+              manager: "",
+            } as any,
+          ]);
+        }
+      } catch {
+        /* properties stay empty */
+      }
+      // Item types are now hardcoded from ITEM_TYPE_PREFIXES keys
+      try {
+        const list = await listDepartments();
+        setDepartments(list);
+      } catch {
+        /* departments stay empty */
+      }
+      try {
+        const raw =
+          (isDemoMode()
+            ? sessionStorage.getItem("demo_auth_user") ||
+              localStorage.getItem("demo_auth_user")
+            : null) || localStorage.getItem("auth_user");
+        const cu = raw ? JSON.parse(raw) : null;
+        setCurrentUser(cu);
+        // Load allowed departments for current user (self), when backend present
+        if (!isDemoMode() && cu?.id) {
+          try {
+            const depts = await listUserDepartmentAccess(cu.id);
+            setAllowedDeptNames(Array.isArray(depts) ? depts : []);
+          } catch {
+            setAllowedDeptNames([]);
+          }
+        } else {
+          setAllowedDeptNames(null);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // Auto-select effective department for non-admins when there's a single choice
+  useEffect(() => {
+    const role = (currentUser?.role || "").toLowerCase();
+    const allowed =
+      allowedDeptNames && allowedDeptNames.length
+        ? allowedDeptNames
+        : currentUser?.department
+          ? [currentUser.department]
+          : [];
+    if (role !== "admin") {
+      if (allowed.length === 1 && !(formData as any).department) {
+        setFormData((prev) => ({ ...prev, department: allowed[0] }) as any);
+      }
+      if (
+        allowed.length > 1 &&
+        (formData as any).department &&
+        !allowed
+          .map((d) => d.toLowerCase())
+          .includes(String((formData as any).department).toLowerCase())
+      ) {
+        // Clear prefilled department if it isn't in allowed list
+        setFormData((prev) => ({ ...prev, department: "" }) as any);
+      }
+    }
+  }, [currentUser, allowedDeptNames]);
+
+  // Fetch license snapshot when property changes
+  useEffect(() => {
+    (async () => {
+      const pid = formData.property;
+      if (!pid) {
+        setLicenseSnap(null);
+        return;
+      }
+      try {
+        setLicenseLoading(true);
+        const snap = await getLicenseSnapshot(pid);
+        setLicenseSnap(snap);
+      } catch {
+        setLicenseSnap(null);
+      } finally {
+        setLicenseLoading(false);
+      }
+    })();
+  }, [formData.property]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const role = (currentUser?.role || "").toLowerCase();
+    const amcEnabled = Boolean(formData.amcEnabled);
+    const amcStart = amcEnabled ? formData.amcStartDate : undefined;
+    const amcEnd = amcEnabled ? formData.amcEndDate : undefined;
+
+    if (amcEnabled) {
+      if (!amcStart || !amcEnd) {
+        toast.error("Select both AMC start and end dates");
+        return;
+      }
+      if (amcEnd.getTime() < amcStart.getTime()) {
+        toast.error("AMC end date must be after the start date");
+        return;
+      }
+    }
+
+    // For non-admins, if itemType not provided (hidden), default to "Other"
+    const toSubmit = {
+      ...formData,
+      itemType:
+        role === "admin" ? formData.itemType : formData.itemType || "Other",
+      amcEnabled,
+      amcStartDate: amcEnabled ? amcStart : undefined,
+      amcEndDate: amcEnabled ? amcEnd : undefined,
+    };
+
+    // Basic validation
+    const deptVal = (toSubmit as any).department?.toString().trim();
+    const locVal = (toSubmit as any).location?.toString().trim();
+    const condVal = (toSubmit as any).condition?.toString().trim();
+    if (
+      !toSubmit.itemName ||
+      !toSubmit.quantity ||
+      (role === "admin" && !toSubmit.itemType) ||
+      !toSubmit.property ||
+      !deptVal ||
+      !locVal ||
+      !condVal
+    ) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    // Generic enforcement: if user is not admin and has allowed departments, selected department must be in that list
+    const selectedDept =
+      (toSubmit as any).department || currentUser?.department || "";
+    const effectiveAllowed =
+      allowedDeptNames && allowedDeptNames.length
+        ? allowedDeptNames
+        : currentUser?.department
+          ? [currentUser.department]
+          : [];
+    const allowed = new Set(
+      effectiveAllowed.map((d: string) => String(d).toLowerCase()),
+    );
+    if (role !== "admin" && allowed.size > 0) {
+      if (!selectedDept || !allowed.has(String(selectedDept).toLowerCase())) {
+        toast.error("You are not allowed to create assets for this department");
+        return;
+      }
+    }
+
+    try {
+      const result = await onSubmit?.(toSubmit);
+      if (result === true) {
+        toast.success("Asset saved successfully!");
+        if (!initialData) {
+          setFormData({
+            itemName: "",
+            description: "",
+            purchaseDate: undefined,
+            quantity: "",
+            itemType: "",
+            expiryDate: undefined,
+            poNumber: "",
+            property: "",
+            condition: "",
+            serialNumber: "",
+            location: "",
+            department: "",
+            amcEnabled: false,
+            amcStartDate: undefined,
+            amcEndDate: undefined,
+          });
+        }
+      }
+    } catch (err: any) {
+      // Parent already surfaced error (e.g., modal). Do nothing here.
+    }
+  };
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleToggleAmc = (enabled: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      amcEnabled: enabled,
+      amcStartDate: enabled ? prev.amcStartDate : undefined,
+      amcEndDate: enabled ? prev.amcEndDate : undefined,
+    }));
+  };
+
+  const formContent = (
+    <form onSubmit={handleSubmit} className="space-y-8">
+      <div className="space-y-6 rounded-2xl border border-border/60 bg-background/80 p-6">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <ClipboardList className="h-4 w-4 text-primary" />
+          Asset Essentials
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="itemName">Item Name *</Label>
+            <Input
+              id="itemName"
+              value={formData.itemName}
+              onChange={(e) => handleInputChange("itemName", e.target.value)}
+              placeholder="e.g., Dell Laptop, Office Chair"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="quantity">Quantity *</Label>
+            <Input
+              id="quantity"
+              type="number"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={formData.quantity}
+              onChange={(e) => handleInputChange("quantity", e.target.value)}
+              onWheel={(e) => {
+                // Prevent accidental value changes (and large rerenders) when scrolling over the input
+                // Blurring is a simple, reliable way across browsers
+                try {
+                  (e.currentTarget as HTMLInputElement).blur();
+                } catch {}
+              }}
+              placeholder="Enter quantity"
+              min="1"
+              required
+            />
+            {licenseSnap && (
+              <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                {licenseSnap.propertyLimit && licenseSnap.propertyLimit > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-2 py-0.5">
+                    Property Remaining:{" "}
+                    {licenseSnap.propertyRemaining != null
+                      ? licenseSnap.propertyRemaining
+                      : "—"}
+                  </span>
+                )}
+                {licenseLoading && <span>Updating…</span>}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="itemType">Item Type *</Label>
+            <Select
+              value={formData.itemType}
+              onValueChange={(value) => handleInputChange("itemType", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select item type" />
+              </SelectTrigger>
+              <SelectContent>
+                {itemTypes.filter(Boolean).map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="condition">Condition *</Label>
+            <Select
+              value={formData.condition}
+              onValueChange={(value) => handleInputChange("condition", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select condition" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="excellent">Excellent</SelectItem>
+                <SelectItem value="good">Good</SelectItem>
+                <SelectItem value="fair">Fair</SelectItem>
+                <SelectItem value="poor">Poor</SelectItem>
+                <SelectItem value="damaged">Damaged</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-6 rounded-2xl border border-border/60 bg-background/80 p-6">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <MapPin className="h-4 w-4 text-primary" />
+          Assignment & Tracking
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="property">Property *</Label>
+            <Select
+              value={formData.property}
+              onValueChange={(value) => handleInputChange("property", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select property" />
+              </SelectTrigger>
+              <SelectContent>
+                {properties
+                  .filter((p) => p.id)
+                  .map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            {licenseSnap && (
+              <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                {licenseSnap.propertyLimit &&
+                  licenseSnap.propertyLimit > 0 &&
+                  licenseSnap.propertyUsage != null && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-2 py-0.5">
+                      Property Usage: {licenseSnap.propertyUsage}/
+                      {licenseSnap.propertyLimit}
+                    </span>
+                  )}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="department">Department *</Label>
+            <Select
+              value={(formData as any).department || ""}
+              onValueChange={(value) => handleInputChange("department", value)}
+              disabled={
+                (currentUser?.role || "").toLowerCase() !== "admin" &&
+                (allowedDeptNames && allowedDeptNames.length
+                  ? allowedDeptNames.length
+                  : currentUser?.department
+                    ? 1
+                    : 0) === 1
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select department" />
+              </SelectTrigger>
+              <SelectContent>
+                {(() => {
+                  const role = (currentUser?.role || "").toLowerCase();
+                  let list: Department[] = [];
+                  if (role === "admin") {
+                    list = departments || [];
+                  } else {
+                    const effective =
+                      allowedDeptNames && allowedDeptNames.length
+                        ? allowedDeptNames
+                        : currentUser?.department
+                          ? [currentUser.department]
+                          : [];
+                    const set = new Set(
+                      effective.map((n: string) => n.toLowerCase()),
+                    );
+                    list = (departments || []).filter((d) =>
+                      set.has((d.name || "").toLowerCase()),
+                    );
+                    const cur = ((formData as any).department || "").toString();
+                    if (
+                      cur &&
+                      !list.find(
+                        (d) =>
+                          (d.name || "").toLowerCase() === cur.toLowerCase(),
+                      )
+                    ) {
+                      list = [{ id: "cur", name: cur } as any, ...list];
+                    }
+                  }
+                  return list
+                    .filter((d) => d.name)
+                    .map((d) => (
+                      <SelectItem key={d.id} value={d.name}>
+                        {d.name}
+                      </SelectItem>
+                    ));
+                })()}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="location">Location *</Label>
+            <Input
+              id="location"
+              value={formData.location}
+              onChange={(e) => handleInputChange("location", e.target.value)}
+              placeholder="e.g., Floor 2, Room 203"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="serialNumber">Serial Number</Label>
+            <Input
+              id="serialNumber"
+              value={formData.serialNumber}
+              onChange={(e) =>
+                handleInputChange("serialNumber", e.target.value)
+              }
+              placeholder="Asset serial number"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-6 rounded-2xl border border-border/60 bg-background/80 p-6">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <CalendarIcon className="h-4 w-4 text-primary" />
+          Lifecycle & Procurement
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label>Purchase Date</Label>
+            <DatePicker
+              date={formData.purchaseDate}
+              setDate={(date) => handleInputChange("purchaseDate", date)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Expiry Date</Label>
+            <DatePicker
+              date={formData.expiryDate}
+              setDate={(date) => handleInputChange("expiryDate", date)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="poNumber">PO Number</Label>
+            <Input
+              id="poNumber"
+              value={formData.poNumber}
+              onChange={(e) => handleInputChange("poNumber", e.target.value)}
+              placeholder="Purchase Order Number"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-6 rounded-2xl border border-border/60 bg-background/80 p-6">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <AlertTriangle className="h-4 w-4 text-primary" />
+          AMC Tracker
+        </div>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-background/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                Enable AMC tracking
+              </p>
+              <p className="text-xs text-muted-foreground">
+                We’ll surface expiring contracts on the dashboard ahead of time.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="amcEnabled"
+                checked={formData.amcEnabled}
+                onCheckedChange={(checked) => handleToggleAmc(checked === true)}
+              />
+              <Label htmlFor="amcEnabled" className="text-sm font-medium">
+                Track AMC
+              </Label>
+            </div>
+          </div>
+          {formData.amcEnabled && (
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>AMC Start Date</Label>
+                <DatePicker
+                  date={formData.amcStartDate}
+                  setDate={(date) => handleInputChange("amcStartDate", date)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>AMC End Date</Label>
+                <DatePicker
+                  date={formData.amcEndDate}
+                  setDate={(date) => handleInputChange("amcEndDate", date)}
+                  disabledDates={(date) => {
+                    if (!formData.amcStartDate) return false;
+                    const start = new Date(
+                      formData.amcStartDate.getFullYear(),
+                      formData.amcStartDate.getMonth(),
+                      formData.amcStartDate.getDate(),
+                    );
+                    return date < start;
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-6">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Info className="h-4 w-4 text-primary" />
+          Additional Notes
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="description">Description</Label>
+          <Textarea
+            id="description"
+            value={formData.description}
+            onChange={(e) => handleInputChange("description", e.target.value)}
+            placeholder="Add any context the team should know..."
+            rows={4}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          Double-check quantity and location details before saving to keep
+          reports accurate.
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => (onCancel ? onCancel() : window.history.back())}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" className="gap-2">
+            <Save className="h-4 w-4" />
+            {initialData ? "Update Asset" : "Save Asset"}
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+
+  if (mode === "modal") {
+    return formContent;
+  }
+
+  return (
+    <Card className="rounded-2xl border border-border/60 bg-card/95 shadow-md">
+      <CardHeader className="space-y-2 border-b border-border/70">
+        <CardTitle className="flex items-center gap-2 text-xl font-semibold">
+          <Package className="h-5 w-5 text-primary" />
+          {initialData ? "Edit Asset" : "Add New Asset"}
+        </CardTitle>
+        <CardDescription className="text-muted-foreground">
+          Capture the information your teams rely on for lifecycle, assignment,
+          and reporting.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-6">{formContent}</CardContent>
+    </Card>
+  );
+}

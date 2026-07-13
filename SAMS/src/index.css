@@ -1,0 +1,228 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Utility: hide scrollbar but allow scrolling */
+.no-scrollbar::-webkit-scrollbar { display: none !important; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none !important; }
+
+/* Global custom scrollbar styles (cross-browser) */
+/* Firefox */
+* {
+  scrollbar-width: thin; /* Options: auto | thin | none */
+  scrollbar-color: hsl(var(--primary)) hsl(var(--muted) / 0.25);
+}
+
+/* WebKit (Chrome, Edge, Safari) */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px; /* horizontal scrollbars */
+}
+
+*::-webkit-scrollbar-track {
+  background: hsl(var(--muted) / 0.18);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--primary));
+  border-radius: 999px;
+  border: 2px solid hsl(var(--muted) / 0.18); /* creates a pill look */
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--primary-hover));
+}
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 225 25% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 225 25% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 225 25% 15%;
+
+  /* Brand: #cc7c5e (hsl ~ 16 52% 58%) */
+  --primary: 16 52% 58%;
+  --primary-foreground: 0 0% 100%;
+  --primary-hover: 16 52% 64%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 15% 25%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+  /* Accent uses a light tint of the brand for subtle backgrounds */
+  --accent: 16 52% 94%;
+  --accent-foreground: 16 52% 34%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+  /* Focus ring aligns with brand */
+  --ring: 16 52% 58%;
+
+  --chart-created: 217 91% 60%;
+  --chart-resolved: var(--success);
+  --chart-backlog: var(--warning);
+
+  /* Gradients updated to brand; second stop slightly lighter to simulate hover */
+  --gradient-primary: linear-gradient(135deg, hsl(16 52% 58%), hsl(16 52% 64%));
+  --gradient-secondary: linear-gradient(135deg, hsl(210 40% 96%), hsl(210 40% 98%));
+  --gradient-success: linear-gradient(135deg, hsl(142 76% 36%), hsl(142 76% 46%));
+    
+  --shadow-soft: 0 4px 16px -4px hsl(16 52% 58% / 0.1);
+  --shadow-medium: 0 8px 32px -8px hsl(16 52% 58% / 0.15);
+  --shadow-strong: 0 16px 64px -16px hsl(16 52% 58% / 0.2);
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 16 52% 96%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+  /* Light mode sidebar hover/active background and text */
+  --sidebar-accent: 16 52% 92%; /* slightly deeper tint for contrast */
+  --sidebar-accent-foreground: 240 5.9% 10%; /* strong readable text */
+
+    --sidebar-border: 20 24% 88%;
+
+  --sidebar-ring: 16 52% 58%;
+  }
+
+  .dark {
+    /* Dark background: #262624 */
+    --background: 60 3% 15%;
+    --foreground: 210 40% 98%;
+
+  --card: 60 3% 13%;
+    --card-foreground: 210 40% 98%;
+
+  --popover: 60 3% 13%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Keep brand accent for interactive elements in dark mode */
+    --primary: 16 52% 58%;
+    --primary-foreground: 0 0% 100%;
+  --primary-hover: 16 52% 62%;
+
+  /* Neutral, non-blue surfaces for subtle UI elements */
+  --secondary: 60 3% 20%;
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 60 3% 20%;
+  --muted-foreground: 0 0% 70%;
+
+  /* Neutral hover/background accent for dark mode (no blue cast) */
+  --accent: 60 3% 20%;
+  --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+  /* Stronger borders/inputs for clear separation */
+  --border: 60 3% 25%;
+  --input: 60 3% 22%;
+  --ring: 16 52% 58%;
+  --chart-created: 217 91% 70%;
+  --chart-resolved: var(--success);
+  --chart-backlog: var(--warning);
+  --sidebar-background: 60 3% 13%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+  --sidebar-primary: 16 52% 58%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 60 3% 20%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+  --sidebar-border: 60 3% 20%;
+  --sidebar-ring: 16 52% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .surface-card {
+    @apply rounded-xl border border-border/60 bg-card;
+  }
+
+  .surface-card-soft {
+    @apply surface-card shadow-soft;
+  }
+
+  .surface-card-elevated {
+    @apply surface-card shadow-medium;
+  }
+
+  .surface-card-strong {
+    @apply surface-card shadow-strong;
+  }
+
+  .badge-pill {
+    @apply inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors;
+  }
+
+  .badge-pill-muted {
+    @apply badge-pill border-muted/60 bg-muted/40 text-muted-foreground;
+  }
+
+  .badge-pill-success {
+    @apply badge-pill border-success/30 bg-success/10 text-success;
+  }
+
+  .badge-pill-warning {
+    @apply badge-pill border-warning/40 bg-warning/10 text-warning;
+  }
+
+  .badge-pill-danger {
+    @apply badge-pill border-destructive/40 bg-destructive/10 text-destructive;
+  }
+}
+
+  /* Compact mode utility class: reduces padding/margins for denser layouts */
+  .compact-ui .p-4 { padding: 0.75rem !important; }
+  .compact-ui .px-4 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+  .compact-ui .py-4 { padding-top: 0.75rem !important; padding-bottom: 0.75rem !important; }
+  .compact-ui .space-y-6 > :not([hidden]) ~ :not([hidden]) { --tw-space-y-reverse: 0; margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse))) !important; margin-bottom: calc(1rem * var(--tw-space-y-reverse)) !important; }
+  .compact-ui table th, .compact-ui table td { padding-top: 0.35rem !important; padding-bottom: 0.35rem !important; }
+  .compact-ui .h-14 { height: 3.0rem !important; }
+  .compact-ui .h-16 { height: 3.25rem !important; }
+  .compact-ui .rounded-2xl { border-radius: 0.75rem !important; }
+
+  /* Ultra density builds on compact */
+  .ultra-ui .p-4 { padding: 0.5rem !important; }
+  .ultra-ui .px-4 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+  .ultra-ui .py-4 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+  .ultra-ui table th, .ultra-ui table td { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+  .ultra-ui .h-14 { height: 2.75rem !important; }
+  .ultra-ui .h-16 { height: 3rem !important; }
+  .ultra-ui .rounded-2xl { border-radius: 0.6rem !important; }
+
+  /* Sticky header utility class */
+  .sticky-header .app-header, .sticky-header header { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(8px); background-color: hsl(var(--background) / 0.85); }

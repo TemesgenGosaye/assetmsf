@@ -1,0 +1,3243 @@
+import { useEffect, useMemo, useState, useCallback, Fragment } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { isDemoMode } from "@/lib/demo";
+import { cn } from "@/lib/utils";
+import { PageSkeleton, TableSkeleton } from "@/components/ui/page-skeletons";
+import { AssetForm } from "@/components/assets/AssetForm";
+import { BulkImportModal } from "@/components/assets/BulkImportModal";
+import { QRCodeGenerator } from "@/components/qr/QRCodeGenerator";
+import { TablePagination } from "@/components/ui/table-pagination";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import StatusChip from "@/components/ui/status-chip";
+import MetricCard from "@/components/ui/metric-card";
+import {
+  Package,
+  Search,
+  Filter,
+  Plus,
+  Edit,
+  Trash2,
+  QrCode,
+  Calendar,
+  AlertTriangle,
+  ShieldCheck,
+  Users,
+  ChevronRight,
+  ChevronDown,
+  Maximize2,
+  Minimize2,
+} from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription as SheetDesc,
+} from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner";
+import {
+  listAssets,
+  createAsset,
+  updateAsset,
+  deleteAsset,
+  generateAssetCode,
+  getCachedAssetsSnapshot,
+  subscribeToAssetsCache,
+  type Asset as SbAsset,
+} from "@/services/assets";
+import { checkLicenseBeforeCreate } from "@/services/license";
+import { LicenseExceedModal } from "@/components/assets/LicenseExceedModal";
+import { listProperties, type Property } from "@/services/properties";
+import { listDepartments } from "@/services/departments";
+import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
+import {
+  listItemTypes,
+  getItemTypePrefix,
+  ITEM_TYPE_PREFIXES,
+} from "@/services/itemTypes";
+import {
+  listQRCodes,
+  createQRCode,
+  updateQRCode,
+  type QRCode as SbQRCode,
+} from "@/services/qrcodes";
+import {
+  submitApproval,
+  listApprovals,
+  type ApprovalRequest,
+} from "@/services/approvals";
+import RequestEditModal from "@/components/assets/RequestEditModal";
+import { listFinalApproverPropsForUser } from "@/services/finalApprover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  composeQrWithLabel,
+  composeQrGridSheet,
+  composeQrA4Sheet,
+  generateQrPng,
+  LABEL_PRESETS,
+  printImagesAsLabels,
+} from "@/lib/qr";
+import QRCode from "qrcode";
+import { logActivity } from "@/services/activity";
+import { trackActivity } from "@/services/notifications";
+import { getCurrentUserId } from "@/services/permissions";
+import { canUserEdit } from "@/services/permissions";
+import { Checkbox } from "@/components/ui/checkbox";
+import DateRangePicker, {
+  type DateRange,
+} from "@/components/ui/date-range-picker";
+import PageHeader from "@/components/layout/PageHeader";
+import Breadcrumbs from "@/components/layout/Breadcrumbs";
+import { useTablePreferences } from "@/components/table/useTablePreferences";
+import ColumnChooser, {
+  type ColumnDef,
+} from "@/components/table/ColumnChooser";
+import { listUserDepartmentAccess } from "@/services/userDeptAccess";
+
+export default function Assets() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showQRGenerator, setShowQRGenerator] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [selectedAsset, setSelectedAsset] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [filterProperty, setFilterProperty] = useState("all");
+  const [assets, setAssets] = useState<any[]>(
+    () => getCachedAssetsSnapshot() ?? [],
+  );
+  const [typeOptions, setTypeOptions] = useState<string[]>([]);
+  const [propertyOptions, setPropertyOptions] = useState<string[]>([]);
+  const [deptOptions, setDeptOptions] = useState<string[]>([]);
+  const [licenseModal, setLicenseModal] = useState<{
+    open: boolean;
+    info: any | null;
+  }>({ open: false, info: null });
+  const navigate = useNavigate();
+  const [propsById, setPropsById] = useState<Record<string, Property>>({});
+  const [propsByName, setPropsByName] = useState<Record<string, Property>>({});
+  const [sortBy, setSortBy] = useState("newest");
+  const [deptFilter, setDeptFilter] = useState<string[]>([]);
+  const [deptAll, setDeptAll] = useState<boolean>(true);
+  const [accessibleProps, setAccessibleProps] = useState<Set<string>>(
+    new Set(),
+  );
+  const [role, setRole] = useState<string>("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFmt, setExportFmt] = useState<"png" | "pdf" | "label">("png");
+  const [exportOrientation, setExportOrientation] = useState<
+    "portrait" | "landscape"
+  >("portrait");
+  const [labelPresetId, setLabelPresetId] = useState<string>("4x6in");
+  const [labelUseCustom, setLabelUseCustom] = useState<boolean>(false);
+  const [labelCustomWidth, setLabelCustomWidth] = useState<string>("4");
+  const [labelCustomHeight, setLabelCustomHeight] = useState<string>("6");
+  const [labelUnits, setLabelUnits] = useState<"in" | "mm">("in");
+  const [approvalsByAsset, setApprovalsByAsset] = useState<
+    Record<string, ApprovalRequest | undefined>
+  >({});
+  const [requestEditOpen, setRequestEditOpen] = useState(false);
+  const [requestEditAsset, setRequestEditAsset] = useState<any | null>(null);
+  const [approverPropIds, setApproverPropIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [qrImgByAssetId, setQrImgByAssetId] = useState<Record<string, string>>(
+    {},
+  );
+  const [range, setRange] = useState<DateRange>();
+  const [allowedDepts, setAllowedDepts] = useState<string[] | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Bulk action scoping: restrict property assignment options for managers
+  const bulkPropertyOptions = useMemo(() => {
+    if (role === "admin") return propertyOptions;
+    if (role === "manager") {
+      // Only properties the manager can access
+      if (accessibleProps && accessibleProps.size) {
+        return propertyOptions.filter((pid) =>
+          accessibleProps.has(String(pid)),
+        );
+      }
+      return [] as string[];
+    }
+    // Users cannot assign property via bulk actions
+    return [] as string[];
+  }, [role, propertyOptions, accessibleProps]);
+
+  // Ensure selected bulkProperty remains valid when options/role change
+  useEffect(() => {
+    if (bulkProperty && !bulkPropertyOptions.includes(bulkProperty))
+      setBulkProperty("");
+  }, [bulkPropertyOptions]);
+  // Load final-approver property ids for current user
+  useEffect(() => {
+    (async () => {
+      try {
+        if (isDemoMode()) {
+          setApproverPropIds(new Set());
+          return;
+        }
+        let uid = localStorage.getItem("current_user_id") || "";
+        if (!uid) {
+          try {
+            const raw = localStorage.getItem("auth_user");
+            if (raw) {
+              const parsed = JSON.parse(raw) as { id?: string; email?: string };
+              uid = parsed?.id || parsed?.email || "";
+            }
+          } catch {}
+        }
+        if (!uid) {
+          setApproverPropIds(new Set());
+          return;
+        }
+        const list = await listFinalApproverPropsForUser(uid);
+        setApproverPropIds(new Set((list || []).map(String)));
+      } catch {
+        setApproverPropIds(new Set());
+      }
+    })();
+  }, []);
+  // Saved views & bulk actions
+  const [savedView, setSavedView] = useState<string>("all");
+  const [bulkProperty, setBulkProperty] = useState<string>("");
+  const [bulkCondition, setBulkCondition] = useState<string>("");
+  const prefs = useTablePreferences("assets");
+  const columnDefs: ColumnDef[] = [
+    { key: "select", label: "Select", always: true },
+    { key: "group", label: "Group", always: true },
+    { key: "id", label: "Asset ID", always: true },
+    { key: "name", label: "Name", always: true },
+    { key: "type", label: "Type" },
+    { key: "property", label: "Property" },
+    { key: "department", label: "Department" },
+    { key: "qty", label: "Quantity" },
+    { key: "location", label: "Location" },
+    { key: "purchaseDate", label: "Purchase Date" },
+    { key: "status", label: "Status" },
+    { key: "approval", label: "Approval" },
+    // Admin-only column for creator
+    ...(role === "admin"
+      ? ([{ key: "createdBy", label: "Created By" }] as ColumnDef[])
+      : []),
+    { key: "description", label: "Description" },
+    { key: "actions", label: "Actions", always: true },
+  ];
+  // Always-on columns set (cannot be hidden)
+  const ALWAYS_COLS = useMemo(
+    () => new Set(columnDefs.filter((c) => c.always).map((c) => c.key)),
+    [],
+  );
+  const isVisible = useCallback(
+    (key: string) => ALWAYS_COLS.has(key) || prefs.visibleCols.includes(key),
+    [ALWAYS_COLS, prefs.visibleCols],
+  );
+  // initialize defaults for visible columns once
+  useEffect(() => {
+    // Only set defaults if nothing was loaded from storage
+    if (!prefs.visibleCols.length) {
+      const defaults = columnDefs
+        .filter(
+          (c) =>
+            c.always ||
+            [
+              "type",
+              "property",
+              "department",
+              "qty",
+              "status",
+              "approval",
+              "createdBy",
+              "description",
+              "actions",
+            ].includes(c.key),
+        )
+        .map((c) => c.key);
+      // Merge with ALWAYS_COLS to be safe
+      const merged = Array.from(
+        new Set([...Array.from(ALWAYS_COLS), ...defaults]),
+      );
+      prefs.setVisibleCols(merged);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // One-time bootstrap: if user already has saved prefs but Department is missing, add it once
+  useEffect(() => {
+    try {
+      const key = "assets_dept_col_added_v1";
+      if (
+        prefs.visibleCols.length &&
+        !prefs.visibleCols.includes("department")
+      ) {
+        const done = sessionStorage.getItem(key);
+        if (!done) {
+          prefs.setVisibleCols((cols) =>
+            Array.from(new Set([...cols, "department"])),
+          );
+          sessionStorage.setItem(key, "1");
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [prefs.visibleCols]);
+  const activePropertyIds = useMemo(() => {
+    const list = Object.values(propsById);
+    if (!list.length) return new Set<string>();
+    return new Set(
+      list
+        .filter((p) => (p.status || "").toLowerCase() !== "disabled")
+        .map((p) => p.id),
+    );
+  }, [propsById]);
+
+  // Property options visible in filter, respecting access for non-admins
+  const visiblePropertyOptions = useMemo(() => {
+    const base = propertyOptions;
+    if (role === "admin") return base;
+    if (accessibleProps && accessibleProps.size) {
+      return base.filter((pid) => accessibleProps.has(String(pid)));
+    }
+    return [] as string[];
+  }, [propertyOptions, accessibleProps, role]);
+
+  // Keep property filter valid when visible options change
+  useEffect(() => {
+    if (
+      filterProperty !== "all" &&
+      !visiblePropertyOptions.includes(filterProperty)
+    ) {
+      setFilterProperty("all");
+    }
+  }, [visiblePropertyOptions]);
+
+  // Open Add/Edit form from query params
+  useEffect(() => {
+    const isNew = searchParams.get("new") === "1";
+    const editId = searchParams.get("edit");
+
+    if (isNew) {
+      setSelectedAsset(null);
+      setShowAddForm(true);
+      return;
+    }
+
+    if (!editId || assets.length === 0) return;
+
+    const target = assets.find((a) => String(a.id) === String(editId));
+    if (!target) return;
+
+    setSelectedAsset(target);
+    setShowAddForm(true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("edit");
+        next.delete("new");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, assets, setSearchParams]);
+
+  // ── Single mount effect: fire all independent requests in parallel ──
+  useEffect(() => {
+    // Read role synchronously from localStorage (no network)
+    try {
+      const raw =
+        (isDemoMode()
+          ? sessionStorage.getItem("demo_auth_user") ||
+            localStorage.getItem("demo_auth_user")
+          : null) || localStorage.getItem("auth_user");
+      const r = raw ? JSON.parse(raw).role || "" : "";
+      setRole((r || "").toLowerCase());
+    } catch {}
+
+    if (isDemoMode()) {
+      setAccessibleProps(new Set());
+      return;
+    }
+
+    // Fire all independent network requests in parallel
+    (async () => {
+      const [accessibleIds, qrCodes, filterData, deptAccess] =
+        await Promise.all([
+          getAccessiblePropertyIdsForCurrentUser().catch(
+            () => new Set<string>(),
+          ),
+          listQRCodes().catch(() => []),
+          Promise.all([
+            listProperties().catch(() => [] as any[]),
+            listItemTypes().catch(() => [] as any[]),
+            listDepartments().catch(() => [] as any[]),
+          ]),
+          (async () => {
+            try {
+              const raw = localStorage.getItem("auth_user");
+              const user = raw ? JSON.parse(raw) : null;
+              if (user?.id) {
+                const depts = await listUserDepartmentAccess(user.id);
+                return Array.isArray(depts) ? depts : [];
+              }
+              return null;
+            } catch {
+              return null;
+            }
+          })(),
+        ]);
+
+      setAccessibleProps(accessibleIds);
+
+      // Build QR lookup map
+      const qrMap: Record<string, string> = {};
+      for (const c of qrCodes) {
+        if (c.assetId && c.imageUrl) qrMap[c.assetId] = c.imageUrl;
+      }
+      setQrImgByAssetId(qrMap);
+
+      // Process filter options
+      const [props, types, depts] = filterData;
+      if (props?.length) {
+        const active = props.filter(
+          (p: any) => (p.status || "").toLowerCase() !== "disabled",
+        );
+        setPropertyOptions(active.map((p: any) => p.id).filter(Boolean));
+        setPropsById(Object.fromEntries(props.map((p: any) => [p.id, p])));
+        setPropsByName(Object.fromEntries(props.map((p: any) => [p.name, p])));
+      }
+      setTypeOptions(Object.keys(ITEM_TYPE_PREFIXES));
+      if (depts?.length) {
+        const names = Array.from(
+          new Set(
+            (depts as any[])
+              .map((d: any) => (d.name || "").toString())
+              .filter(Boolean),
+          ),
+        ).sort((a, b) => a.localeCompare(b));
+        if (names.length) setDeptOptions(names);
+      }
+
+      // Department access
+      setAllowedDepts(deptAccess);
+    })();
+  }, []);
+
+  const [canEditPage, setCanEditPage] = useState<boolean>(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const uid = getCurrentUserId();
+        if (!uid) {
+          setCanEditPage(
+            role === "admin" || role === "manager" || role === "user",
+          );
+          return;
+        }
+        const allowed = await canUserEdit(uid, "assets");
+        // Baseline: role can create/edit; if override exists (true/false), respect it; if null, keep baseline
+        const baseline =
+          role === "admin" || role === "manager" || role === "user";
+        setCanEditPage(allowed === null ? baseline : allowed);
+      } catch {
+        setCanEditPage(true);
+      }
+    })();
+  }, [role]);
+
+  // Simple UI loading flag
+  const [loadingUI, setLoadingUI] = useState(
+    () => !isDemoMode() && !getCachedAssetsSnapshot()?.length,
+  );
+
+  const fetchAssets = useCallback(async (force = false) => {
+    if (isDemoMode()) return;
+    try {
+      const data = await listAssets(force ? { force: true } : undefined);
+      setAssets(data as any);
+      setLoadingUI(false);
+    } catch (e: any) {
+      toast.error("Failed to load assets");
+      setLoadingUI(false);
+    }
+  }, []);
+
+  // Load assets on mount using cached snapshot first, then refresh in background
+  useEffect(() => {
+    const cached = getCachedAssetsSnapshot();
+    if (cached?.length) {
+      setAssets(cached as any);
+      setLoadingUI(false);
+    }
+
+    const unsubscribe = subscribeToAssetsCache((next) => {
+      setAssets(next as any);
+      setLoadingUI(false);
+    });
+
+    fetchAssets(Boolean(cached?.length));
+    return unsubscribe;
+  }, [fetchAssets]);
+
+  // Fallback options from current assets
+  useEffect(() => {
+    if (!propertyOptions.length) {
+      const props = Array.from(new Set(assets.map((a) => a.property))).filter(
+        Boolean,
+      ) as string[];
+      const filtered = activePropertyIds.size
+        ? props.filter((id) => activePropertyIds.has(id))
+        : props;
+      if (filtered.length) setPropertyOptions(filtered);
+    }
+    if (!typeOptions.length) {
+      setTypeOptions(Object.keys(ITEM_TYPE_PREFIXES));
+    }
+    // derive department options from assets when not set
+    if (!deptOptions.length) {
+      const depts = Array.from(
+        new Set(
+          assets.map((a) => (a.department || "").toString()).filter(Boolean),
+        ),
+      );
+      if (depts.length) setDeptOptions(depts);
+    }
+  }, [assets]);
+
+  // Visible department options respecting allowedDepts for non-admins
+  const visibleDeptOptions = useMemo(() => {
+    // Departments actually present in the current assets dataset
+    const inUse = Array.from(
+      new Set(
+        assets.map((a) => (a.department || "").toString()).filter(Boolean),
+      ),
+    );
+    // Start from backend-provided list if any, else from in-use set
+    let base = (
+      deptOptions && deptOptions.length
+        ? Array.from(new Set(deptOptions))
+        : inUse
+    )
+      // Show only departments that have at least one asset
+      .filter((d) => inUse.includes(d))
+      .sort((a, b) => a.localeCompare(b));
+    // Restrict to allowed for non-admins
+    const lowerAllowed =
+      role !== "admin" && Array.isArray(allowedDepts) && allowedDepts.length
+        ? new Set(allowedDepts.map((d) => d.toLowerCase()))
+        : null;
+    base = lowerAllowed
+      ? base.filter((d) => lowerAllowed.has(d.toLowerCase()))
+      : base;
+    return base;
+  }, [deptOptions, allowedDepts, role, assets]);
+
+  // Keep "All" selected by default and sync when options change
+  useEffect(() => {
+    if (deptAll) {
+      // ensure all visible options are selected
+      if (visibleDeptOptions.length) {
+        const allSelected =
+          deptFilter.length === visibleDeptOptions.length &&
+          visibleDeptOptions.every((d) => deptFilter.includes(d));
+        if (!allSelected) setDeptFilter(visibleDeptOptions);
+      } else if (deptFilter.length) {
+        setDeptFilter([]);
+      }
+    } else if (deptFilter.length) {
+      // prune selections that no longer exist
+      const pruned = deptFilter.filter((d) => visibleDeptOptions.includes(d));
+      if (pruned.length !== deptFilter.length) setDeptFilter(pruned);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleDeptOptions, deptAll]);
+
+  // Load pending approvals per asset for indicator
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await listApprovals();
+        const pending = list
+          .filter(
+            (a) =>
+              a.status === "pending_manager" || a.status === "pending_admin",
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.requestedAt).getTime() -
+              new Date(a.requestedAt).getTime(),
+          );
+        const map: Record<string, ApprovalRequest> = {} as any;
+        for (const a of pending) {
+          if (!map[a.assetId]) map[a.assetId] = a;
+        }
+        setApprovalsByAsset(map);
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  // Asset scope for stats: restrict to accessible properties for non-admins
+  const scopedAssets = useMemo(() => {
+    const isAdmin = (role || "").toLowerCase() === "admin";
+    if (isAdmin) return assets;
+    if (accessibleProps && accessibleProps.size) {
+      return assets.filter((a) =>
+        accessibleProps.has(
+          String((a as any).property_id || (a as any).property),
+        ),
+      );
+    }
+    return assets;
+  }, [assets, accessibleProps, role]);
+
+  // Stats source: apply selected Property filter to the scoped assets so cards reflect chosen properties
+  const statsAssets = useMemo(() => {
+    if (!scopedAssets.length) return scopedAssets;
+    if (filterProperty === "all") return scopedAssets;
+    const needle = String(filterProperty || "").toLowerCase();
+    return scopedAssets.filter((a: any) => {
+      const pid = String(a?.property_id || a?.property || "").toLowerCase();
+      return pid === needle;
+    });
+  }, [scopedAssets, filterProperty]);
+
+  // Apply filters to assets and sort for display (memoized to avoid recomputing on every render)
+  const filteredAssets = useMemo(
+    () =>
+      assets.filter((asset) => {
+        // hide assets tied to disabled properties if we know properties
+        if (
+          activePropertyIds.size &&
+          asset.property_id != null &&
+          !activePropertyIds.has(String(asset.property_id))
+        )
+          return false;
+        // enforce user access if any set exists (skip in demo to keep sample data visible)
+        if (
+          !isDemoMode() &&
+          accessibleProps.size &&
+          !accessibleProps.has(String(asset.property_id || asset.property))
+        )
+          return false;
+        const matchesSearch =
+          asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          asset.id.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesType =
+          filterType === "all" ||
+          (asset.type || "").toLowerCase() === filterType.toLowerCase();
+        const matchesProperty =
+          filterProperty === "all" ||
+          (asset.property_id || "").toLowerCase() ===
+            filterProperty.toLowerCase();
+        // Department multi-select filter
+        const matchesDepartment =
+          deptAll ||
+          deptFilter
+            .map((d) => d.toLowerCase())
+            .includes((asset.department || "").toString().toLowerCase());
+        // Date range filter: use purchaseDate when available, else fallback to created_at
+        let matchesDate = true;
+        if (range?.from) {
+          const toStartOfDay = (d: Date) =>
+            new Date(d.getFullYear(), d.getMonth(), d.getDate());
+          const toEndOfDay = (d: Date) =>
+            new Date(
+              d.getFullYear(),
+              d.getMonth(),
+              d.getDate(),
+              23,
+              59,
+              59,
+              999,
+            );
+          const start = toStartOfDay(range.from);
+          const end = toEndOfDay(range.to ?? range.from);
+          const dateStr: string | undefined =
+            (asset.purchaseDate as any) || (asset.created_at as any);
+          if (dateStr) {
+            const t = new Date(dateStr).getTime();
+            matchesDate = t >= start.getTime() && t <= end.getTime();
+          } else {
+            matchesDate = false;
+          }
+        }
+        // Saved views filter
+        let matchesSaved = true;
+        if (savedView === "expiring-30" || savedView === "expiring-90") {
+          const days = savedView === "expiring-30" ? 30 : 90;
+          if (asset.expiryDate) {
+            const now = new Date();
+            const limit = new Date();
+            limit.setDate(limit.getDate() + days);
+            const exp = new Date(asset.expiryDate);
+            matchesSaved = exp >= now && exp <= limit;
+          } else {
+            matchesSaved = false;
+          }
+        } else if (savedView === "needing-audit") {
+          const oneYearAgo = new Date();
+          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+          const pd = asset.purchaseDate ? new Date(asset.purchaseDate) : null;
+          matchesSaved = !!(
+            pd &&
+            pd < oneYearAgo &&
+            String(asset.status || "")
+              .toLowerCase()
+              .includes("active")
+          );
+        }
+
+        return (
+          matchesSearch &&
+          matchesType &&
+          matchesProperty &&
+          matchesDepartment &&
+          matchesDate &&
+          matchesSaved
+        );
+      }),
+    [
+      assets,
+      activePropertyIds,
+      accessibleProps,
+      searchTerm,
+      filterType,
+      filterProperty,
+      deptAll,
+      deptFilter,
+      range,
+      savedView,
+    ],
+  );
+
+  const sortedAssets = useMemo(
+    () =>
+      [...filteredAssets].sort((a, b) => {
+        // Local natural ID comparator to avoid dependency ordering issues
+        const localCompareById = (x: any, y: any) => {
+          const parse = (
+            id: string,
+          ): { prefix: string; num: number } | null => {
+            const m = String(id).match(/^(.*?)(\d+)$/);
+            if (!m) return null;
+            return { prefix: m[1], num: Number(m[2]) };
+          };
+          const pa = parse(String(x.id));
+          const pb = parse(String(y.id));
+          if (pa && pb) {
+            const prefCmp = pa.prefix.localeCompare(pb.prefix);
+            if (prefCmp !== 0) return prefCmp;
+            return pa.num - pb.num;
+          }
+          return String(x.id).localeCompare(String(y.id));
+        };
+        switch (sortBy) {
+          case "id-asc":
+            return localCompareById(a, b);
+          case "id-desc":
+            return -localCompareById(a, b);
+          case "name":
+            return (a.name || "").localeCompare(b.name || "");
+          case "qty":
+            return (b.quantity || 0) - (a.quantity || 0);
+          case "department": {
+            const da = (a.department || "").toString();
+            const db = (b.department || "").toString();
+            const cmp = da.localeCompare(db);
+            return cmp !== 0 ? cmp : localCompareById(a, b);
+          }
+          case "newest":
+          default: {
+            const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+            const dt = bt - at;
+            if (dt !== 0) return dt;
+            // tie-break by natural id to keep units close when created_at is equal/empty
+            return localCompareById(a, b);
+          }
+        }
+      }),
+    [filteredAssets, sortBy],
+  );
+
+  // Group visible, sorted assets by (propertyId, name, type, department) for aggregated display
+  const groupedRows = useMemo(() => {
+    const keyOf = (a: any) => {
+      const pid = String(a.property_id || a.property || "").toLowerCase();
+      return [
+        pid,
+        String(a.name || "").toLowerCase(),
+        String(a.type || "").toLowerCase(),
+        String(a.department || "").toLowerCase(),
+      ].join("||");
+    };
+    const map = new Map<
+      string,
+      { key: string; members: any[]; rep: any; totalQty: number }
+    >();
+    for (const a of sortedAssets) {
+      const k = keyOf(a);
+      const g = map.get(k);
+      if (g) {
+        g.members.push(a);
+        g.totalQty += Number(a.quantity || 0) || 0;
+      } else {
+        map.set(k, {
+          key: k,
+          members: [a],
+          rep: a,
+          totalQty: Number(a.quantity || 0) || 0,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [sortedAssets]);
+
+  const paginatedRows = useMemo(() => {
+    return groupedRows.slice(
+      (currentPage - 1) * rowsPerPage,
+      currentPage * rowsPerPage,
+    );
+  }, [groupedRows, currentPage, rowsPerPage]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [groupedRows.length]);
+
+  const assetHighlights = useMemo(() => {
+    const total = statsAssets.length;
+    const active = statsAssets.filter(
+      (a: any) => String(a.status).toLowerCase() === "active",
+    ).length;
+    const expiringSoon = statsAssets.filter(
+      (a: any) => String(a.status).toLowerCase() === "expiring soon",
+    ).length;
+    const quantity = statsAssets.reduce(
+      (sum, asset) => sum + Number((asset as any).quantity || 0),
+      0,
+    );
+
+    return [
+      {
+        key: "total",
+        title: "Total Assets",
+        icon: Package,
+        value: total.toLocaleString(),
+        caption: "Assets currently in view",
+        iconClassName: "text-primary h-4 w-4",
+      },
+      {
+        key: "active",
+        title: "Active Assets",
+        icon: ShieldCheck,
+        value: active.toLocaleString(),
+        caption: "In service today",
+        iconClassName: "text-primary h-4 w-4",
+        valueClassName: active ? "text-foreground" : undefined,
+      },
+      {
+        key: "expiring",
+        title: "Expiring Soon",
+        icon: AlertTriangle,
+        value: expiringSoon.toLocaleString(),
+        caption: "Due within 30 days",
+        iconClassName: "text-primary h-4 w-4",
+        valueClassName: expiringSoon ? "text-foreground" : undefined,
+      },
+      {
+        key: "quantity",
+        title: "Total Quantity",
+        icon: Calendar,
+        value: quantity.toLocaleString(),
+        caption: "Units across tracked assets",
+        iconClassName: "text-primary h-4 w-4",
+      },
+    ];
+  }, [statsAssets]);
+
+  // Helpers for ID generation and display
+  const typePrefix = (t: string) => {
+    return getItemTypePrefix(t);
+  };
+
+  const nextSequence = (existing: any[], prefix: string) => {
+    const seqs = existing
+      .map((a) => a.id)
+      .filter((id: string) => typeof id === "string" && id.startsWith(prefix))
+      .map((id: string) => Number(id.slice(prefix.length)) || 0);
+    const max = seqs.length ? Math.max(...seqs) : 0;
+    return max + 1;
+  };
+
+  const displayPropertyCode = (val: string) => {
+    if (propsById[val]) return val; // already a code
+    const p = propsByName[val];
+    return p ? p.id : val;
+  };
+
+  const propertyDisplayName = (val: string) => {
+    if (propsById[val]) return propsById[val].name || val;
+    const p = propsByName[val];
+    return p ? p.name : val;
+  };
+
+  // Sanitize a code by removing non-alphanumeric and uppercasing
+  const sanitizeCode = (s: string) =>
+    (s || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+
+  const toISODate = (value: any): string | null => {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString().slice(0, 10);
+  };
+
+  const handleAddAsset = async (assetData: any): Promise<boolean> => {
+    const canCreate = canEditPage;
+    if (!canCreate) {
+      toast.error("You don't have permission to create assets");
+      return false;
+    }
+    // Department enforcement: if user has an allowed department list (from mapping), selected must be in list (non-admin)
+    try {
+      const raw =
+        (isDemoMode()
+          ? sessionStorage.getItem("demo_auth_user") ||
+            localStorage.getItem("demo_auth_user")
+          : null) || localStorage.getItem("auth_user");
+      const user = raw ? JSON.parse(raw) : null;
+      const role = (user?.role || "").toLowerCase();
+      const effectiveAllowed =
+        allowedDepts && allowedDepts.length
+          ? allowedDepts
+          : user?.department
+            ? [user.department]
+            : [];
+      if (
+        role !== "admin" &&
+        Array.isArray(effectiveAllowed) &&
+        effectiveAllowed.length > 0
+      ) {
+        const sel = (assetData.department || user?.department || "")
+          .toString()
+          .toLowerCase();
+        const ok = effectiveAllowed.map((d) => d.toLowerCase()).includes(sel);
+        if (!ok) {
+          toast.error(
+            "You are not allowed to create assets for this department",
+          );
+          return false;
+        }
+      }
+    } catch {}
+    try {
+      // Perform license pre-check BEFORE any create/update action (both Supabase & local)
+      const propertyCodeRaw = assetData.property; // property id/code from select
+      try {
+        const increment = selectedAsset
+          ? 0
+          : Math.max(1, Number(assetData.quantity) || 1);
+        const check = await checkLicenseBeforeCreate(
+          propertyCodeRaw,
+          increment,
+        );
+        if (!check.ok) {
+          setLicenseModal({
+            open: true,
+            info: {
+              ...check,
+              propertyId: propertyCodeRaw,
+              message: check.message || "License Exceeded",
+            },
+          });
+          return false; // Block creation
+        }
+      } catch (e: any) {
+        // If license call itself fails in a license-specific way, surface modal; else allow (fail-open)
+        if (/license/i.test(String(e?.message || ""))) {
+          setLicenseModal({
+            open: true,
+            info: { reason: "GLOBAL_LIMIT", message: e.message },
+          });
+          return false;
+        }
+      }
+      const amcEnabled = Boolean(assetData.amcEnabled);
+      const amcStartDate = amcEnabled
+        ? toISODate(assetData.amcStartDate)
+        : null;
+      const amcEndDate = amcEnabled ? toISODate(assetData.amcEndDate) : null;
+
+      if (!isDemoMode()) {
+        const propertyCodeRaw = assetData.property;
+        const seqPrefix = `${typePrefix(assetData.itemType)}0-0-00-`;
+        const quantity = Math.max(1, Number(assetData.quantity) || 1);
+        const baseSeq = nextSequence(assets, seqPrefix);
+
+        if (selectedAsset) {
+          // Update existing asset — property cannot be changed after creation
+          await updateAsset(selectedAsset.id, {
+            name: assetData.itemName,
+            type: assetData.itemType,
+            department: assetData.department,
+            quantity: Number(assetData.quantity || 1),
+            purchaseDate: toISODate(assetData.purchaseDate),
+            expiryDate: toISODate(assetData.expiryDate),
+            poNumber: assetData.poNumber || null,
+            condition: assetData.condition || null,
+            status: selectedAsset.status || "active",
+            location: assetData.location || null,
+            description: assetData.description || null,
+            serialNumber: assetData.serialNumber || null,
+            amcEnabled,
+            amcStartDate,
+            amcEndDate,
+          } as any);
+          await logActivity(
+            "asset_updated",
+            `Asset ${selectedAsset.id} (${assetData.itemName}) updated`,
+          );
+          trackActivity("asset", "update", {
+            entityName: assetData.itemName,
+            entityId: selectedAsset.id,
+          }).catch(() => {});
+        } else {
+          // Create new assets
+          for (let i = 0; i < quantity; i++) {
+            const assetCode = `${seqPrefix}${String(baseSeq + i).padStart(3, "0")}`;
+            await createAsset({
+              asset_code: assetCode,
+              name: assetData.itemName,
+              type: assetData.itemType,
+              property_id: propertyCodeRaw,
+              department: assetData.department,
+              quantity: 1,
+              purchaseDate: toISODate(assetData.purchaseDate),
+              expiryDate: toISODate(assetData.expiryDate),
+              poNumber: assetData.poNumber || null,
+              condition: assetData.condition || null,
+              status: "active",
+              location: assetData.location || null,
+              description: assetData.description || null,
+              serialNumber: assetData.serialNumber || null,
+              amcEnabled,
+              amcStartDate,
+              amcEndDate,
+            } as any);
+          }
+          await logActivity("asset_created", `Assets created`);
+          trackActivity("asset", "create", {
+            entityName: assetData.itemName,
+          }).catch(() => {});
+        }
+        const data = await listAssets({ force: true });
+        setAssets(data as any);
+      } else {
+        // Demo mode
+        const propertyCode = sanitizeCode(assetData.property);
+        const seqPrefix = `${typePrefix(assetData.itemType)}0-0-00-`;
+        const quantity = Math.max(1, Number(assetData.quantity) || 1);
+        const baseSeq = nextSequence(assets, seqPrefix);
+        const ids = Array.from(
+          { length: quantity },
+          (_, i) => `${seqPrefix}${String(baseSeq + i).padStart(3, "0")}`,
+        );
+        setAssets((prev) => [
+          ...prev,
+          ...ids.map((id) => ({
+            id,
+            name: assetData.itemName,
+            type: assetData.itemType,
+            property: propertyCode,
+            department: assetData.department || null,
+            quantity: 1,
+            purchaseDate: assetData.purchaseDate || null,
+            expiryDate: assetData.expiryDate || null,
+            poNumber: assetData.poNumber || null,
+            condition: assetData.condition || null,
+            location: assetData.location || null,
+            description: assetData.description || null,
+            serialNumber: assetData.serialNumber || null,
+            status: "active",
+            amcEnabled,
+            amcStartDate,
+            amcEndDate,
+          })),
+        ]);
+        await logActivity(
+          "asset_created",
+          `Asset ${assetData.itemName} created (demo)`,
+          "Demo",
+        );
+      }
+      setShowAddForm(false);
+      setSelectedAsset(null);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("edit");
+          next.delete("new");
+          return next;
+        },
+        { replace: true },
+      );
+      return true;
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save asset");
+      return false;
+    }
+  };
+
+  const initialFormData = useMemo(
+    () =>
+      selectedAsset
+        ? {
+            itemName: selectedAsset.name ?? "",
+            itemType: selectedAsset.type ?? "",
+            property: selectedAsset.property_id ?? selectedAsset.property ?? "",
+            department: selectedAsset.department ?? "",
+            quantity: selectedAsset.quantity ?? 1,
+            purchaseDate: selectedAsset.purchaseDate
+              ? new Date(selectedAsset.purchaseDate)
+              : undefined,
+            expiryDate: selectedAsset.expiryDate
+              ? new Date(selectedAsset.expiryDate)
+              : undefined,
+            poNumber: selectedAsset.poNumber ?? "",
+            condition: selectedAsset.condition ?? "",
+            location: selectedAsset.location ?? "",
+            description: selectedAsset.description ?? "",
+            serialNumber: selectedAsset.serialNumber ?? "",
+            amcEnabled: Boolean(selectedAsset.amcEnabled),
+            amcStartDate: selectedAsset.amcStartDate
+              ? new Date(selectedAsset.amcStartDate)
+              : undefined,
+            amcEndDate: selectedAsset.amcEndDate
+              ? new Date(selectedAsset.amcEndDate)
+              : undefined,
+          }
+        : undefined,
+    [selectedAsset],
+  );
+
+  if (loadingUI && !isDemoMode() && assets.length === 0) {
+    return <PageSkeleton />;
+  }
+
+  const handleEditAsset = (asset: any) => {
+    const pid = getAssetPropertyId(asset);
+    const canApproverEdit = approverPropIds.has(pid);
+    if (!(role === "admin" || canApproverEdit)) return;
+    setSelectedAsset(asset);
+    setShowAddForm(true);
+  };
+
+  const handleDeleteAsset = async (assetId: string) => {
+    if (role !== "admin") return; // only admin can delete
+    const ok = window.confirm(
+      `Are you sure you want to delete asset ${assetId}? This action cannot be undone.`,
+    );
+    if (!ok) return;
+    try {
+      if (!isDemoMode()) {
+        await deleteAsset(assetId);
+        const data = await listAssets({ force: true });
+        setAssets(data as any);
+        toast.success(`Asset ${assetId} deleted`);
+        await logActivity("asset_deleted", `Asset ${assetId} deleted`);
+        trackActivity("asset", "delete", { entityId: assetId }).catch(() => {});
+      } else {
+        setAssets((prev) => prev.filter((a) => a.id !== assetId));
+        toast.info("Demo mode; deleted locally only");
+        await logActivity(
+          "asset_deleted",
+          `Asset ${assetId} deleted (demo)`,
+          "Demo",
+        );
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete asset");
+    }
+  };
+
+  const handleDeleteGroup = async (assetsToDelete: any[]) => {
+    if (role !== "admin") return;
+    const count = assetsToDelete.length;
+    const ok = window.confirm(
+      `Are you sure you want to delete ${count} assets? This action cannot be undone.`,
+    );
+    if (!ok) return;
+
+    try {
+      if (!isDemoMode()) {
+        await Promise.all(assetsToDelete.map((a) => deleteAsset(a.id)));
+        const data = await listAssets({ force: true });
+        setAssets(data as any);
+        toast.success(`${count} assets deleted`);
+        await logActivity("asset_deleted", `${count} assets deleted`);
+        trackActivity("asset", "delete", {
+          entityName: `${count} assets`,
+        }).catch(() => {});
+      } else {
+        const ids = new Set(assetsToDelete.map((a) => a.id));
+        setAssets((prev) => prev.filter((a) => !ids.has(a.id)));
+        toast.info("Demo mode; deleted locally only");
+        await logActivity(
+          "asset_deleted",
+          `${count} assets deleted (demo)`,
+          "Demo",
+        );
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete assets");
+    }
+  };
+
+  const handleGenerateQR = (asset: any) => {
+    // Always generate a QR for the selected asset without splitting its quantity into multiple asset records
+    const qty = Number(asset.quantity) || 1;
+    if (qty > 1) {
+      toast.info(`Generating a single QR for this item (quantity: ${qty}).`);
+    }
+    setSelectedAsset(asset);
+    setShowQRGenerator(true);
+  };
+
+  // Resolve property id for an asset (supports demo where only name is present)
+  const getAssetPropertyId = (a: any): string => {
+    const pid = a?.property_id ? String(a.property_id) : "";
+    if (pid) return pid;
+    const name = String(a?.property || "");
+    const by = propsByName[name];
+    return by?.id ? String(by.id) : name;
+  };
+  // Utility to parse prefix + numeric suffix from an asset id (e.g., AST-001 -> prefix 'AST-', num 1, width 3)
+  const parseId = (
+    id: string,
+  ): { prefix: string; num: number; width: number } | null => {
+    const m = String(id).match(/^(.*?)(\d+)$/);
+    if (!m) return null;
+    return { prefix: m[1], num: Number(m[2]), width: m[2].length };
+  };
+
+  const pad = (n: number, width: number) => String(n).padStart(width, "0");
+
+  // Split an asset with quantity>1 into N separate asset rows with distinct IDs (DB or local)
+  const splitAssetIntoUnits = async (asset: any): Promise<any[]> => {
+    const qty = Number(asset.quantity) || 1;
+    if (qty <= 1) return [asset];
+    const currentIds = new Set<string>(assets.map((a) => String(a.id)));
+    const parsed = parseId(asset.id);
+    const created: any[] = [];
+    const baseList: { id: string; copyOf: any }[] = [];
+    // Keep existing id as unit #1
+    baseList.push({ id: asset.id, copyOf: asset });
+    // Determine additional ids
+    if (parsed) {
+      let n = parsed.num;
+      for (let i = 1; i < qty; i++) {
+        // find next available numeric id
+        do {
+          n += 1;
+        } while (currentIds.has(parsed.prefix + pad(n, parsed.width)));
+        baseList.push({
+          id: parsed.prefix + pad(n, parsed.width),
+          copyOf: asset,
+        });
+        currentIds.add(parsed.prefix + pad(n, parsed.width));
+      }
+    } else {
+      // Fallback to item type based prefix
+      const seqPrefix = `${typePrefix(asset.type || "")}0-0-00-`;
+      let start = nextSequence(assets, seqPrefix);
+      for (let i = 1; i < qty; i++) {
+        const id = `${seqPrefix}${String(start++).padStart(3, "0")}`;
+        if (currentIds.has(id)) {
+          i--;
+          continue;
+        }
+        baseList.push({ id, copyOf: asset });
+        currentIds.add(id);
+      }
+    }
+
+    if (!isDemoMode()) {
+      // Update existing asset to quantity=1
+      try {
+        await updateAsset(asset.id, { quantity: 1 } as any);
+      } catch {}
+      // Create remaining units (skip the first which is existing id)
+      for (let i = 1; i < baseList.length; i++) {
+        const copy = baseList[i].copyOf;
+        await createAsset({
+          name: copy.name,
+          type: copy.type,
+          property_id: copy.property_id ?? (copy.property as any),
+          quantity: 1,
+          purchaseDate: copy.purchaseDate ?? null,
+          expiryDate: copy.expiryDate ?? null,
+          poNumber: copy.poNumber ?? null,
+          condition: copy.condition ?? null,
+          status: copy.status ? copy.status.toLowerCase() : "active",
+          location: copy.location ?? null,
+          description: copy.description ?? null,
+          serialNumber: copy.serialNumber ?? null,
+          amcEnabled: Boolean(copy.amcEnabled),
+          amcStartDate: copy.amcStartDate ?? null,
+          amcEndDate: copy.amcEndDate ?? null,
+        } as any);
+      }
+      // Refresh list from DB and return only the unit assets we created/updated
+      const unitIds = baseList.map((b) => b.id);
+      const fresh = await listAssets().catch(() => [] as any[]);
+      setAssets(fresh as any[]);
+      try {
+        setSortBy("id-asc");
+      } catch {}
+      return (fresh as any[]).filter(
+        (a: any) =>
+          unitIds.includes(String(a.asset_code)) ||
+          unitIds.includes(String(a.id)),
+      );
+    } else {
+      // Local only: mutate state
+      setAssets((prev) => {
+        const updated = prev.map((a) =>
+          a.id === asset.id ? { ...a, quantity: 1 } : a,
+        );
+        for (let i = 1; i < baseList.length; i++) {
+          const id = baseList[i].id;
+          updated.push({ ...asset, id, quantity: 1 });
+        }
+        return updated;
+      });
+      try {
+        setSortBy("id-asc");
+      } catch {}
+      return baseList.map((b) => ({ ...asset, id: b.id, quantity: 1 }));
+    }
+  };
+
+  const getStatusBadge = (status: string) => <StatusChip status={status} />;
+
+  // Natural ID comparator to keep IDs like AST-001, AST-002 adjacent
+  const compareById = (a: any, b: any) => {
+    const pa = parseId(String(a.id));
+    const pb = parseId(String(b.id));
+    if (pa && pb) {
+      const prefCmp = pa.prefix.localeCompare(pb.prefix);
+      if (prefCmp !== 0) return prefCmp;
+      return pa.num - pb.num;
+    }
+    return String(a.id).localeCompare(String(b.id));
+  };
+
+  return (
+    <div className="space-y-8 pb-10">
+      <LicenseExceedModal
+        open={licenseModal.open}
+        info={licenseModal.info}
+        onClose={() => setLicenseModal({ open: false, info: null })}
+        onCreateTicket={(info) => {
+          try {
+            const draft = {
+              type: "license-upgrade",
+              createdAt: new Date().toISOString(),
+              reason: info.reason,
+              propertyId: info.propertyId || null,
+              globalUsage: info.globalUsage ?? null,
+              globalLimit: info.globalLimit ?? null,
+              propertyUsage: info.propertyUsage ?? null,
+              propertyLimit: info.propertyLimit ?? null,
+              message: info.message,
+            };
+            localStorage.setItem(
+              "ticket_draft_license_upgrade",
+              JSON.stringify(draft),
+            );
+            toast.info("Draft upgrade ticket created");
+            setLicenseModal({ open: false, info: null });
+            navigate("/tickets?draft=license-upgrade");
+          } catch (e: any) {
+            toast.error(e?.message || "Failed to create draft ticket");
+          }
+        }}
+      />
+
+      <Dialog open={showQRGenerator} onOpenChange={setShowQRGenerator}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Generate QR Code</DialogTitle>
+            <DialogDescription>
+              Generate a QR code for {selectedAsset?.name} ({selectedAsset?.id})
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAsset && (
+            <QRCodeGenerator
+              asset={selectedAsset}
+              onGenerated={(qrCodeUrl) => {
+                toast.success("QR Code generated");
+                // Persist QR code record and log activity
+                (async () => {
+                  try {
+                    const id = `QR-${Math.floor(Math.random() * 900 + 100)}`;
+                    const payload: SbQRCode = {
+                      id,
+                      assetId: selectedAsset.id,
+                      property: selectedAsset.property,
+                      generatedDate: new Date().toISOString().slice(0, 10),
+                      status: "Generated",
+                      printed: false,
+                      imageUrl: qrCodeUrl,
+                    } as any;
+                    await createQRCode(payload);
+                    await logActivity(
+                      "qr_generated",
+                      `QR generated for ${selectedAsset.name} (${selectedAsset.id})`,
+                    );
+                  } catch {
+                    // best effort
+                  }
+                })();
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* Header with breadcrumbs */}
+      <Breadcrumbs
+        items={[{ label: "Dashboard", to: "/" }, { label: "Assets" }]}
+      />
+
+      {/* Hero Section */}
+      <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
+        <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-3xl space-y-4">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              Asset Management
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              Track and manage all your organization's assets
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <ColumnChooser
+              columns={columnDefs}
+              visible={prefs.visibleCols}
+              onChange={prefs.setVisibleCols}
+            />
+            <Button
+              size="sm"
+              onClick={() => setShowAddForm(true)}
+              className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground transition-all"
+              disabled={
+                role !== "admin" && role !== "manager" && role !== "user"
+              }
+            >
+              <Plus className="h-4 w-4" />
+              Add Asset
+            </Button>
+          </div>
+        </div>
+        {/* Decorative background element */}
+        <div className="absolute right-0 top-0 -z-10 h-full w-1/3 bg-gradient-to-l from-primary/5 to-transparent" />
+      </div>
+
+      <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-4">
+        {assetHighlights.map((item) => (
+          <MetricCard
+            key={item.key}
+            icon={item.icon}
+            title={item.title}
+            value={item.value}
+            caption={item.caption}
+            iconClassName={item.iconClassName}
+            valueClassName={item.valueClassName}
+          />
+        ))}
+      </div>
+
+      {/* Filters and Search */}
+      <Card className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+        <CardHeader className="space-y-1 border-b border-border/60 bg-muted/30 px-6 py-5">
+          <div className="flex items-center gap-2">
+            <div>
+              <CardTitle className="text-lg font-semibold">
+                Asset Inventory
+              </CardTitle>
+              <CardDescription>
+                Search, segment, and sort your asset catalogue
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search assets by name or ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 bg-background"
+              />
+            </div>
+
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="w-full md:w-48 bg-background">
+                <SelectValue placeholder="Filter by type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {typeOptions.filter(Boolean).map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filterProperty} onValueChange={setFilterProperty}>
+              <SelectTrigger className="w-full md:w-48 bg-background">
+                <SelectValue placeholder="Filter by property" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Properties</SelectItem>
+                {visiblePropertyOptions.filter(Boolean).map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Department multi-select filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full md:w-56 justify-between bg-background"
+                >
+                  <span>
+                    Departments
+                    {deptAll
+                      ? " (All)"
+                      : deptFilter.length
+                        ? ` (${deptFilter.length})`
+                        : ""}
+                  </span>
+                  <ArrowUpDown className="ml-2 h-4 w-4 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56 max-h-64 overflow-auto">
+                {/* All toggle */}
+                <DropdownMenuCheckboxItem
+                  checked={deptAll}
+                  onCheckedChange={(checked) => {
+                    const on = !!checked;
+                    setDeptAll(on);
+                    if (on) {
+                      // Selecting "All" selects every visible department
+                      setDeptFilter(visibleDeptOptions);
+                    } else {
+                      // Unselecting "All" should clear every selection
+                      setDeptFilter([]);
+                    }
+                  }}
+                >
+                  All Departments
+                </DropdownMenuCheckboxItem>
+                {/* Build options, restricting to allowedDepts for non-admins if present */}
+                {visibleDeptOptions.length === 0 ? (
+                  <div className="px-2 py-1 text-xs text-muted-foreground">
+                    No departments
+                  </div>
+                ) : (
+                  visibleDeptOptions.map((d) => (
+                    <DropdownMenuCheckboxItem
+                      key={d}
+                      checked={deptAll || deptFilter.includes(d)}
+                      onCheckedChange={(checked) => {
+                        setDeptAll(false);
+                        setDeptFilter((prev) => {
+                          const set = new Set(prev);
+                          if (checked) set.add(d);
+                          else set.delete(d);
+                          // Do not auto-toggle "All" when all are selected; keep explicit user control
+                          return Array.from(set);
+                        });
+                      }}
+                    >
+                      {d}
+                    </DropdownMenuCheckboxItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-full md:w-48">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest</SelectItem>
+                <SelectItem value="id-asc">ID ↑</SelectItem>
+                <SelectItem value="id-desc">ID ↓</SelectItem>
+                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="qty">Quantity</SelectItem>
+                <SelectItem value="department">Department</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Quick toggle for sorting by Asset ID */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setSortBy((s) => (s === "id-asc" ? "id-desc" : "id-asc"))
+              }
+              className="shrink-0"
+              aria-label="Toggle sort by Asset ID"
+              title="Sort by Asset ID"
+            >
+              <span className="mr-2">Asset ID</span>
+              {sortBy === "id-asc" ? (
+                <ArrowUp className="h-4 w-4" />
+              ) : sortBy === "id-desc" ? (
+                <ArrowDown className="h-4 w-4" />
+              ) : (
+                <ArrowUpDown className="h-4 w-4" />
+              )}
+            </Button>
+
+            <DateRangePicker
+              className="w-full sm:w-auto min-w-[16rem] shrink-0"
+              value={range}
+              onChange={setRange}
+            />
+            {/* Saved Views */}
+            <Select value={savedView} onValueChange={setSavedView}>
+              <SelectTrigger className="w-full md:w-48">
+                <SelectValue placeholder="Saved view" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All assets</SelectItem>
+                <SelectItem value="needing-audit">Needing audit</SelectItem>
+                <SelectItem value="expiring-30">Expiring in 30 days</SelectItem>
+                <SelectItem value="expiring-90">Expiring in 90 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Bulk actions bar (visible when any selected) */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 shadow-sm backdrop-blur-sm">
+          <div className="text-sm font-medium text-primary">
+            {selectedIds.size} selected
+          </div>
+          <div className="flex gap-2 flex-wrap items-center">
+            {/* Bulk assign property */}
+            {(role === "admin" || role === "manager") && (
+              <div className="flex items-center gap-2">
+                <Select value={bulkProperty} onValueChange={setBulkProperty}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Assign property" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bulkPropertyOptions.filter(Boolean).map((pid) => (
+                      <SelectItem key={pid} value={pid}>
+                        {propsById[pid]?.name || pid}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!bulkProperty}
+                  onClick={async () => {
+                    const ids = Array.from(selectedIds);
+                    if (!ids.length || !bulkProperty) return;
+                    // Enforce access guard for managers on the Apply action as well
+                    if (
+                      role === "manager" &&
+                      !bulkPropertyOptions.includes(bulkProperty)
+                    ) {
+                      toast.error(
+                        "You do not have access to assign to this property",
+                      );
+                      return;
+                    }
+                    try {
+                      await Promise.all(
+                        ids.map(async (id) => {
+                          try {
+                            await updateAsset(id, {
+                              property: bulkProperty,
+                              property_id: bulkProperty,
+                            } as any);
+                          } catch {
+                            setAssets((prev) =>
+                              prev.map((a) =>
+                                a.id === id
+                                  ? {
+                                      ...a,
+                                      property: bulkProperty,
+                                      property_id: bulkProperty,
+                                    }
+                                  : a,
+                              ),
+                            );
+                          }
+                        }),
+                      );
+                      toast.success("Property assigned");
+                      await trackActivity("asset", "update", {
+                        entityName: `Bulk property assign`,
+                        entityId: ids.length,
+                        changes: [`assigned to ${bulkProperty}`],
+                      });
+                    } catch {
+                      toast.error("Failed to assign property");
+                    }
+                  }}
+                >
+                  Apply
+                </Button>
+              </div>
+            )}
+            {/* Bulk change condition */}
+            {role !== "user" && (
+              <div className="flex items-center gap-2">
+                <Select value={bulkCondition} onValueChange={setBulkCondition}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue placeholder="Change condition" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["excellent", "good", "fair", "poor", "damaged"].map(
+                      (c) => (
+                        <SelectItem key={c} value={c}>
+                          {c.charAt(0).toUpperCase() + c.slice(1)}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!bulkCondition}
+                  onClick={async () => {
+                    const ids = Array.from(selectedIds);
+                    if (!ids.length || !bulkCondition) return;
+                    try {
+                      await Promise.all(
+                        ids.map(async (id) => {
+                          try {
+                            await updateAsset(id, {
+                              condition: bulkCondition,
+                            } as any);
+                          } catch {
+                            setAssets((prev) =>
+                              prev.map((a) =>
+                                a.id === id
+                                  ? { ...a, condition: bulkCondition }
+                                  : a,
+                              ),
+                            );
+                          }
+                        }),
+                      );
+                      toast.success("Condition updated");
+                      await trackActivity("asset", "update", {
+                        entityName: `Bulk condition update`,
+                        entityId: ids.length,
+                        changes: [`condition set to ${bulkCondition}`],
+                      });
+                    } catch {
+                      toast.error("Failed to update condition");
+                    }
+                  }}
+                >
+                  Apply
+                </Button>
+              </div>
+            )}
+            {/* Export selected */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const ids = new Set(selectedIds);
+                const rows = sortedAssets
+                  .filter((a) => ids.has(a.id))
+                  .map((a) => {
+                    const base = {
+                      id: a.id,
+                      name: a.name,
+                      type: a.type,
+                      property: propsById[a.property]?.name || a.property,
+                      department: a.department || "",
+                      quantity: a.quantity,
+                      serialNumber: a.serialNumber || "",
+                      condition: a.condition || "",
+                      status: a.status,
+                      purchaseDate: a.purchaseDate || "",
+                      expiryDate: a.expiryDate || "",
+                      location: a.location || "",
+                      description: (a.description || "")
+                        .toString()
+                        .replace(/\n/g, " "),
+                    } as Record<string, string | number>;
+                    if (role === "admin") {
+                      base["createdBy"] = (a.createdByName ||
+                        a.createdByEmail ||
+                        a.createdById ||
+                        "") as string;
+                    }
+                    return base;
+                  });
+                if (!rows.length) {
+                  toast.info("Nothing selected");
+                  return;
+                }
+                const cols = Object.keys(rows[0]);
+                const header = cols.join(",");
+                const lines = rows.map((r) =>
+                  cols
+                    .map((c) => {
+                      const v = (r[c as keyof typeof r] ?? "")
+                        .toString()
+                        .replace(/"/g, '""');
+                      return /[",\n]/.test(v) ? `"${v}"` : v;
+                    })
+                    .join(","),
+                );
+                const csv = [header, ...lines].join("\n");
+                const blob = new Blob([csv], {
+                  type: "text/csv;charset=utf-8;",
+                });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `assets_selection_${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }}
+            >
+              Export Selection
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExportOpen(true)}
+            >
+              Generate & Download QR Sheet
+            </Button>
+            {role === "admin" && selectedIds.size > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  const targets = sortedAssets.filter((a) =>
+                    selectedIds.has(a.id),
+                  );
+                  await handleDeleteGroup(targets);
+                  setSelectedIds(new Set());
+                }}
+              >
+                Delete Selected
+              </Button>
+            )}
+            {/* Removed top-level Request Edit button; action moved inline per item */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Assets Table */}
+      <Card className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+        <CardHeader className="flex flex-col gap-1 border-b border-border/60 bg-muted/30 px-6 py-5">
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2">
+              <div>
+                <CardTitle className="text-lg font-semibold">
+                  Asset Catalogue
+                </CardTitle>
+                <CardDescription>
+                  All assets that match the filters and scope above
+                </CardDescription>
+              </div>
+            </div>
+            <div className="bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 border border-slate-300 md:text-right dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300">
+              Showing {groupedRows.length.toLocaleString()} group
+              {groupedRows.length === 1 ? "" : "s"} •{" "}
+              {sortedAssets.length.toLocaleString()} item
+              {sortedAssets.length === 1 ? "" : "s"}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-0 pb-0">
+          <div className="overflow-x-auto">
+            <Table
+              dense={prefs.dense}
+              stickyHeader
+              stickyFirstCol
+              className="text-sm"
+            >
+              <TableHeader className="bg-transparent">
+                <TableRow className="border-b border-border/60 shadow-[inset_0_-1px_0_theme(colors.border/0.45)] hover:bg-transparent">
+                  {isVisible("select") && (
+                    <TableHead className="w-10 pl-6">
+                      <Checkbox
+                        aria-label="Select all"
+                        checked={
+                          selectedIds.size > 0 &&
+                          selectedIds.size === sortedAssets.length
+                        }
+                        onCheckedChange={(checked) => {
+                          if (checked)
+                            setSelectedIds(
+                              new Set(sortedAssets.map((a) => a.id)),
+                            );
+                          else setSelectedIds(new Set());
+                        }}
+                      />
+                    </TableHead>
+                  )}
+                  {isVisible("group") && (
+                    <TableHead className="w-[110px] whitespace-nowrap text-center">
+                      Group
+                    </TableHead>
+                  )}
+                  {isVisible("id") && (
+                    <TableHead className="whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSortBy((s) =>
+                            s === "id-asc" ? "id-desc" : "id-asc",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-sm border border-transparent px-1 py-0 text-slate-700 transition hover:border-slate-300 hover:bg-slate-200 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+                        aria-label="Sort by Asset ID"
+                        title="Sort by Asset ID"
+                      >
+                        Asset ID
+                        {sortBy === "id-asc" ? (
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        ) : sortBy === "id-desc" ? (
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </TableHead>
+                  )}
+                  {isVisible("name") && <TableHead>Name</TableHead>}
+                  {isVisible("type") && <TableHead>Type</TableHead>}
+                  {isVisible("property") && <TableHead>Property</TableHead>}
+                  {isVisible("department") && <TableHead>Department</TableHead>}
+                  {isVisible("qty") && (
+                    <TableHead className="text-center">Quantity</TableHead>
+                  )}
+                  {isVisible("location") && <TableHead>Location</TableHead>}
+                  {isVisible("purchaseDate") && (
+                    <TableHead>Purchase Date</TableHead>
+                  )}
+                  {isVisible("status") && <TableHead>Status</TableHead>}
+                  {isVisible("approval") && <TableHead>Approval</TableHead>}
+                  {isVisible("createdBy") && <TableHead>Created By</TableHead>}
+                  {isVisible("serial") && <TableHead>Serial</TableHead>}
+                  {isVisible("description") && (
+                    <TableHead>Description</TableHead>
+                  )}
+                  {isVisible("actions") && (
+                    <TableHead className="text-right">Actions</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedRows.map((group) => {
+                  const { rep, members, totalQty, key } = group;
+                  const allSelected = members.every((m) =>
+                    selectedIds.has(m.id),
+                  );
+                  const isExpanded = expandedGroups.has(key);
+                  const toggleExpanded = () => {
+                    setExpandedGroups((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    });
+                  };
+                  return (
+                    <Fragment key={key}>
+                      <TableRow
+                        key={key}
+                        className="cursor-pointer select-none border-b border-slate-300 bg-white shadow-[inset_0_-1px_0_rgba(148,163,184,0.18)] transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/80 dark:border-slate-700 dark:bg-slate-950 dark:shadow-[inset_0_-1px_0_rgba(51,65,85,0.55)] dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
+                        data-selected={allSelected ? "true" : undefined}
+                        onDoubleClick={() => navigate(`/assets/${rep.id}`)}
+                      >
+                        {isVisible("select") && (
+                          <TableCell className="w-10">
+                            <Checkbox
+                              aria-label={`Select group ${key}`}
+                              checked={allSelected}
+                              onCheckedChange={(checked) => {
+                                const next = new Set(selectedIds);
+                                if (checked) {
+                                  for (const m of members) next.add(m.id);
+                                } else {
+                                  for (const m of members) next.delete(m.id);
+                                }
+                                setSelectedIds(next);
+                              }}
+                            />
+                          </TableCell>
+                        )}
+                        {isVisible("group") && (
+                          <TableCell className="text-center">
+                            {members.length > 1 ? (
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={toggleExpanded}
+                                  aria-label={
+                                    isExpanded
+                                      ? "Collapse group"
+                                      : "Expand group"
+                                  }
+                                  aria-expanded={isExpanded}
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-slate-300 bg-slate-50 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </button>
+                                <span className="inline-flex items-center rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                                  {isExpanded
+                                    ? "Group"
+                                    : `+${members.length - 1}`}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                Single
+                              </span>
+                            )}
+                          </TableCell>
+                        )}
+                        {isVisible("id") && (
+                          <TableCell className="font-medium">
+                            <span className="font-mono text-[12px] font-semibold tracking-normal text-foreground">
+                              {members[0]?.id}
+                            </span>
+                          </TableCell>
+                        )}
+                        {isVisible("name") && (
+                          <TableCell>
+                            <span className="font-semibold text-foreground leading-5">
+                              {rep.name || rep.id}
+                            </span>
+                          </TableCell>
+                        )}
+                        {isVisible("type") && (
+                          <TableCell>
+                            {rep.type ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground/80">
+                                <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="truncate whitespace-nowrap">
+                                  {rep.type}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                -
+                              </span>
+                            )}
+                          </TableCell>
+                        )}
+                        {isVisible("property") && (
+                          <TableCell>
+                            <div className="flex flex-col gap-0.5 text-sm">
+                              <span className="font-medium text-foreground/90">
+                                {propertyDisplayName(String(rep.property))}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {displayPropertyCode(String(rep.property))}
+                              </span>
+                            </div>
+                          </TableCell>
+                        )}
+                        {isVisible("department") && (
+                          <TableCell>
+                            {rep.department ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground/80">
+                                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span className="truncate whitespace-nowrap">
+                                  {rep.department}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                -
+                              </span>
+                            )}
+                          </TableCell>
+                        )}
+                        {isVisible("qty") && (
+                          <TableCell className="text-center">
+                            {!isExpanded ? (
+                              <span className="inline-flex min-w-[48px] items-center justify-center gap-1 border border-slate-300 bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                <Package className="h-3 w-3 text-slate-500 dark:text-slate-300" />
+                                {totalQty}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                {members.length} item
+                                {members.length === 1 ? "" : "s"}
+                              </span>
+                            )}
+                          </TableCell>
+                        )}
+                        {isVisible("location") && (
+                          <TableCell>{rep.location || "-"}</TableCell>
+                        )}
+                        {isVisible("purchaseDate") && (
+                          <TableCell>{rep.purchaseDate}</TableCell>
+                        )}
+                        {isVisible("status") && (
+                          <TableCell>{getStatusBadge(rep.status)}</TableCell>
+                        )}
+                        {isVisible("approval") && (
+                          <TableCell>
+                            {/* Show approval indicator if ANY member has a pending approval */}
+                            {(() => {
+                              const pending = members.find(
+                                (m) => approvalsByAsset[m.id],
+                              );
+                              if (pending) {
+                                const st = approvalsByAsset[pending.id]?.status;
+                                return (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="inline-flex items-center gap-1 text-primary">
+                                          <ShieldCheck className="h-4 w-4" />
+                                          <span className="text-xs">
+                                            {st === "pending_manager"
+                                              ? "Mgr"
+                                              : "Admin"}
+                                          </span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Pending{" "}
+                                        {st === "pending_manager"
+                                          ? "Manager"
+                                          : "Admin"}{" "}
+                                        approval
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                );
+                              }
+                              return (
+                                <span className="text-xs text-muted-foreground">
+                                  -
+                                </span>
+                              );
+                            })()}
+                          </TableCell>
+                        )}
+                        {isVisible("createdBy") && (
+                          <TableCell>
+                            {rep.createdByName ||
+                              rep.createdByEmail ||
+                              rep.createdById ||
+                              "-"}
+                          </TableCell>
+                        )}
+                        {isVisible("serial") && (
+                          <TableCell>{rep.serialNumber || "-"}</TableCell>
+                        )}
+                        {isVisible("description") && (
+                          <TableCell>{rep.description || "-"}</TableCell>
+                        )}
+                        {isVisible("actions") && (
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              {/* Allow inline edit/delete only when the group is a single item to avoid ambiguity */}
+                              {(members.length === 1 || isExpanded) &&
+                                (role === "admin" ||
+                                  approverPropIds.has(
+                                    String(
+                                      rep.property_id || rep.property || "",
+                                    ),
+                                  )) && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleEditAsset(rep)}
+                                    className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              {(members.length === 1 || isExpanded) &&
+                                role !== "admin" &&
+                                !approverPropIds.has(
+                                  String(rep.property_id || rep.property || ""),
+                                ) && (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => {
+                                      const target =
+                                        members.length === 1 ? members[0] : rep;
+                                      setRequestEditAsset(target as any);
+                                      setRequestEditOpen(true);
+                                    }}
+                                    className="h-6 w-6 rounded-sm border-slate-300 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    aria-label="Request edit with approval"
+                                    title="Request edit with approval"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              {/* Keep quick QR on the representative item; for bulk/grouped use the Export QR Sheet */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleGenerateQR(rep)}
+                                className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                <QrCode className="h-4 w-4" />
+                              </Button>
+                              {role === "admin" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    if (members.length > 1) {
+                                      handleDeleteGroup(members);
+                                    } else {
+                                      handleDeleteAsset(rep.id);
+                                    }
+                                  }}
+                                  className="h-6 w-6 rounded-sm border border-slate-300 bg-slate-50 p-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-slate-800"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                      {isExpanded && members.length > 0 && (
+                        <>
+                          {members
+                            .slice(1) // exclude representative (already shown in group row)
+                            .sort((a, b) => {
+                              const parse = (
+                                id: string,
+                              ): { prefix: string; num: number } | null => {
+                                const m = String(id).match(/^(.*?)(\d+)$/);
+                                if (!m) return null;
+                                return { prefix: m[1], num: Number(m[2]) };
+                              };
+                              const pa = parse(String(a.id));
+                              const pb = parse(String(b.id));
+                              if (pa && pb) {
+                                const prefCmp = pa.prefix.localeCompare(
+                                  pb.prefix,
+                                );
+                                if (prefCmp !== 0) return prefCmp;
+                                return pa.num - pb.num;
+                              }
+                              return String(a.id).localeCompare(String(b.id));
+                            })
+                            .reverse() // show newest / highest id first
+                            .map((asset) => (
+                              <TableRow
+                                key={`${key}::${asset.id}`}
+                                className="border-b border-slate-200 bg-white transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/70 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
+                                data-selected={
+                                  selectedIds.has(asset.id) ? "true" : undefined
+                                }
+                              >
+                                {isVisible("select") && (
+                                  <TableCell className="w-10">
+                                    <Checkbox
+                                      aria-label={`Select ${asset.id}`}
+                                      checked={selectedIds.has(asset.id)}
+                                      onCheckedChange={(checked) => {
+                                        const next = new Set(selectedIds);
+                                        if (checked) next.add(asset.id);
+                                        else next.delete(asset.id);
+                                        setSelectedIds(next);
+                                      }}
+                                    />
+                                  </TableCell>
+                                )}
+                                {isVisible("group") && (
+                                  <TableCell className="text-center">
+                                    <span className="inline-flex items-center rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                                      Child
+                                    </span>
+                                  </TableCell>
+                                )}
+                                {isVisible("id") && (
+                                  <TableCell className="font-medium">
+                                    <div className="flex items-start gap-2">
+                                      <span className="mt-[3px] h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-600" />
+                                      <span className="font-mono text-[12px] font-medium tracking-normal text-slate-700 dark:text-slate-200">
+                                        {asset.id}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                )}
+                                {isVisible("name") && (
+                                  <TableCell>
+                                    <span className="font-semibold text-foreground leading-5">
+                                      {asset.name || asset.id}
+                                    </span>
+                                  </TableCell>
+                                )}
+                                {isVisible("type") && (
+                                  <TableCell>
+                                    {asset.type ? (
+                                      <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground/80">
+                                        <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span className="truncate whitespace-nowrap">
+                                          {asset.type}
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">
+                                        -
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                )}
+                                {isVisible("property") && (
+                                  <TableCell>
+                                    <div className="flex flex-col gap-0.5 text-sm">
+                                      <span className="font-medium text-foreground/90">
+                                        {propertyDisplayName(
+                                          String(asset.property),
+                                        )}
+                                      </span>
+                                      <span className="text-[11px] text-muted-foreground">
+                                        {displayPropertyCode(
+                                          String(asset.property),
+                                        )}
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                )}
+                                {isVisible("department") && (
+                                  <TableCell>
+                                    {asset.department ? (
+                                      <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground/80">
+                                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                                        <span className="truncate whitespace-nowrap">
+                                          {asset.department}
+                                        </span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">
+                                        -
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                )}
+                                {isVisible("qty") && (
+                                  <TableCell className="text-center">
+                                    <span className="inline-flex min-w-[48px] items-center justify-center gap-1 border border-slate-300 bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                      <Package className="h-3 w-3 text-slate-500 dark:text-slate-300" />
+                                      {asset.quantity}
+                                    </span>
+                                  </TableCell>
+                                )}
+                                {isVisible("location") && (
+                                  <TableCell>{asset.location || "-"}</TableCell>
+                                )}
+                                {isVisible("purchaseDate") && (
+                                  <TableCell>{asset.purchaseDate}</TableCell>
+                                )}
+                                {isVisible("status") && (
+                                  <TableCell>
+                                    {getStatusBadge(asset.status)}
+                                  </TableCell>
+                                )}
+                                {isVisible("approval") && (
+                                  <TableCell>
+                                    {(() => {
+                                      const st =
+                                        approvalsByAsset[asset.id]?.status;
+                                      if (st) {
+                                        return (
+                                          <TooltipProvider>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <div className="inline-flex items-center gap-1 text-primary">
+                                                  <ShieldCheck className="h-4 w-4" />
+                                                  <span className="text-xs">
+                                                    {st === "pending_manager"
+                                                      ? "Mgr"
+                                                      : "Admin"}
+                                                  </span>
+                                                </div>
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                Pending{" "}
+                                                {st === "pending_manager"
+                                                  ? "Manager"
+                                                  : "Admin"}{" "}
+                                                approval
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        );
+                                      }
+                                      return (
+                                        <span className="text-xs text-muted-foreground">
+                                          -
+                                        </span>
+                                      );
+                                    })()}
+                                  </TableCell>
+                                )}
+                                {isVisible("createdBy") && (
+                                  <TableCell>
+                                    {asset.createdByName ||
+                                      asset.createdByEmail ||
+                                      asset.createdById ||
+                                      "-"}
+                                  </TableCell>
+                                )}
+                                {isVisible("serial") && (
+                                  <TableCell>
+                                    {asset.serialNumber || "-"}
+                                  </TableCell>
+                                )}
+                                {isVisible("description") && (
+                                  <TableCell>
+                                    {asset.description || "-"}
+                                  </TableCell>
+                                )}
+                                {isVisible("actions") && (
+                                  <TableCell className="text-right">
+                                    <div className="flex justify-end gap-1">
+                                      {(role === "admin" ||
+                                        approverPropIds.has(
+                                          String(
+                                            asset.property_id ||
+                                              asset.property ||
+                                              "",
+                                          ),
+                                        )) && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => handleEditAsset(asset)}
+                                          className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                      {role !== "admin" &&
+                                        !approverPropIds.has(
+                                          String(
+                                            asset.property_id ||
+                                              asset.property ||
+                                              "",
+                                          ),
+                                        ) && (
+                                          <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            onClick={() => {
+                                              setRequestEditAsset(asset as any);
+                                              setRequestEditOpen(true);
+                                            }}
+                                            className="h-6 w-6 rounded-sm border-slate-300 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                            aria-label="Request edit with approval"
+                                            title="Request edit with approval"
+                                          >
+                                            <Edit className="h-4 w-4" />
+                                          </Button>
+                                        )}
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleGenerateQR(asset)}
+                                        className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                      >
+                                        <QrCode className="h-4 w-4" />
+                                      </Button>
+                                      {role === "admin" && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            handleDeleteAsset(asset.id)
+                                          }
+                                          className="h-6 w-6 rounded-sm border border-slate-300 bg-slate-50 p-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-slate-800"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                )}
+                                {isVisible("status") && (
+                                  <TableCell>
+                                    {getStatusBadge(asset.status)}
+                                  </TableCell>
+                                )}
+                                {isVisible("approval") && (
+                                  <TableCell>
+                                    {approvalsByAsset[asset.id] ? (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div className="inline-flex items-center gap-1 text-primary">
+                                              <ShieldCheck className="h-4 w-4" />
+                                              <span className="text-sm">
+                                                {approvalsByAsset[asset.id]
+                                                  ?.status === "pending_manager"
+                                                  ? "Mgr"
+                                                  : "Admin"}
+                                              </span>
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            Pending{" "}
+                                            {approvalsByAsset[asset.id]
+                                              ?.status === "pending_manager"
+                                              ? "Manager"
+                                              : "Admin"}{" "}
+                                            approval
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    ) : (
+                                      <span className="text-sm text-muted-foreground">
+                                        -
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                )}
+                                {isVisible("createdBy") && (
+                                  <TableCell className="text-sm">
+                                    {asset.createdByName ||
+                                      asset.createdByEmail ||
+                                      asset.createdById ||
+                                      "-"}
+                                  </TableCell>
+                                )}
+                                {isVisible("serial") && (
+                                  <TableCell className="text-sm">
+                                    {asset.serialNumber || "-"}
+                                  </TableCell>
+                                )}
+                                {isVisible("description") && (
+                                  <TableCell className="text-sm">
+                                    {asset.description || "-"}
+                                  </TableCell>
+                                )}
+                                {isVisible("actions") && (
+                                  <TableCell className="text-right">
+                                    <div className="flex justify-end gap-1">
+                                      {(role === "admin" ||
+                                        approverPropIds.has(
+                                          String(
+                                            asset.property_id ||
+                                              asset.property ||
+                                              "",
+                                          ),
+                                        )) && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => handleEditAsset(asset)}
+                                          className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                      {role !== "admin" &&
+                                        !approverPropIds.has(
+                                          String(
+                                            asset.property_id ||
+                                              asset.property ||
+                                              "",
+                                          ),
+                                        ) && (
+                                          <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            onClick={() => {
+                                              setRequestEditAsset(asset as any);
+                                              setRequestEditOpen(true);
+                                            }}
+                                            className="h-6 w-6 rounded-sm border-slate-300 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                            aria-label="Request edit with approval"
+                                            title="Request edit with approval"
+                                          >
+                                            <Edit className="h-4 w-4" />
+                                          </Button>
+                                        )}
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleGenerateQR(asset)}
+                                        className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                      >
+                                        <QrCode className="h-4 w-4" />
+                                      </Button>
+                                      {role === "admin" && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() =>
+                                            handleDeleteAsset(asset.id)
+                                          }
+                                          className="h-6 w-6 rounded-sm border border-slate-300 bg-slate-50 p-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-slate-800"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                )}
+                              </TableRow>
+                            ))}
+                        </>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            <TablePagination
+              currentPage={currentPage}
+              totalItems={groupedRows.length}
+              rowsPerPage={rowsPerPage}
+              onPageChange={setCurrentPage}
+              onRowsPerPageChange={(rows) => {
+                setRowsPerPage(rows);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Export modal */}
+      {exportOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={() => setExportOpen(false)}
+        >
+          <div
+            className="bg-background border rounded-lg w-full max-w-md p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-2">Export QR Sheet</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium">Format</label>
+                <div className="mt-1 flex gap-3">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="fmt"
+                      checked={exportFmt === "png"}
+                      onChange={() => setExportFmt("png")}
+                    />{" "}
+                    PNG
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="fmt"
+                      checked={exportFmt === "pdf"}
+                      onChange={() => setExportFmt("pdf")}
+                    />{" "}
+                    PDF
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="fmt"
+                      checked={exportFmt === "label"}
+                      onChange={() => setExportFmt("label")}
+                    />{" "}
+                    Label (roll printer)
+                  </label>
+                </div>
+              </div>
+              {exportFmt !== "label" && (
+                <div>
+                  <label className="text-sm font-medium">Orientation</label>
+                  <div className="mt-1 flex gap-3">
+                    <label className="inline-flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="orient"
+                        checked={exportOrientation === "portrait"}
+                        onChange={() => setExportOrientation("portrait")}
+                      />{" "}
+                      Portrait
+                    </label>
+                    <label className="inline-flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="orient"
+                        checked={exportOrientation === "landscape"}
+                        onChange={() => setExportOrientation("landscape")}
+                      />{" "}
+                      Landscape
+                    </label>
+                  </div>
+                </div>
+              )}
+              {exportFmt === "label" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Label size</label>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2 items-center">
+                      <label className="inline-flex items-center gap-1 text-sm">
+                        <input
+                          type="radio"
+                          name="labelMode"
+                          checked={!labelUseCustom}
+                          onChange={() => setLabelUseCustom(false)}
+                        />{" "}
+                        Preset
+                      </label>
+                      <label className="inline-flex items-center gap-1 text-sm">
+                        <input
+                          type="radio"
+                          name="labelMode"
+                          checked={labelUseCustom}
+                          onChange={() => setLabelUseCustom(true)}
+                        />{" "}
+                        Custom
+                      </label>
+                    </div>
+                    {!labelUseCustom ? (
+                      <Select
+                        value={labelPresetId}
+                        onValueChange={(v) => {
+                          setLabelPresetId(v);
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select label size" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LABEL_PRESETS.map((lp) => (
+                            <SelectItem key={lp.id} value={lp.id}>
+                              {lp.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-xs text-muted-foreground">
+                            Width
+                          </label>
+                          <Input
+                            value={labelCustomWidth}
+                            onChange={(e) =>
+                              setLabelCustomWidth(e.target.value)
+                            }
+                            placeholder={labelUnits === "in" ? "inches" : "mm"}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">
+                            Height
+                          </label>
+                          <Input
+                            value={labelCustomHeight}
+                            onChange={(e) =>
+                              setLabelCustomHeight(e.target.value)
+                            }
+                            placeholder={labelUnits === "in" ? "inches" : "mm"}
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <div className="flex gap-3">
+                            <label className="inline-flex items-center gap-1 text-sm">
+                              <input
+                                type="radio"
+                                name="labelUnits"
+                                checked={labelUnits === "in"}
+                                onChange={() => setLabelUnits("in")}
+                              />{" "}
+                              in
+                            </label>
+                            <label className="inline-flex items-center gap-1 text-sm">
+                              <input
+                                type="radio"
+                                name="labelUnits"
+                                checked={labelUnits === "mm"}
+                                onChange={() => setLabelUnits("mm")}
+                              />{" "}
+                              mm
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Prints one label per page sized exactly to your label. Use
+                    your printer options for material and density.
+                  </p>
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" onClick={() => setExportOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const base =
+                        (import.meta as any)?.env?.VITE_PUBLIC_BASE_URL ||
+                        "https://samsproject.in";
+                      const normalizedBase = (base || "").replace(/\/$/, "");
+                      // Only export explicitly selected asset IDs (no implicit group expansion)
+                      const targets = assets.filter((a) =>
+                        selectedIds.has(a.id),
+                      );
+                      if (!targets.length) {
+                        toast.info("Nothing selected");
+                        return;
+                      }
+                      const images: string[] = [];
+                      // Generate one QR per target asset (grouped)
+                      let createdCount = 0;
+                      const createdIds: string[] = [];
+                      for (let i = 0; i < targets.length; i++) {
+                        const a = targets[i];
+                        const url = `${normalizedBase}/assets/${a.id}`;
+                        const raw = await QRCode.toDataURL(url, {
+                          width: 512,
+                          margin: 2,
+                          color: { dark: "#000", light: "#FFF" },
+                          errorCorrectionLevel: "M",
+                        });
+                        const labeled = await composeQrWithLabel(raw, {
+                          assetId: a.id,
+                          topText: a.name || "Scan to view asset",
+                        });
+                        images.push(labeled);
+                        // Persist QR record so it appears in QR Codes page
+                        try {
+                          if (!isDemoMode()) {
+                            const payload: SbQRCode = {
+                              id: `QR-${a.id}-${Date.now()}`,
+                              assetId: a.id,
+                              property: a.property ?? null,
+                              generatedDate: new Date()
+                                .toISOString()
+                                .slice(0, 10),
+                              status: "Generated",
+                              printed: false,
+                              imageUrl: labeled,
+                            } as any;
+                            await createQRCode(payload);
+                            createdIds.push(payload.id);
+                            createdCount++;
+                          }
+                        } catch {
+                          // best effort — QR image still exported
+                        }
+                      }
+                      // Log bulk activity summary
+                      try {
+                        await logActivity(
+                          "qr_bulk_generated",
+                          `Generated ${targets.length} QR code(s) for export`,
+                        );
+                      } catch {}
+                      if (exportFmt === "png") {
+                        const { dataUrl } = await composeQrA4Sheet(images, {
+                          orientation: exportOrientation,
+                        });
+                        const aEl = document.createElement("a");
+                        aEl.href = dataUrl;
+                        aEl.download = `qr-selected-${new Date().toISOString().slice(0, 10)}.png`;
+                        aEl.click();
+                      } else if (exportFmt === "pdf") {
+                        // Print-to-PDF via hidden iframe to avoid popup blockers
+                        const { dataUrl } = await composeQrA4Sheet(images, {
+                          orientation: exportOrientation,
+                        });
+                        const pageCss =
+                          exportOrientation === "portrait"
+                            ? "@page { size: A4 portrait; margin: 0; }"
+                            : "@page { size: A4 landscape; margin: 0; }";
+                        const iframe = document.createElement("iframe");
+                        iframe.style.position = "fixed";
+                        iframe.style.right = "0";
+                        iframe.style.bottom = "0";
+                        iframe.style.width = "0";
+                        iframe.style.height = "0";
+                        iframe.style.border = "0";
+                        document.body.appendChild(iframe);
+                        const doc = iframe.contentWindow?.document;
+                        doc?.open();
+                        const pageDims =
+                          exportOrientation === "portrait"
+                            ? "width:210mm;height:297mm;"
+                            : "width:297mm;height:210mm;";
+                        const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>QR Sheet</title>
+    <style>
+      ${pageCss}
+      html, body { margin: 0; padding: 0; }
+      .page { ${pageDims} margin: 0; display: flex; align-items: center; justify-content: center; }
+      .page img { width: 100%; height: 100%; object-fit: contain; display: block; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    </style>
+  </head>
+  <body>
+    <div class="page"><img id="sheet" src="${dataUrl}" /></div>
+  </body>
+</html>`;
+                        doc?.write(html);
+                        doc?.close();
+                        const imgEl = doc?.getElementById(
+                          "sheet",
+                        ) as HTMLImageElement | null;
+                        const triggerPrint = () => {
+                          try {
+                            iframe.contentWindow?.focus();
+                            // slight delay ensures layout sizes are applied before printing
+                            setTimeout(() => iframe.contentWindow?.print(), 50);
+                          } finally {
+                            // remove iframe after a short delay
+                            setTimeout(() => {
+                              try {
+                                document.body.removeChild(iframe);
+                              } catch {}
+                            }, 1000);
+                          }
+                        };
+                        if (imgEl && !imgEl.complete) {
+                          imgEl.onload = () => setTimeout(triggerPrint, 50);
+                        } else {
+                          setTimeout(triggerPrint, 300);
+                        }
+                        // Mark printed in history for PDF path
+                        try {
+                          if (!isDemoMode() && createdIds.length) {
+                            await Promise.all(
+                              createdIds.map((id) =>
+                                updateQRCode(id, {
+                                  printed: true,
+                                  status: "Printed",
+                                } as any),
+                              ),
+                            );
+                          }
+                        } catch {}
+                      } else if (exportFmt === "label") {
+                        let widthIn = 4,
+                          heightIn = 6;
+                        if (!labelUseCustom) {
+                          const preset =
+                            LABEL_PRESETS.find((p) => p.id === labelPresetId) ||
+                            LABEL_PRESETS[0];
+                          widthIn = preset.widthIn;
+                          heightIn = preset.heightIn;
+                        } else {
+                          const w = parseFloat(labelCustomWidth) || 1;
+                          const h = parseFloat(labelCustomHeight) || 1;
+                          if (labelUnits === "mm") {
+                            widthIn = w / 25.4;
+                            heightIn = h / 25.4;
+                          } else {
+                            widthIn = w;
+                            heightIn = h;
+                          }
+                        }
+                        await printImagesAsLabels(images, {
+                          widthIn,
+                          heightIn,
+                          orientation: "portrait",
+                          fit: "contain",
+                        });
+                        // Mark printed in history for Label path
+                        try {
+                          if (!isDemoMode() && createdIds.length) {
+                            await Promise.all(
+                              createdIds.map((id) =>
+                                updateQRCode(id, {
+                                  printed: true,
+                                  status: "Printed",
+                                } as any),
+                              ),
+                            );
+                          }
+                        } catch {}
+                      }
+                    } finally {
+                      setExportOpen(false);
+                    }
+                  }}
+                >
+                  Export
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <Dialog
+        open={showAddForm}
+        onOpenChange={(open) => {
+          setShowAddForm(open);
+          if (!open) {
+            setSelectedAsset(null);
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("edit");
+                next.delete("new");
+                return next;
+              },
+              { replace: true },
+            );
+          }
+        }}
+      >
+        <DialogContent
+          className={cn(
+            "overflow-y-auto transition-all duration-200",
+            isExpanded
+              ? "w-full h-full max-w-none max-h-none rounded-none p-4 sm:w-[95vw] sm:max-w-[95vw] sm:h-[95vh] sm:max-h-[95vh] sm:rounded-lg sm:p-6"
+              : "max-w-4xl max-h-[90vh]",
+          )}
+        >
+          <DialogHeader className="flex flex-row items-start justify-between space-y-0 pr-8 text-left">
+            <div className="space-y-1.5">
+              <DialogTitle>
+                {selectedAsset ? "Edit Asset" : "Add New Asset"}
+              </DialogTitle>
+              <DialogDescription>
+                {selectedAsset
+                  ? "Update the details of this asset."
+                  : "Fill in the details to create a new asset."}
+              </DialogDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              {!selectedAsset && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setSelectedAsset(null);
+                    setSearchParams(
+                      (prev) => {
+                        const next = new URLSearchParams(prev);
+                        next.delete("edit");
+                        next.delete("new");
+                        return next;
+                      },
+                      { replace: true },
+                    );
+                    setShowBulkImport(true);
+                  }}
+                  className="hidden sm:flex"
+                >
+                  Bulk Import
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 hidden sm:flex"
+                onClick={() => setIsExpanded(!isExpanded)}
+                title={isExpanded ? "Collapse" : "Expand"}
+              >
+                {isExpanded ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </DialogHeader>
+          <AssetForm
+            mode="modal"
+            onSubmit={handleAddAsset}
+            initialData={initialFormData}
+            onCancel={() => {
+              setShowAddForm(false);
+              setSelectedAsset(null);
+              setSearchParams(
+                (prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.delete("edit");
+                  next.delete("new");
+                  return next;
+                },
+                { replace: true },
+              );
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+      <BulkImportModal
+        open={showBulkImport}
+        onOpenChange={setShowBulkImport}
+        onSuccess={() => {
+          fetchAssets();
+        }}
+        propertyCount={propertyOptions.length}
+      />
+      <RequestEditModal
+        open={requestEditOpen}
+        asset={requestEditAsset}
+        onClose={() => setRequestEditOpen(false)}
+        onSubmitted={async ({ patch, notes }) => {
+          try {
+            const raw = localStorage.getItem("auth_user");
+            let me = "user";
+            try {
+              const u = raw ? JSON.parse(raw) : null;
+              me = u?.email || u?.id || "user";
+            } catch {}
+            if (!requestEditAsset) {
+              toast.error("No asset selected");
+              return;
+            }
+            await submitApproval({
+              assetId: requestEditAsset.id,
+              action: "edit",
+              requestedBy: me,
+              notes,
+              patch,
+            });
+            toast.success("Edit request submitted for manager approval");
+            await trackActivity("asset", "update", {
+              entityName: requestEditAsset.id,
+              entityId: requestEditAsset.id,
+              changes: ["edit request submitted"],
+            });
+            setRequestEditOpen(false);
+            // refresh approval indicators
+            try {
+              let dept: string | undefined;
+              try {
+                const au = raw ? JSON.parse(raw) : null;
+                dept = au?.department || undefined;
+              } catch {}
+              const list = await listApprovals(undefined, dept || undefined);
+              const pending = list
+                .filter(
+                  (a) =>
+                    a.status === "pending_manager" ||
+                    a.status === "pending_admin",
+                )
+                .sort(
+                  (a, b) =>
+                    new Date(b.requestedAt).getTime() -
+                    new Date(a.requestedAt).getTime(),
+                );
+              const map: Record<string, ApprovalRequest> = {} as any;
+              for (const a of pending) {
+                if (!map[a.assetId]) map[a.assetId] = a;
+              }
+              setApprovalsByAsset(map);
+            } catch {}
+          } catch (e: any) {
+            toast.error(e?.message || "Failed to submit edit request");
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+// Utility to convert a string into a color (HSL format)
+// (removed thumbnail color helper)
