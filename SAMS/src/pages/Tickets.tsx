@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type React from "react";
 import { isDemoMode } from "@/lib/demo";
 import { cn } from "@/lib/utils";
@@ -51,6 +51,7 @@ import {
 } from "recharts";
 
 export default function Tickets() {
+  const navigate = useNavigate();
   const location = useLocation();
   const [items, setItems] = useState<Ticket[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -669,7 +670,7 @@ export default function Tickets() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Tickets" }]} />
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Tickets" }]} />
       <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm">
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
         <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1075,7 +1076,7 @@ export default function Tickets() {
             <PageSkeleton />
           ) : layout === 'list' ? (
             filteredItems.map(t => (
-              <div key={t.id} id={`ticket-${t.id}`} className="group relative rounded-xl border border-border/60 bg-card p-4 shadow-sm transition-all hover:shadow-md hover:border-primary/20">
+              <div key={t.id} id={`ticket-${t.id}`} className="group relative rounded-xl border border-border/60 bg-card p-4 shadow-sm transition-all hover:shadow-md hover:border-primary/20 cursor-pointer" onDoubleClick={() => navigate(`/tickets/${t.id}`)}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1234,6 +1235,7 @@ export default function Tickets() {
                         className="cursor-grab hover:shadow-md transition-all active:cursor-grabbing"
                         draggable={t.status !== 'closed' && canChangeStatus(t)}
                         onDragStart={(e) => onDragStart(e, t.id)}
+                        onDoubleClick={() => navigate(`/tickets/${t.id}`)}
                       >
                         <CardContent className="p-3 space-y-2.5">
                           <div className="flex items-center justify-between gap-2">

@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import StatusChip from "@/components/ui/status-chip";
 import MetricCard from "@/components/ui/metric-card";
+import { PropertyActionsDropdown } from "@/components/properties/PropertyActionsDropdown";
 import {
   Table,
   TableBody,
@@ -33,7 +34,10 @@ import {
   Settings,
   Maximize2,
   Minimize2,
+  MoreVertical,
 } from "lucide-react";
+import { useSearchLoading } from "@/hooks/useDebouncedValue";
+import SearchCircularLoader from "@/components/common/SearchCircularLoader";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -305,13 +309,13 @@ export default function Properties() {
   );
   // UI state: filters and search
   const [search, setSearch] = useState("");
+  const [searchLoading, debouncedSearch] = useSearchLoading(search, 300);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
-    id: "",
     name: "",
     address: "",
     type: "Office",
@@ -474,14 +478,19 @@ export default function Properties() {
     }
   };
 
+  const handlePrintProperty = (property: any) => {
+    // Placeholder print logic – you can replace with custom PDF generation or printable view
+    console.log('Print property', property.id);
+    // For now, just trigger the browser print dialog for the whole page
+    window.print();
+  };
+
   const handleSubmit = async () => {
     try {
       if (!form.name || !form.type || !form.status) {
         toast.error("Please fill required fields");
         return;
       }
-      const id =
-        editingId || form.id || `PROP-${Math.floor(Math.random() * 900 + 100)}`;
 
       if (editingId) {
         await updateProperty(editingId, {
@@ -498,24 +507,22 @@ export default function Properties() {
           changes: [form.type, form.status].filter(Boolean),
         });
       } else {
-        await createProperty({
-          id,
+        const created = await createProperty({
           name: form.name,
           address: form.address,
           type: form.type,
           status: form.status,
         } as Property);
         toast.success("Property created");
-        await logActivity("property_created", `Property ${id} created`);
+        await logActivity("property_created", `Property ${created.id} created`);
         await trackActivity("property", "create", {
           entityName: form.name,
-          entityId: id,
+          entityId: created.id,
         });
       }
       setIsDialogOpen(false);
       setEditingId(null);
       setForm({
-        id: "",
         name: "",
         address: "",
         type: "Office",
@@ -558,7 +565,7 @@ export default function Properties() {
   })();
 
   const filtered = visibleProperties.filter((p) => {
-    const term = search.trim().toLowerCase();
+    const term = debouncedSearch.trim().toLowerCase();
     const matchesTerm =
       !term ||
       [p.name, p.address, p.id, p.type, p.manager].some((v: any) =>
@@ -735,7 +742,7 @@ export default function Properties() {
     <>
       <div className="space-y-8 pb-10">
         <Breadcrumbs
-          items={[{ label: "Dashboard", to: "/" }, { label: "Properties" }]}
+          items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Properties" }]}
         />
 
         {/* Hero Section */}
@@ -762,6 +769,11 @@ export default function Properties() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                {searchLoading && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <SearchCircularLoader size={16} />
+                  </div>
+                )}
               </div>
               {canEditPage && (
                 <Button
@@ -827,7 +839,7 @@ export default function Properties() {
 
         {/* Properties Table */}
         <Card className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-300 bg-slate-50 px-4 py-2 dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-300 bg-slate-50 px-4 py-2 dark:border-border dark:bg-muted">
             <div className="flex items-center gap-2 text-sm">
               <Building2 className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">Properties</span>
@@ -881,7 +893,7 @@ export default function Properties() {
                     return (
                       <TableRow
                         key={property.id}
-                        className={`group cursor-pointer select-none border-b border-slate-200 bg-white transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900 ${idx % 2 === 1 ? "bg-slate-50/60 dark:bg-slate-900/40" : ""}`}
+                        className={`group cursor-pointer select-none border-b border-slate-200 bg-white transition-colors hover:bg-slate-50 dark:border-border dark:bg-card dark:hover:bg-slate-900 ${idx % 2 === 1 ? "bg-slate-50/60 dark:bg-muted/40" : ""}`}
                         onDoubleClick={() =>
                           navigate(`/properties/${property.id}`)
                         }
@@ -954,30 +966,13 @@ export default function Properties() {
                         </TableCell>
                         {role === "admin" && (
                           <TableCell className="py-2 align-middle text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleEditProperty(property.id);
-                                }}
-                                className="h-7 w-7 rounded-sm border border-transparent p-0 text-muted-foreground hover:border-slate-300 hover:bg-slate-100 hover:text-foreground dark:hover:border-slate-700 dark:hover:bg-slate-800"
-                              >
-                                <Edit className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteProperty(property.id);
-                                }}
-                                className="h-7 w-7 rounded-sm border border-transparent p-0 text-muted-foreground hover:border-slate-300 hover:bg-slate-100 hover:text-destructive dark:hover:border-slate-700 dark:hover:bg-slate-800"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
+                            <PropertyActionsDropdown
+                              onEdit={() => handleEditProperty(property.id)}
+                              onPrint={() => handlePrintProperty(property)}
+                              onDelete={() => handleDeleteProperty(property.id)}
+                              canEdit={role === "admin"}
+                              canDelete={role === "admin"}
+                            />
                           </TableCell>
                         )}
                       </TableRow>
@@ -1199,23 +1194,6 @@ export default function Properties() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label
-                        htmlFor="prop-id"
-                        className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
-                      >
-                        Property ID <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="prop-id"
-                        value={form.id}
-                        onChange={(e) =>
-                          setForm({ ...form, id: e.target.value })
-                        }
-                        placeholder="e.g., PROP-006"
-                        disabled={Boolean(editingId)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label
                         htmlFor="prop-name"
                         className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
                       >
@@ -1230,22 +1208,22 @@ export default function Properties() {
                         placeholder="Main Office"
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="prop-address"
-                      className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
-                    >
-                      Address
-                    </Label>
-                    <Input
-                      id="prop-address"
-                      value={form.address}
-                      onChange={(e) =>
-                        setForm({ ...form, address: e.target.value })
-                      }
-                      placeholder="Full address"
-                    />
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="prop-address"
+                        className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+                      >
+                        Address
+                      </Label>
+                      <Input
+                        id="prop-address"
+                        value={form.address}
+                        onChange={(e) =>
+                          setForm({ ...form, address: e.target.value })
+                        }
+                        placeholder="Full address"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-5">
@@ -1340,3 +1318,4 @@ export default function Properties() {
     </>
   );
 }
+

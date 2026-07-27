@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import { composeQrWithLabel, generateQrPng, downloadDataUrl, printImagesAsLabels, printImagesOnA4Grid } from "@/lib/qr";
 import JSZip from "jszip";
@@ -122,6 +123,7 @@ export default function QRCodes() {
     printed?: boolean;
     generatedDate?: string;
   } | null>(null);
+  const navigate = useNavigate();
   const [canEditPage, setCanEditPage] = useState<boolean>(true);
   // Download selection state
   const [dlSingleOpen, setDlSingleOpen] = useState(false);
@@ -784,7 +786,7 @@ export default function QRCodes() {
           </DialogContent>
         </Dialog>
 
-    <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "QR Codes" }]} />
+    <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "QR Codes" }]} />
     <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm">
       <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
       <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1019,7 +1021,8 @@ export default function QRCodes() {
             {sortedQRCodes.map((qrCode) => (
             <Card
               key={qrCode.id}
-              className={`hover:shadow-medium transition-shadow ${highlightId === qrCode.id ? "ring-2 ring-primary" : ""}`}
+              className={`hover:shadow-medium transition-shadow cursor-pointer ${highlightId === qrCode.id ? "ring-2 ring-primary" : ""}`}
+              onDoubleClick={() => navigate(`/qr-codes/${qrCode.id}`)}
             >
       <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
@@ -1132,7 +1135,7 @@ export default function QRCodes() {
               </TableHeader>
               <TableBody>
                 {sortedQRCodes.map((qrCode) => (
-                  <TableRow key={qrCode.id}>
+                  <TableRow key={qrCode.id} className="cursor-pointer" onDoubleClick={() => navigate(`/qr-codes/${qrCode.id}`)}>
                     <TableCell className="font-medium flex items-center gap-3">
                       <div
                         className="w-12 h-12 bg-muted/40 rounded border flex items-center justify-center cursor-zoom-in overflow-hidden"

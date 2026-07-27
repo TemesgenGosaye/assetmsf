@@ -59,7 +59,7 @@ export default function PropertyDetails() {
     return (
       <DetailPage
         backTo="/properties"
-        breadcrumbs={[{ label: "SAMS", to: "/" }, { label: "Properties", to: "/properties" }, { label: "Property Details" }]}
+        breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Properties", to: "/properties" }, { label: "Property Details" }]}
         title="Property Profile"
         hero={{ name: "" }}
         sections={[]}
@@ -74,9 +74,9 @@ export default function PropertyDetails() {
   return (
     <DetailPage
       backTo="/properties"
-      breadcrumbs={[{ label: "SAMS", to: "/" }, { label: "Properties", to: "/properties" }, { label: "Property Details" }]}
-      title="Property Profile"
-      layout="inverted"
+breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Properties", to: "/properties" }, { label: "Property Details" }]}
+        title="Property Profile"
+        layout="inverted"
       hero={{
         icon: <Building2 className="h-8 w-8 text-primary" />,
         name: property.name,

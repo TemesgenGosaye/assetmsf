@@ -42,7 +42,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { isDemoMode } from "@/lib/demo";
+
 import { listTickets } from "@/services/tickets";
 import { listApprovals } from "@/services/approvals";
 import { listAssets, type Asset } from "@/services/assets";
@@ -64,7 +64,7 @@ type NavItem = {
 
 const baseNav: NavItem[] = [
   // Requested order
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Assets", href: "/assets", icon: Package },
   { name: "Properties", href: "/properties", icon: Building2 },
   { name: "Employees", href: "/employees", icon: UserCheck },
@@ -171,7 +171,7 @@ function ResidentialHubDropdown({
       const seasonal   = peekCachedValue<any[]>("residential:seasonal");
       const guest      = peekCachedValue<any[]>("residential:guest");
       setCounts({
-        "/houses":                    houses?.length   ?? 0,
+        "/house-opp":                 houses?.length   ?? 0,
         "/residential-hub/permanent": permanent?.length ?? 0,
         "/residential-hub/seasonal":  seasonal?.length  ?? 0,
         "/residential-hub/guest":     guest?.length     ?? 0,
@@ -183,14 +183,14 @@ function ResidentialHubDropdown({
   }, [open]);
 
   const subColors: Record<string, string> = {
-    "/houses":                    "from-cyan-500 to-blue-600",
+    "/house-opp":                 "from-cyan-500 to-blue-600",
     "/residential-hub/permanent": "from-blue-500 to-indigo-600",
     "/residential-hub/seasonal":  "from-amber-500 to-orange-600",
     "/residential-hub/guest":     "from-emerald-500 to-teal-600",
   };
 
   const subLabels: Record<string, string> = {
-    "/houses":                    "Houses",
+    "/house-opp":                 "House Opp",
     "/residential-hub/permanent": "Permanent",
     "/residential-hub/seasonal":  "Seasonal",
     "/residential-hub/guest":     "Guest",
@@ -330,10 +330,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
   const location = useLocation();
   const [perm, setPerm] = useState<Record<PageKey, { v: boolean; e: boolean }>>(() => {
     try {
-      const demo = isDemoMode();
-      const raw = demo
-        ? (sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user'))
-        : localStorage.getItem('auth_user');
+      const raw = localStorage.getItem('auth_user');
       const r = raw ? ((JSON.parse(raw).role ?? '') as string) : '';
       return roleDefaults(r);
     } catch { return roleDefaults(''); }
@@ -347,10 +344,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
   const [ticketPendingCount, setTicketPendingCount] = useState<number>(0);
   const [role, setRole] = useState<string>(() => {
     try {
-      const demo = isDemoMode();
-      const raw = demo
-        ? (sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user'))
-        : localStorage.getItem('auth_user');
+      const raw = localStorage.getItem('auth_user');
       return raw ? ((JSON.parse(raw).role ?? '') as string).toLowerCase() : '';
     } catch { return ''; }
   });
@@ -359,7 +353,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
   const [showHelpCenter, setShowHelpCenter] = useState<boolean>(() => cachedPrefs?.show_help_center !== false);
   const allowedPropertyIdsRef = useRef<Set<string> | null>(null);
   const assetsByIdRef = useRef<Map<string, Asset> | null>(null);
-  const homeHref = isDemoMode() ? "/demo" : "/";
+  const homeHref = "/dashboard";
   const { overallStatus } = useSystemStatus();
   useEffect(() => {
     (async () => {
@@ -431,13 +425,10 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
   }, [location.pathname]);
 
   const navEntries = useMemo<SidebarEntry[]>(() => {
-    const demo = isDemoMode();
     let resolvedRole = (role || "").toLowerCase();
     if (!resolvedRole) {
       try {
-        const raw = demo
-          ? sessionStorage.getItem("demo_auth_user") || localStorage.getItem("demo_auth_user")
-          : localStorage.getItem("auth_user");
+        const raw = localStorage.getItem("auth_user");
         if (raw) {
           const parsed = JSON.parse(raw);
           resolvedRole = (parsed?.role || "").toLowerCase();
@@ -446,8 +437,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
         resolvedRole = "";
       }
     }
-    const roleForPerm = demo ? resolvedRole || "admin" : resolvedRole;
-    const effective = mergeDefaultsWithOverrides(roleForPerm, (perm || {}) as any);
+    const effective = mergeDefaultsWithOverrides(resolvedRole, (perm || {}) as any);
 
     const working = [...baseNav];
     if (showNewsletter && !working.find((item) => item.name === "Newsletter")) {
@@ -461,19 +451,17 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
     }
 
     const filtered = working.filter((item) => {
-      // Demo mode hides certain routes
-      if (demo && (item.name === "Audit" || item.name === "License")) return false;
       if (item.name === "Dashboard" || item.name === "Scan QR" || item.name === "Tickets") return true;
       if (item.name === "Newsletter") return showNewsletter;
-      if (item.name === "Approvals") return roleForPerm === "admin" || roleForPerm === "manager";
+      if (item.name === "Approvals") return resolvedRole === "admin" || resolvedRole === "manager";
       if (item.name === "New Application" || item.name === "My Applications" || item.name === "Application Status")
-        return roleForPerm === "manager" || roleForPerm === "requester";
-      if (item.name === "License") return roleForPerm === "admin";
+        return resolvedRole === "manager" || resolvedRole === "requester";
+      if (item.name === "License") return resolvedRole === "admin";
       if (item.name === "Audit") {
         const rule = (effective as any)["audit"];
         return (
-          roleForPerm === "admin" ||
-          ((auditActive || hasAuditReports) && roleForPerm === "manager") ||
+          resolvedRole === "admin" ||
+          ((auditActive || hasAuditReports) && resolvedRole === "manager") ||
           !!rule?.v
         );
       }
@@ -484,16 +472,11 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
     });
 
     return filtered.map<SidebarEntry>((item) => {
-      const href = (() => {
-        if (!demo) return item.href;
-        if (item.href === "/") return "/demo";
-        if (item.href === "/scan") return "/scan";
-        return `/demo${item.href}`;
-      })();
+      const href = item.href;
 
       const isActive =
         location.pathname === href ||
-        (href !== "/" && location.pathname.startsWith(`${href}/`));
+        (href !== "/dashboard" && location.pathname.startsWith(`${href}/`));
 
       const badges: SidebarEntry["badges"] = [];
       if (item.name === "Approvals" && pendingApprovals > 0) {
@@ -675,9 +658,6 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
     (async () => {
       try {
         let raw: string | null = null;
-        if (isDemoMode()) {
-          raw = sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user');
-        }
         if (!raw) {
           raw = localStorage.getItem('auth_user');
         }
@@ -715,7 +695,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
   useEffect(() => {
     (async () => {
       try {
-        const raw = (isDemoMode() ? (sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user')) : null) || localStorage.getItem('auth_user');
+        const raw = localStorage.getItem('auth_user');
         const u = raw ? JSON.parse(raw) : null;
         const role = ((u?.role || '') as string).toLowerCase();
         const meId = u?.id as string | undefined;
@@ -751,16 +731,13 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
   }, [location.pathname]);
   const handleSignOut = () => {
     try {
+      localStorage.removeItem('django_access_token');
+      localStorage.removeItem('django_refresh_token');
+      localStorage.removeItem('django_user');
       localStorage.removeItem('current_user_id');
       localStorage.removeItem('auth_user');
-      if (isDemoMode()) {
-        sessionStorage.removeItem('demo_current_user_id');
-        sessionStorage.removeItem('demo_auth_user');
-        localStorage.removeItem('demo_current_user_id');
-        localStorage.removeItem('demo_auth_user');
-      }
     } catch {}
-    navigate(isDemoMode() ? '/demo/login' : '/login', { replace: true });
+    navigate('/login', { replace: true });
   };
 
   if (isMobile) {

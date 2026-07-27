@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, FileText, Save, Send } from "lucide-react";
-import { createApplication, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, HOUSE_CATEGORIES } from "@/services/houseApplication";
+import { createApplication, validateEmployeeId, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, HOUSE_CATEGORIES, POSITION_TYPE_OPTIONS, JOB_TYPE_OPTIONS } from "@/services/houseApplication";
 
 const EMPTY_FORM = {
   employee_id: "",
@@ -24,11 +24,12 @@ const EMPTY_FORM = {
   gender: "",
   job_position: "",
   job_grade: "",
+  job_type: "Permanent",
   years_of_service: 0,
   marital_status: "",
   has_disability: false,
   family_size: 1,
-  number_of_children: 0,
+  position_type: "",
   requested_house_category: "",
   reason_for_request: "",
   preferred_location: "",
@@ -40,10 +41,30 @@ export default function RequesterApplicationNew() {
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [employeeChecking, setEmployeeChecking] = useState(false);
 
   const set = (field: string, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: "" }));
+  };
+
+  const handleEmployeeIdBlur = async () => {
+    const id = form.employee_id.trim();
+    if (!id) return;
+    setEmployeeChecking(true);
+    try {
+      const result = await validateEmployeeId(id);
+      if (!result.valid) {
+        setErrors((prev) => ({ ...prev, employee_id: `Employee ID "${id}" not found in the system. Please verify your ID.` }));
+      } else {
+        setErrors((prev) => ({ ...prev, employee_id: "" }));
+        if (!form.employee_name.trim() && result.employee_name) {
+          setForm((prev) => ({ ...prev, employee_name: result.employee_name! }));
+        }
+      }
+    } finally {
+      setEmployeeChecking(false);
+    }
   };
 
   const validate = (): boolean => {
@@ -55,6 +76,8 @@ export default function RequesterApplicationNew() {
     if (!form.job_position.trim()) e.job_position = "Job position is required";
     if (!form.years_of_service || form.years_of_service < 0) e.years_of_service = "Years of service must be 0 or more";
     if (!form.marital_status) e.marital_status = "Marital status is required";
+    if (!form.position_type) e.position_type = "Position type is required";
+    if (!form.job_type) e.job_type = "Job type is required";
     if (!form.requested_house_category) e.requested_house_category = "House category is required";
     if (file && file.size > 5 * 1024 * 1024) e.supporting_document = "File must be under 5 MB";
     if (file && !["pdf", "jpg", "jpeg", "png"].includes(file.name.split(".").pop()?.toLowerCase() || ""))
@@ -65,6 +88,21 @@ export default function RequesterApplicationNew() {
 
   const handleSubmit = async (saveAsDraft: boolean) => {
     if (!validate()) return;
+    const empId = form.employee_id.trim();
+    if (empId) {
+      setEmployeeChecking(true);
+      try {
+        const result = await validateEmployeeId(empId);
+        if (!result.valid) {
+          setErrors((prev) => ({ ...prev, employee_id: `Employee ID "${empId}" not found in the system. Please verify your ID.` }));
+          setSaving(false);
+          setEmployeeChecking(false);
+          return;
+        }
+      } finally {
+        setEmployeeChecking(false);
+      }
+    }
     setSaving(true);
     try {
       const fd = new FormData();
@@ -115,7 +153,13 @@ export default function RequesterApplicationNew() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Employee ID <span className="text-destructive">*</span></Label>
-              <Input value={form.employee_id} onChange={(e) => set("employee_id", e.target.value)} placeholder="EMP-0001" />
+              <Input
+                value={form.employee_id}
+                onChange={(e) => set("employee_id", e.target.value)}
+                onBlur={handleEmployeeIdBlur}
+                placeholder="e.g. 0001"
+              />
+              {employeeChecking && <p className="text-xs text-muted-foreground animate-pulse">Verifying employee…</p>}
               {errors.employee_id && <p className="text-xs text-destructive">{errors.employee_id}</p>}
             </div>
             <div className="space-y-2">
@@ -150,13 +194,28 @@ export default function RequesterApplicationNew() {
               <Input value={form.job_grade} onChange={(e) => set("job_grade", e.target.value)} placeholder="e.g. G5" />
             </div>
             <div className="space-y-2">
+              <Label>Job Type <span className="text-destructive">*</span></Label>
+              <Select value={form.job_type} onValueChange={(v) => set("job_type", v)}>
+                <SelectTrigger><SelectValue placeholder="Select job type" /></SelectTrigger>
+                <SelectContent>
+                  {JOB_TYPE_OPTIONS.map((o) => (
+                    <SelectItem key={o} value={o}>{o}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.job_type && <p className="text-xs text-destructive">{errors.job_type}</p>}
+            </div>
+            <div className="space-y-2">
               <Label>Years of Service <span className="text-destructive">*</span></Label>
               <Input type="number" min={0} value={form.years_of_service} onChange={(e) => set("years_of_service", parseInt(e.target.value) || 0)} />
               {errors.years_of_service && <p className="text-xs text-destructive">{errors.years_of_service}</p>}
             </div>
             <div className="space-y-2">
               <Label>Marital Status <span className="text-destructive">*</span></Label>
-              <Select value={form.marital_status} onValueChange={(v) => set("marital_status", v)}>
+              <Select value={form.marital_status} onValueChange={(v) => {
+                set("marital_status", v);
+                if (v === "Single") set("family_size", 1);
+              }}>
                 <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
                 <SelectContent>
                   {MARITAL_STATUS_OPTIONS.map((o) => (
@@ -175,11 +234,29 @@ export default function RequesterApplicationNew() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Family Size</Label>
-              <Input type="number" min={1} value={form.family_size} onChange={(e) => set("family_size", parseInt(e.target.value) || 1)} />
+              <Input
+                type="number"
+                min={1}
+                value={form.family_size}
+                onChange={(e) => set("family_size", parseInt(e.target.value) || 1)}
+                disabled={form.marital_status === "Single"}
+                className={form.marital_status === "Single" ? "opacity-50 cursor-not-allowed" : ""}
+              />
+              {form.marital_status === "Single" && (
+                <p className="text-xs text-muted-foreground">Not applicable for single applicants</p>
+              )}
             </div>
             <div className="space-y-2">
-              <Label>Number of Children</Label>
-              <Input type="number" min={0} value={form.number_of_children} onChange={(e) => set("number_of_children", parseInt(e.target.value) || 0)} />
+              <Label>Position Type <span className="text-destructive">*</span></Label>
+              <Select value={form.position_type} onValueChange={(v) => set("position_type", v)}>
+                <SelectTrigger><SelectValue placeholder="Select position type" /></SelectTrigger>
+                <SelectContent>
+                  {POSITION_TYPE_OPTIONS.map((o) => (
+                    <SelectItem key={o} value={o}>{o}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.position_type && <p className="text-xs text-destructive">{errors.position_type}</p>}
             </div>
           </div>
 

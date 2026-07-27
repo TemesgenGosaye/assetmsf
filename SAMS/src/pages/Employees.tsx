@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import {
   Users2, Edit, Trash2, Upload, Download, FileText, Loader2, Plus,
   UserCheck, UserX, Clock, HeartHandshake, ShieldCheck,
-  Maximize2, Minimize2, MapPin, Building, AlertCircle,
+  Maximize2, Minimize2, MapPin, Building, AlertCircle, MoreVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -22,6 +22,9 @@ import { Progress } from "@/components/ui/progress";
 import MetricCard from "@/components/ui/metric-card";
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import DataTable, { type ColDef } from "@/components/table/DataTable";
+import { EmployeeActionsDropdown } from "@/components/employees/EmployeeActionsDropdown";
+import { PrintModal } from '@/components/common/PrintModal';
+import { employeePrintHTML } from '@/lib/printUtils';
 import { logActivity } from "@/services/activity";
 import { trackActivity } from "@/services/notifications";
 import { listDepartments } from "@/services/departments";
@@ -34,7 +37,7 @@ import { API_BASE_URL } from "@/services/djangoAuth";
 type DeptOption = { id: string; name: string };
 
 const EMPTY_FORM: EmployeeFormData = {
-  full_name: "", national_id: "", job_position: "", job_grade: "",
+  full_name: "", national_id: "", job_position: "", job_grade: "", job_type: "Permanent",
   department: null, hire_date: null, family_size: 0, has_disability: false, status: "Active", cv_file: null,
 };
 
@@ -145,6 +148,8 @@ export default function Employees() {
 
   // Selection
   const [selectedRows, setSelectedRows] = useState<Employee[]>([]);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printHtml, setPrintHtml] = useState('');
 
   // Superuser dialog
   const [suDialog, setSuDialog] = useState({ open: false, title: "", description: "", confirmLabel: "", onConfirm: () => {} });
@@ -219,6 +224,20 @@ export default function Employees() {
       cell: e => e.job_grade ? <Badge variant="outline" className="text-xs font-mono">{e.job_grade}</Badge> : <span className="text-muted-foreground/50">—</span>,
     },
     {
+      key: "job_type", header: "Job Type", sortable: true, width: "w-32",
+      value: e => e.job_type,
+      cell: e => {
+        const colors: Record<string, string> = {
+          Permanent: "bg-emerald-500/10 text-emerald-700 border-emerald-300 dark:text-emerald-400",
+          "Semi Permanent": "bg-amber-500/10 text-amber-700 border-amber-300 dark:text-amber-400",
+          Seasonal: "bg-blue-500/10 text-blue-700 border-blue-300 dark:text-blue-400",
+        };
+        return e.job_type
+          ? <Badge variant="outline" className={`text-xs font-medium ${colors[e.job_type] || ""}`}>{e.job_type}</Badge>
+          : <span className="text-muted-foreground/50">—</span>;
+      },
+    },
+    {
       key: "department_name", header: "Department", sortable: true,
       value: e => e.department_name,
       cell: e => e.department_name
@@ -262,10 +281,13 @@ export default function Employees() {
     ...(isAdmin ? [{
       key: "actions", header: "", width: "w-20", pinned: true, align: "right" as const,
       cell: (emp: Employee) => (
-        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(emp)} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(emp)} title="Delete"><Trash2 className="h-3.5 w-3.5" /></Button>
-        </div>
+        <EmployeeActionsDropdown
+          onEdit={() => openEdit(emp)}
+          onDelete={() => setDeleteTarget(emp)}
+          onPrint={() => handlePrintEmployee(emp)}
+          canEdit={isAdmin}
+          canDelete={isAdmin}
+        />
       ),
     }] : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,7 +297,7 @@ export default function Employees() {
   const openAdd = () => { setEditingId(null); setForm(EMPTY_FORM); if (cvInputRef.current) cvInputRef.current.value = ""; setDialogOpen(true); };
   const openEdit = (emp: Employee) => {
     setEditingId(emp.id);
-    setForm({ full_name: emp.full_name, national_id: emp.national_id, job_position: emp.job_position, job_grade: emp.job_grade, department: emp.department, hire_date: emp.hire_date, family_size: emp.family_size, has_disability: emp.has_disability, status: emp.status, cv_file: null });
+    setForm({ full_name: emp.full_name, national_id: emp.national_id, job_position: emp.job_position, job_grade: emp.job_grade, job_type: emp.job_type || "Permanent", department: emp.department, hire_date: emp.hire_date, family_size: emp.family_size, has_disability: emp.has_disability, status: emp.status, cv_file: null });
     if (cvInputRef.current) cvInputRef.current.value = "";
     setDialogOpen(true);
   };
@@ -302,6 +324,13 @@ export default function Employees() {
       setDialogOpen(false);
     } catch (e: any) { toast.error(e.message || "Failed to save"); }
     finally { setSaving(false); }
+  };
+
+  const handlePrintEmployee = (emp: Employee) => {
+    // Placeholder print logic – you can replace with custom PDF generation or printable view
+    const html = employeePrintHTML(emp);
+    setPrintHtml(html);
+    setPrintOpen(true);
   };
 
   const handleDelete = async () => {
@@ -334,7 +363,7 @@ export default function Employees() {
   };
 
   const downloadTemplate = () => {
-    const t = [{ full_name: "Jane Doe", national_id: "1234567890", job_position: "Engineer", job_grade: "G5", department: "IT", hire_date: "2022-01-15", family_size: 2, has_disability: false, status: "Active" }];
+    const t = [{ full_name: "Jane Doe", national_id: "1234567890", job_position: "Engineer", job_grade: "G5", job_type: "Permanent", department: "IT", hire_date: "2022-01-15", family_size: 2, has_disability: false, status: "Active" }];
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(t, null, 2)], { type: "application/json" })); a.download = "SAMS_Employee_Template.json"; a.click(); URL.revokeObjectURL(a.href); a.remove();
   };
 
@@ -359,7 +388,7 @@ export default function Employees() {
   return (
     <>
       <div className="space-y-6 pb-10">
-        <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Employees" }]} />
+        <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Employees" }]} />
 
         {/* Hero */}
         <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm">
@@ -500,6 +529,17 @@ export default function Employees() {
                 Employment Details
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Job Type</Label>
+                  <Select value={form.job_type} onValueChange={v => setForm({ ...form, job_type: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Permanent">Permanent</SelectItem>
+                      <SelectItem value="Semi Permanent">Semi Permanent</SelectItem>
+                      <SelectItem value="Seasonal">Seasonal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Family Size</Label>
                   <Input type="number" min={0} value={form.family_size} onChange={e => setForm({ ...form, family_size: parseInt(e.target.value) || 0 })} />

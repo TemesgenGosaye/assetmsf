@@ -27,7 +27,7 @@ class Employee(BaseModel):
         DIVORCED = "Divorced", _("Divorced")
         WIDOWED = "Widowed", _("Widowed")
 
-    # Unique human-readable ID, auto-generated on save (EMP-0001 format)
+    # Unique human-readable ID, auto-generated on save (0001 format)
     employee_id = models.CharField(
         _("employee ID"),
         max_length=20,
@@ -43,8 +43,20 @@ class Employee(BaseModel):
         unique=True,
         db_index=True,
     )
+    class JobType(models.TextChoices):
+        PERMANENT = "Permanent", _("Permanent")
+        SEMI_PERMANENT = "Semi Permanent", _("Semi Permanent")
+        SEASONAL = "Seasonal", _("Seasonal")
+
     job_position = models.CharField(_("job position"), max_length=255)
     job_grade = models.CharField(_("job grade"), max_length=50, blank=True, default="")
+    job_type = models.CharField(
+        _("job type"),
+        max_length=20,
+        choices=JobType.choices,
+        default=JobType.PERMANENT,
+        blank=True,
+    )
     department = models.ForeignKey(
         Department,
         on_delete=models.SET_NULL,
@@ -93,23 +105,20 @@ class Employee(BaseModel):
         return f"{self.employee_id} – {self.full_name}"
 
     # ------------------------------------------------------------------
-    # Auto-generate employee_id before first save
+    # Auto-generate employee_id before first save (numeric format: 0001)
     # ------------------------------------------------------------------
     def save(self, *args, **kwargs):
         if not self.employee_id:
             last = (
-                Employee.objects.filter(employee_id__startswith="EMP-")
+                Employee.objects.exclude(employee_id="")
                 .order_by("-employee_id")
                 .first()
             )
-            if last:
-                try:
-                    num = int(last.employee_id.split("-")[1]) + 1
-                except (IndexError, ValueError):
-                    num = 1
+            if last and last.employee_id.isdigit():
+                num = int(last.employee_id) + 1
             else:
                 num = 1
-            self.employee_id = f"EMP-{num:04d}"
+            self.employee_id = f"{num:04d}"
         super().save(*args, **kwargs)
 
     # ------------------------------------------------------------------

@@ -1,8 +1,10 @@
 """
 Serializers for the houses app.
 """
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from .models import House, HouseApplication
+from employees.models import Employee
 
 
 class HouseSerializer(serializers.ModelSerializer):
@@ -25,6 +27,7 @@ class HouseSerializer(serializers.ModelSerializer):
             "damaged_bulb",
             "damaged_water",
             "damaged_items",
+            "inside_items",
             "description",
             "capacity",
             "created_at",
@@ -49,6 +52,12 @@ class HouseSerializer(serializers.ModelSerializer):
 class HouseCreateUpdateSerializer(serializers.ModelSerializer):
     """Write serializer for creating / updating houses."""
 
+    populate_items = serializers.BooleanField(
+        default=False,
+        write_only=True,
+        help_text=_("Auto-populate with default items: Bed, Chair, Table, Locker"),
+    )
+
     class Meta:
         model  = House
         fields = [
@@ -61,8 +70,10 @@ class HouseCreateUpdateSerializer(serializers.ModelSerializer):
             "damaged_switch",
             "damaged_bulb",
             "damaged_water",
+            "inside_items",
             "description",
             "capacity",
+            "populate_items",
         ]
 
     def validate_location(self, value):
@@ -75,30 +86,23 @@ class HouseCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Capacity must be at least 1.")
         return value
 
+    def create(self, validated_data):
+        populate_items = validated_data.pop("populate_items", False)
+        inside_items = validated_data.get("inside_items", [])
+        if populate_items and not inside_items:
+            validated_data["inside_items"] = ["Bed", "Chair", "Table", "Locker"]
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        populate_items = validated_data.pop("populate_items", False)
+        if populate_items:
+            validated_data["inside_items"] = ["Bed", "Chair", "Table", "Locker"]
+        return super().update(instance, validated_data)
+
 
 class HouseApplicationListSerializer(serializers.ModelSerializer):
     requester_name = serializers.CharField(source="requester.name", read_only=True)
-
-    class Meta:
-        model = HouseApplication
-        fields = [
-            "id",
-            "application_no",
-            "employee_name",
-            "national_id",
-            "requested_house_category",
-            "preferred_location",
-            "status",
-            "submitted_at",
-            "requester_name",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class HouseApplicationDetailSerializer(serializers.ModelSerializer):
-    requester_name = serializers.CharField(source="requester.name", read_only=True)
-    reviewed_by_name = serializers.CharField(source="reviewed_by.name", read_only=True, allow_null=True)
+    employee_name_display = serializers.CharField(source="emp_record.full_name", read_only=True, default=None)
 
     class Meta:
         model = HouseApplication
@@ -107,6 +111,44 @@ class HouseApplicationDetailSerializer(serializers.ModelSerializer):
             "application_no",
             "requester",
             "requester_name",
+            "emp_record",
+            "employee_name_display",
+            "employee_id",
+            "employee_name",
+            "national_id",
+            "gender",
+            "job_position",
+            "job_grade",
+            "years_of_service",
+            "marital_status",
+            "has_disability",
+            "family_size",
+            "number_of_children",
+            "requested_house_category",
+            "reason_for_request",
+            "preferred_location",
+            "supporting_document",
+            "status",
+            "submitted_at",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class HouseApplicationDetailSerializer(serializers.ModelSerializer):
+    requester_name = serializers.CharField(source="requester.name", read_only=True)
+    reviewed_by_name = serializers.CharField(source="reviewed_by.name", read_only=True, allow_null=True)
+    employee_name_display = serializers.CharField(source="emp_record.full_name", read_only=True, default=None)
+
+    class Meta:
+        model = HouseApplication
+        fields = [
+            "id",
+            "application_no",
+            "requester",
+            "requester_name",
+            "emp_record",
+            "employee_name_display",
             "employee_id",
             "employee_name",
             "national_id",
@@ -135,6 +177,7 @@ class HouseApplicationDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id", "application_no", "requester", "requester_name",
+            "emp_record", "employee_name_display",
             "submitted_at", "reviewed_at", "reviewed_by", "reviewed_by_name",
             "created_at", "updated_at", "is_active",
         ]
@@ -169,6 +212,15 @@ class HouseApplicationCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Years of service cannot be negative.")
         return value
 
+    def validate_employee_id(self, value):
+        """Block any employee_id not found in the Employee table."""
+        if not Employee.objects.filter(employee_id=value, status="Active").exists():
+            raise serializers.ValidationError(
+                f"Employee '{value}' does not exist or is not active. "
+                "A valid employee ID is required to submit a housing application."
+            )
+        return value
+
     def validate_supporting_document(self, value):
         if value:
             if value.size > 5 * 1024 * 1024:
@@ -177,6 +229,29 @@ class HouseApplicationCreateSerializer(serializers.ModelSerializer):
             if ext not in ('pdf', 'jpg', 'jpeg', 'png'):
                 raise serializers.ValidationError("Only PDF, JPG, and PNG files are allowed.")
         return value
+
+    def _link_employee(self, instance):
+        """Auto-link the employee FK based on employee_id."""
+        if instance.employee_id and not instance.employee_id == "":
+            try:
+                emp = Employee.objects.get(employee_id=instance.employee_id, status="Active")
+                instance.emp_record = emp
+            except Employee.DoesNotExist:
+                pass
+
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        self._link_employee(instance)
+        if instance.emp_record:
+            instance.save(update_fields=["emp_record"])
+        return instance
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        self._link_employee(instance)
+        if instance.emp_record:
+            instance.save(update_fields=["emp_record"])
+        return instance
 
 
 class HouseApplicationStatusSerializer(serializers.ModelSerializer):

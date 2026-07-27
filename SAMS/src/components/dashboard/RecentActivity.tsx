@@ -4,9 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
-import { isDemoMode } from "@/lib/demo";
+
 import { listActivity, subscribeActivity, type Activity } from "@/services/activity";
 import { History } from "lucide-react";
+import { isDemoMode } from "@/lib/demo";
 
 const mockActivities = [
   { id: 1, type: "seed", message: "Welcome to SAMS", user_name: "System", created_at: new Date().toISOString() },

@@ -89,7 +89,7 @@ export function RequesterSidebar({ isMobile, onNavigate, className }: Props) {
       {/* Back to main app */}
       <div className="border-t border-border/30 p-3">
         <Link
-          to="/"
+          to="/dashboard"
           className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium text-muted-foreground/70 hover:text-foreground hover:bg-muted/40 transition-all"
         >
           <ArrowLeftFromLine className="h-3.5 w-3.5" />

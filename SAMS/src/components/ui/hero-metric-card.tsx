@@ -4,10 +4,10 @@ import { CountUp } from "@/components/ui/count-up";
 
 export type HeroMetricVariant =
   | "blue"
-  | "violet"
-  | "emerald"
-  | "amber"
-  | "cyan";
+  | "green"
+  | "purple"
+  | "orange"
+  | "pink";
 
 type HeroMetricCardProps = {
   icon: LucideIcon;
@@ -19,68 +19,51 @@ type HeroMetricCardProps = {
   onClick?: () => void;
 };
 
-const variantStyles: Record<
-  HeroMetricVariant,
-  {
-    card: string;
-    orb: string;
-    ring: string;
-    iconWrap: string;
-    icon: string;
-    title: string;
-    value: string;
-    caption: string;
-  }
-> = {
+const variantStyles: Record<HeroMetricVariant, { card: string; iconBg: string; icon: string; title: string; value: string; caption: string; border: string }> = {
   blue: {
-    card: "from-sky-500/10 via-blue-500/[0.06] to-indigo-500/[0.04]",
-    orb: "bg-blue-500/30",
-    ring: "ring-blue-400/20",
-    iconWrap: "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/30",
+    card: "bg-blue-600 dark:bg-blue-700",
+    iconBg: "bg-blue-500/50 dark:bg-blue-600/50",
     icon: "text-white",
-    title: "text-blue-700/80 dark:text-blue-300/80",
-    value: "text-blue-950 dark:text-blue-50",
-    caption: "text-blue-700/60 dark:text-blue-300/60",
+    title: "text-blue-100 dark:text-blue-200",
+    value: "text-white",
+    caption: "text-blue-100/80 dark:text-blue-200/70",
+    border: "border-blue-500 dark:border-blue-600",
   },
-  violet: {
-    card: "from-violet-500/10 via-purple-500/[0.06] to-fuchsia-500/[0.04]",
-    orb: "bg-violet-500/30",
-    ring: "ring-violet-400/20",
-    iconWrap: "bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-violet-500/30",
+  green: {
+    card: "bg-emerald-600 dark:bg-emerald-700",
+    iconBg: "bg-emerald-500/50 dark:bg-emerald-600/50",
     icon: "text-white",
-    title: "text-violet-700/80 dark:text-violet-300/80",
-    value: "text-violet-950 dark:text-violet-50",
-    caption: "text-violet-700/60 dark:text-violet-300/60",
+    title: "text-emerald-100 dark:text-emerald-200",
+    value: "text-white",
+    caption: "text-emerald-100/80 dark:text-emerald-200/70",
+    border: "border-emerald-500 dark:border-emerald-600",
   },
-  emerald: {
-    card: "from-emerald-500/10 via-green-500/[0.06] to-teal-500/[0.04]",
-    orb: "bg-emerald-500/30",
-    ring: "ring-emerald-400/20",
-    iconWrap: "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/30",
+  purple: {
+    card: "bg-violet-600 dark:bg-violet-700",
+    iconBg: "bg-violet-500/50 dark:bg-violet-600/50",
     icon: "text-white",
-    title: "text-emerald-700/80 dark:text-emerald-300/80",
-    value: "text-emerald-950 dark:text-emerald-50",
-    caption: "text-emerald-700/60 dark:text-emerald-300/60",
+    title: "text-violet-100 dark:text-violet-200",
+    value: "text-white",
+    caption: "text-violet-100/80 dark:text-violet-200/70",
+    border: "border-violet-500 dark:border-violet-600",
   },
-  amber: {
-    card: "from-amber-500/10 via-orange-500/[0.06] to-yellow-500/[0.04]",
-    orb: "bg-amber-500/30",
-    ring: "ring-amber-400/20",
-    iconWrap: "bg-gradient-to-br from-amber-500 to-orange-600 shadow-amber-500/30",
+  orange: {
+    card: "bg-orange-500 dark:bg-orange-600",
+    iconBg: "bg-orange-400/50 dark:bg-orange-500/50",
     icon: "text-white",
-    title: "text-amber-700/80 dark:text-amber-300/80",
-    value: "text-amber-950 dark:text-amber-50",
-    caption: "text-amber-700/60 dark:text-amber-300/60",
+    title: "text-orange-100 dark:text-orange-200",
+    value: "text-white",
+    caption: "text-orange-100/80 dark:text-orange-200/70",
+    border: "border-orange-400 dark:border-orange-500",
   },
-  cyan: {
-    card: "from-cyan-500/10 via-sky-500/[0.06] to-blue-500/[0.04]",
-    orb: "bg-cyan-500/30",
-    ring: "ring-cyan-400/20",
-    iconWrap: "bg-gradient-to-br from-cyan-500 to-sky-600 shadow-cyan-500/30",
+  pink: {
+    card: "bg-rose-500 dark:bg-rose-600",
+    iconBg: "bg-rose-400/50 dark:bg-rose-500/50",
     icon: "text-white",
-    title: "text-cyan-700/80 dark:text-cyan-300/80",
-    value: "text-cyan-950 dark:text-cyan-50",
-    caption: "text-cyan-700/60 dark:text-cyan-300/60",
+    title: "text-rose-100 dark:text-rose-200",
+    value: "text-white",
+    caption: "text-rose-100/80 dark:text-rose-200/70",
+    border: "border-rose-400 dark:border-rose-500",
   },
 };
 
@@ -112,53 +95,31 @@ export function HeroMetricCard({
           : undefined
       }
       className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br p-5 shadow-sm ring-1 ring-inset transition-all duration-300",
+        "group relative flex items-center gap-3 rounded-xl border px-4 py-3 shadow-sm transition-all duration-200",
         styles.card,
-        styles.ring,
+        styles.border,
         isClickable &&
-          "cursor-pointer hover:-translate-y-1 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "cursor-pointer hover:shadow-md active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       )}
     >
-      {/* Decorative soft orb shape */}
       <div
         className={cn(
-          "pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full blur-2xl transition-transform duration-500 group-hover:scale-125",
-          styles.orb,
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+          styles.iconBg,
         )}
-      />
-      {/* Subtle diagonal accent */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-60" />
-
-      <div className="relative flex items-start justify-between">
-        <p
-          className={cn(
-            "text-[11px] font-semibold uppercase tracking-[0.14em]",
-            styles.title,
-          )}
-        >
-          {title}
-        </p>
-        <span
-          className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-2xl shadow-lg",
-            styles.iconWrap,
-          )}
-        >
-          <Icon className={cn("h-5 w-5", styles.icon, iconClassName)} />
-        </span>
+      >
+        <Icon className={cn("h-4 w-4", styles.icon, iconClassName)} />
       </div>
 
-      <div className="relative mt-6">
-        <div
-          className={cn(
-            "text-4xl font-black tracking-tight tabular-nums",
-            styles.value,
-          )}
-        >
-          <CountUp value={value} duration={1200} />
+      <div className="min-w-0 flex-1">
+        <p className={cn("truncate text-[10px] font-medium uppercase tracking-wider", styles.title)}>
+          {title}
+        </p>
+        <div className={cn("text-xl font-bold tracking-tight tabular-nums", styles.value)}>
+          <CountUp value={value} duration={1000} />
         </div>
         {caption && (
-          <p className={cn("mt-1.5 text-xs font-medium leading-snug", styles.caption)}>
+          <p className={cn("mt-0.5 truncate text-[10px] leading-tight", styles.caption)}>
             {caption}
           </p>
         )}

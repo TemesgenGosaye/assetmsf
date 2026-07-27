@@ -49,3 +49,6 @@ node_modules/
 =======
 .aider*
 >>>>>>> e0aa62ed7c297beda3706a2057755dae2139a56a
+.env
+.env.*
+sams_backend/.env

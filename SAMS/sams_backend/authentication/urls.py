@@ -13,6 +13,7 @@ from .views import (
     UserPermissionListView,
     UserPropertyAccessListView,
     UserSettingsView,
+    admin_set_password,
     change_password,
     current_user,
     list_permissions,
@@ -48,6 +49,7 @@ urlpatterns = [
     ),
     path("password-reset/verify/", password_reset_verify, name="password_reset_verify"),
     # User Management
+    path("users/<int:id>/set-password/", admin_set_password, name="admin_set_password"),
     path("users/", UserListView.as_view(), name="user_list"),
     path("users/<int:id>/", UserDetailView.as_view(), name="user_detail"),
     # User Settings

@@ -30,14 +30,15 @@ function djangoUserToFrontend(row: any): AppUser {
     role: row.role,
     department: row.department,
     phone: row.phone,
-    last_login: row.updated_at, // backend doesn't have last_login? Let's use updated_at for now
+    last_login: row.updated_at,
     status: row.status,
     avatar_url: row.profile_image,
+    must_change_password: row.must_change_password ?? false,
   };
 }
 
 // Helper to convert frontend AppUser to Django payload
-function frontendUserToDjango(user: Partial<AppUser>): any {
+function frontendUserToDjango(user: Partial<AppUser> & { password?: string; password_confirm?: string }): any {
   const row: any = {};
   if ("name" in user) row.name = user.name;
   if ("email" in user) row.email = user.email;
@@ -45,6 +46,10 @@ function frontendUserToDjango(user: Partial<AppUser>): any {
   if ("department" in user) row.department = user.department;
   if ("phone" in user) row.phone = user.phone;
   if ("status" in user) row.status = user.status;
+  if ("must_change_password" in user) row.must_change_password = user.must_change_password;
+  if ("avatar_url" in user) row.avatar_url = user.avatar_url;
+  if ("password" in user) row.password = user.password;
+  if ("password_confirm" in user) row.password_confirm = user.password_confirm;
   return row;
 }
 
@@ -64,13 +69,9 @@ export async function listUsers(options?: { force?: boolean }): Promise<AppUser[
 }
 
 // Optionally accept a password for local fallback; DB uses auth for real password handling
-export async function createUser(payload: Omit<AppUser, "id"> & { password?: string }): Promise<AppUser> {
+export async function createUser(payload: Omit<AppUser, "id"> & { password?: string; password_confirm?: string }): Promise<AppUser> {
   if (isDemoMode()) throw new Error("DEMO_READONLY");
-  const djangoPayload = {
-    ...frontendUserToDjango(payload),
-    password: payload.password,
-    password_confirm: payload.password,
-  };
+  const djangoPayload = frontendUserToDjango(payload);
   const response = await djangoRequest<any>('/auth/users/', {
     method: 'POST',
     body: JSON.stringify(djangoPayload),
@@ -79,8 +80,10 @@ export async function createUser(payload: Omit<AppUser, "id"> & { password?: str
     invalidateCacheByPrefix(USERS_CACHE_KEY);
     return djangoUserToFrontend(response.data);
   }
+  console.error('Create user failed response:', response);
   throw new Error(response.message || "Failed to create user");
 }
+
 
 export async function updateUser(id: string, patch: Partial<AppUser>): Promise<AppUser> {
   if (isDemoMode()) throw new Error("DEMO_READONLY");

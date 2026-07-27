@@ -3,14 +3,18 @@ Views for asset management.
 """
 from rest_framework import generics, status, filters
 from rest_framework.permissions import IsAuthenticated
+from django.db import models
 from django_filters.rest_framework import DjangoFilterBackend
+from django.utils import timezone
 from core.responses import StandardResponse
 from core.permissions import IsAdminOrManager
 from .serializers import (
     AssetSerializer, AssetCreateSerializer, AssetUpdateSerializer,
-    AssetAttachmentSerializer, AssetAttachmentCreateSerializer
+    AssetAttachmentSerializer, AssetAttachmentCreateSerializer,
+    AssetTransferSerializer, AssetTransferCreateSerializer,
+    AssetTransferActionSerializer,
 )
-from .models import Asset, AssetAttachment
+from .models import Asset, AssetAttachment, AssetTransfer
 from authentication.models import UserPropertyAccess, UserDepartmentAccess, UserPermission
 
 
@@ -240,3 +244,257 @@ class AssetAttachmentDetailView(generics.RetrieveDestroyAPIView):
         instance = self.get_object()
         instance.soft_delete(request.user)
         return StandardResponse.no_content("Attachment deleted successfully")
+
+
+# ── Asset Transfer Views ────────────────────────────────────────────────────
+
+
+class AssetTransferListView(generics.ListCreateAPIView):
+    """List all transfers or create a new transfer."""
+    queryset = AssetTransfer.objects.select_related(
+        'asset', 'from_owner', 'from_property',
+        'to_owner', 'to_property',
+        'requested_by', 'approved_by', 'completed_by',
+    ).all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'from_department', 'to_department', 'asset']
+    search_fields = ['transfer_code', 'asset__asset_code', 'asset__name', 'reason']
+    ordering_fields = ['requested_at', 'approved_at', 'completed_at', 'status']
+    ordering = ['-requested_at']
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return AssetTransferCreateSerializer
+        return AssetTransferSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.is_super_admin() or user.is_admin():
+            return qs
+        # Managers see transfers for their accessible properties
+        if user.is_manager():
+            accessible = UserPropertyAccess.objects.filter(
+                user=user
+            ).values_list('property_id', flat=True)
+            return qs.filter(
+                models.Q(from_property_id__in=accessible) |
+                models.Q(to_property_id__in=accessible)
+            )
+        # Regular users see their own transfers
+        return qs.filter(
+            models.Q(requested_by=user) |
+            models.Q(from_owner=user) |
+            models.Q(to_owner=user)
+        )
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return StandardResponse.success(serializer.data, "Transfers retrieved successfully")
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            transfer = serializer.save()
+            # Auto-approve for admins
+            if request.user.is_super_admin() or request.user.is_admin():
+                transfer.approve(request.user)
+            # Create activity log
+            try:
+                from dashboard.models import RecentActivity
+                RecentActivity.objects.create(
+                    user=request.user,
+                    type=RecentActivity.Type.ASSET_UPDATED,
+                    message=f"Transfer {transfer.transfer_code} requested for {transfer.asset.asset_code}",
+                    user_name=request.user.name,
+                    metadata={
+                        'transfer_code': transfer.transfer_code,
+                        'asset_code': transfer.asset.asset_code,
+                        'from': transfer.from_department,
+                        'to': transfer.to_department,
+                    },
+                )
+            except Exception:
+                pass
+            return StandardResponse.created(
+                AssetTransferSerializer(transfer).data,
+                "Transfer request created successfully"
+            )
+        return StandardResponse.validation_error("Validation failed", serializer.errors)
+
+
+class AssetTransferDetailView(generics.RetrieveAPIView):
+    """Retrieve a single transfer."""
+    queryset = AssetTransfer.objects.select_related(
+        'asset', 'from_owner', 'from_property',
+        'to_owner', 'to_property',
+        'requested_by', 'approved_by', 'completed_by',
+    ).all()
+    serializer_class = AssetTransferSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+
+
+class AssetTransferApproveView(generics.GenericAPIView):
+    """Approve a pending transfer."""
+    queryset = AssetTransfer.objects.all()
+    permission_classes = [IsAuthenticated]
+    serializer_class = AssetTransferActionSerializer
+    lookup_field = 'id'
+
+    def post(self, request, *args, **kwargs):
+        transfer = self.get_object()
+        if transfer.status != AssetTransfer.Status.PENDING:
+            return StandardResponse.bad_request(
+                f"Cannot approve a transfer with status '{transfer.get_status_display()}'."
+            )
+        user = request.user
+        if not (user.is_super_admin() or user.is_admin() or user.is_manager()):
+            return StandardResponse.forbidden("You do not have permission to approve transfers.")
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        transfer.approve(user)
+
+        try:
+            from dashboard.models import RecentActivity
+            RecentActivity.objects.create(
+                user=user,
+                type=RecentActivity.Type.ASSET_UPDATED,
+                message=f"Transfer {transfer.transfer_code} approved for {transfer.asset.asset_code}",
+                user_name=user.name,
+                metadata={'transfer_code': transfer.transfer_code, 'asset_code': transfer.asset.asset_code},
+            )
+        except Exception:
+            pass
+
+        return StandardResponse.success(
+            AssetTransferSerializer(transfer).data,
+            "Transfer approved successfully"
+        )
+
+
+class AssetTransferRejectView(generics.GenericAPIView):
+    """Reject a pending transfer."""
+    queryset = AssetTransfer.objects.all()
+    permission_classes = [IsAuthenticated]
+    serializer_class = AssetTransferActionSerializer
+    lookup_field = 'id'
+
+    def post(self, request, *args, **kwargs):
+        transfer = self.get_object()
+        if transfer.status != AssetTransfer.Status.PENDING:
+            return StandardResponse.bad_request(
+                f"Cannot reject a transfer with status '{transfer.get_status_display()}'."
+            )
+        user = request.user
+        if not (user.is_super_admin() or user.is_admin() or user.is_manager()):
+            return StandardResponse.forbidden("You do not have permission to reject transfers.")
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        transfer.reject(user, serializer.validated_data.get('reason', ''))
+
+        try:
+            from dashboard.models import RecentActivity
+            RecentActivity.objects.create(
+                user=user,
+                type=RecentActivity.Type.ASSET_UPDATED,
+                message=f"Transfer {transfer.transfer_code} rejected for {transfer.asset.asset_code}",
+                user_name=user.name,
+                metadata={'transfer_code': transfer.transfer_code, 'asset_code': transfer.asset.asset_code},
+            )
+        except Exception:
+            pass
+
+        return StandardResponse.success(
+            AssetTransferSerializer(transfer).data,
+            "Transfer rejected"
+        )
+
+
+class AssetTransferCompleteView(generics.GenericAPIView):
+    """Complete an approved transfer — actually moves the asset."""
+    queryset = AssetTransfer.objects.all()
+    permission_classes = [IsAuthenticated]
+    serializer_class = AssetTransferActionSerializer
+    lookup_field = 'id'
+
+    def post(self, request, *args, **kwargs):
+        transfer = self.get_object()
+        if transfer.status != AssetTransfer.Status.APPROVED:
+            return StandardResponse.bad_request(
+                f"Cannot complete a transfer with status '{transfer.get_status_display()}'. "
+                "Transfer must be approved first."
+            )
+        user = request.user
+        if not (user.is_super_admin() or user.is_admin()):
+            return StandardResponse.forbidden("Only admins can complete transfers.")
+
+        transfer.complete(user)
+
+        try:
+            from dashboard.models import RecentActivity
+            RecentActivity.objects.create(
+                user=user,
+                type=RecentActivity.Type.ASSET_UPDATED,
+                message=f"Transfer {transfer.transfer_code} completed. {transfer.asset.asset_code} moved from {transfer.from_department} to {transfer.to_department}",
+                user_name=user.name,
+                metadata={
+                    'transfer_code': transfer.transfer_code,
+                    'asset_code': transfer.asset.asset_code,
+                    'from': transfer.from_department,
+                    'to': transfer.to_department,
+                },
+            )
+        except Exception:
+            pass
+
+        return StandardResponse.success(
+            AssetTransferSerializer(transfer).data,
+            "Transfer completed. Asset has been moved."
+        )
+
+
+class AssetTransferCancelView(generics.GenericAPIView):
+    """Cancel a pending or approved transfer."""
+    queryset = AssetTransfer.objects.all()
+    permission_classes = [IsAuthenticated]
+    serializer_class = AssetTransferActionSerializer
+    lookup_field = 'id'
+
+    def post(self, request, *args, **kwargs):
+        transfer = self.get_object()
+        if transfer.status not in (AssetTransfer.Status.PENDING, AssetTransfer.Status.APPROVED):
+            return StandardResponse.bad_request(
+                f"Cannot cancel a transfer with status '{transfer.get_status_display()}'."
+            )
+        user = request.user
+        # Only the requester or an admin can cancel
+        if not (user.is_super_admin() or user.is_admin() or transfer.requested_by == user):
+            return StandardResponse.forbidden("You do not have permission to cancel this transfer.")
+
+        transfer.cancel(user)
+
+        try:
+            from dashboard.models import RecentActivity
+            RecentActivity.objects.create(
+                user=user,
+                type=RecentActivity.Type.ASSET_UPDATED,
+                message=f"Transfer {transfer.transfer_code} cancelled for {transfer.asset.asset_code}",
+                user_name=user.name,
+                metadata={'transfer_code': transfer.transfer_code, 'asset_code': transfer.asset.asset_code},
+            )
+        except Exception:
+            pass
+
+        return StandardResponse.success(
+            AssetTransferSerializer(transfer).data,
+            "Transfer cancelled"
+        )

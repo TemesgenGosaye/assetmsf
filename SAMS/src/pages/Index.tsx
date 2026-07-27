@@ -472,7 +472,7 @@ const Index = () => {
         caption: `${counts.expiring.toLocaleString()} expiring assets soon`,
         icon: Building2,
         iconClass: "h-5 w-5",
-        variant: "violet" as const,
+        variant: "green" as const,
         href: isDemoMode() ? "/demo/properties" : "/properties",
       },
       {
@@ -482,8 +482,8 @@ const Index = () => {
         caption: "Total registered housing units",
         icon: Home,
         iconClass: "h-5 w-5",
-        variant: "cyan" as const,
-        href: isDemoMode() ? "/demo" : "/houses",
+        variant: "purple" as const,
+        href: isDemoMode() ? "/demo/house-opp" : "/house-opp",
       },
       {
         key: "purchases",
@@ -492,7 +492,7 @@ const Index = () => {
         caption: monthlyChange.label,
         icon: TrendingUp,
         iconClass: "h-5 w-5",
-        variant: "emerald" as const,
+        variant: "orange" as const,
         href: isDemoMode() ? "/demo/reports" : "/reports",
       },
       {
@@ -502,7 +502,7 @@ const Index = () => {
         caption: `${metrics.codesTotal.toLocaleString()} generated • ${readyDelta.toLocaleString()} in circulation`,
         icon: QrCode,
         iconClass: "h-5 w-5",
-        variant: "amber" as const,
+        variant: "pink" as const,
         href: isDemoMode() ? "/demo/qr-codes" : "/qr-codes",
       },
     ];
@@ -1263,7 +1263,7 @@ const Index = () => {
         setBulkOpen(true);
         break;
       default:
-        navigate(isDemoMode() ? "/demo" : "/");
+        navigate(isDemoMode() ? "/demo" : "/dashboard");
     }
   };
 
@@ -1311,7 +1311,7 @@ const Index = () => {
           </div>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {heroHighlights.map((item) => (
             <HeroMetricCard
               key={item.key}

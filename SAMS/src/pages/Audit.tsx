@@ -1033,7 +1033,7 @@ export default function Audit() {
   return (
     <div className="space-y-8 pb-16">
       <div className="space-y-4 print:hidden">
-        <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Audit" }]} />
+        <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Audit" }]} />
         
         <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
           <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
@@ -1820,7 +1820,7 @@ export default function Audit() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg border-none shadow-2xl bg-white/95 backdrop-blur-xl dark:bg-slate-900/95">
+        <DialogContent className="sm:max-w-lg border-none shadow-2xl bg-white/95 backdrop-blur-xl dark:bg-muted/95">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
               <QrCode className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -1832,7 +1832,7 @@ export default function Audit() {
           </DialogHeader>
           
           <div className="space-y-4 py-2">
-            <div className="relative aspect-square overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-black shadow-inner">
+            <div className="relative aspect-square overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-border bg-black shadow-inner">
               <video ref={videoRef} className="h-full w-full object-cover" playsInline muted />
               
               {/* Scanner Overlay Guide */}
@@ -1874,7 +1874,7 @@ export default function Audit() {
               </Button>
             </div>
 
-            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-100 dark:border-slate-800">
+            <div className="bg-slate-50 dark:bg-muted/50 rounded-lg p-3 border border-slate-100 dark:border-border">
               <div className="text-sm text-muted-foreground mb-1">Scanned Asset:</div>
               <div className="font-mono text-base font-medium text-foreground flex items-center gap-2">
                 {scanAssetId ? (
@@ -1895,7 +1895,7 @@ export default function Audit() {
                 value={scanComment}
                 onChange={(e) => setScanComment(e.target.value)}
                 disabled={!scanAssetId || scanBusy}
-                className="resize-none bg-white dark:bg-slate-950"
+                className="resize-none bg-white dark:bg-card"
                 rows={2}
               />
             </div>
@@ -1967,3 +1967,4 @@ export default function Audit() {
     </div>
   );
 }
+

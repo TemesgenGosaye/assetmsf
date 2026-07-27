@@ -63,7 +63,7 @@ export default function EmployeeDetails() {
     return (
       <DetailPage
         backTo="/employees"
-        breadcrumbs={[{ label: "SAMS", to: "/" }, { label: "Employees", to: "/employees" }, { label: "Employee Details" }]}
+        breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Employees", to: "/employees" }, { label: "Employee Details" }]}
         title="Employee Profile"
         hero={{ name: "" }}
         sections={[]}
@@ -80,9 +80,9 @@ export default function EmployeeDetails() {
   return (
     <DetailPage
       backTo="/employees"
-      breadcrumbs={[{ label: "SAMS", to: "/" }, { label: "Employees", to: "/employees" }, { label: "Employee Details" }]}
-      title="Employee Profile"
-      hero={{
+breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Employees", to: "/employees" }, { label: "Employee Details" }]}
+        title="Employee Profile"
+        hero={{
         initials,
         name: employee.full_name,
         subtitle: employee.job_position,

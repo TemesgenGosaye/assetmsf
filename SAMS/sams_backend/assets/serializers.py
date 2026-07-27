@@ -3,7 +3,7 @@ Serializers for asset management.
 """
 from rest_framework import serializers
 from django.db import models
-from .models import Asset, AssetAttachment
+from .models import Asset, AssetAttachment, AssetTransfer
 from properties.models import Property
 from categories.models import Category, ItemType
 from authentication.models import User
@@ -223,3 +223,190 @@ class AssetAttachmentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = AssetAttachment
         fields = ['asset', 'file', 'file_name', 'file_type', 'file_size', 'description']
+
+
+class AssetTransferSerializer(serializers.ModelSerializer):
+    """Read serializer for AssetTransfer."""
+    transfer_code = serializers.CharField(read_only=True)
+    asset_code = serializers.CharField(source='asset.asset_code', read_only=True)
+    asset_name = serializers.CharField(source='asset.name', read_only=True)
+    from_property_name = serializers.CharField(source='from_property.name', read_only=True, allow_null=True)
+    to_property_name = serializers.CharField(source='to_property.name', read_only=True, allow_null=True)
+    from_owner_name = serializers.CharField(source='from_owner.name', read_only=True, allow_null=True)
+    from_owner_email = serializers.CharField(source='from_owner.email', read_only=True, allow_null=True)
+    to_owner_name = serializers.CharField(source='to_owner.name', read_only=True, allow_null=True)
+    to_owner_email = serializers.CharField(source='to_owner.email', read_only=True, allow_null=True)
+    requested_by_name = serializers.CharField(source='requested_by.name', read_only=True, allow_null=True)
+    requested_by_email = serializers.CharField(source='requested_by.email', read_only=True, allow_null=True)
+    approved_by_name = serializers.CharField(source='approved_by.name', read_only=True, allow_null=True)
+    completed_by_name = serializers.CharField(source='completed_by.name', read_only=True, allow_null=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = AssetTransfer
+        fields = [
+            'id', 'transfer_code',
+            'asset', 'asset_code', 'asset_name',
+            'from_department', 'from_owner', 'from_owner_name', 'from_owner_email',
+            'from_property', 'from_property_name', 'from_location',
+            'to_department', 'to_owner', 'to_owner_name', 'to_owner_email',
+            'to_property', 'to_property_name', 'to_location',
+            'reason', 'notes', 'quantity',
+            'status', 'status_display',
+            'requested_by', 'requested_by_name', 'requested_by_email',
+            'approved_by', 'approved_by_name', 'approved_at',
+            'completed_by', 'completed_by_name', 'completed_at',
+            'rejection_reason',
+            'requested_at', 'cancelled_at',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'transfer_code', 'status',
+            'requested_by', 'requested_at',
+            'approved_by', 'approved_at',
+            'completed_by', 'completed_at',
+            'cancelled_at', 'rejection_reason',
+            'created_at', 'updated_at',
+        ]
+
+
+class AssetTransferCreateSerializer(serializers.ModelSerializer):
+    """Write serializer for creating an asset transfer."""
+    asset = serializers.CharField()
+
+    class Meta:
+        model = AssetTransfer
+        fields = [
+            'asset', 'to_department', 'to_owner', 'to_property',
+            'to_location', 'reason', 'notes', 'quantity',
+        ]
+        extra_kwargs = {
+            'to_department': {'required': False, 'allow_blank': True},
+            'to_owner': {'required': False, 'allow_null': True},
+            'to_property': {'required': False, 'allow_null': True},
+            'to_location': {'required': False, 'allow_blank': True},
+            'reason': {'required': True, 'allow_blank': False},
+            'notes': {'required': False, 'allow_blank': True},
+            'quantity': {'required': False},
+        }
+
+    def validate_asset(self, value):
+        """Validate the asset exists and is active."""
+        try:
+            asset = Asset.objects.get(asset_code=value, is_active=True)
+        except Asset.DoesNotExist:
+            try:
+                asset = Asset.objects.get(id=value, is_active=True)
+            except Asset.DoesNotExist:
+                raise serializers.ValidationError("Asset not found or inactive.")
+        return asset
+
+    def validate_to_property(self, value):
+        """Validate target property if provided.
+        DRF's auto-generated PK field may already resolve to a Property instance."""
+        from properties.models import Property as PropModel
+        if hasattr(value, 'pk'):
+            return value.pk
+        if value:
+            try:
+                prop = PropModel.objects.get(id=str(value))
+                return prop.id
+            except PropModel.DoesNotExist:
+                raise serializers.ValidationError("Target property not found.")
+        return value
+
+    def validate_to_owner(self, value):
+        """Validate target owner if provided.
+        DRF's auto-generated PK field may already resolve to a User instance."""
+        if isinstance(value, User):
+            return value.id
+        if value:
+            try:
+                user = User.objects.get(id=value)
+                return user.id
+            except User.DoesNotExist:
+                raise serializers.ValidationError("Target user not found.")
+        return value
+
+    def validate_quantity(self, value):
+        """Validate quantity against asset quantity."""
+        asset = self.initial_data.get('asset')
+        if asset:
+            try:
+                a = Asset.objects.get(asset_code=str(asset))
+                if value > a.quantity:
+                    raise serializers.ValidationError(
+                        f"Transfer quantity ({value}) cannot exceed asset quantity ({a.quantity})."
+                    )
+            except Asset.DoesNotExist:
+                pass
+        return value
+
+    def validate(self, attrs):
+        """Cross-field validation."""
+        asset = attrs.get('asset')
+        to_dept = attrs.get('to_department')
+        to_prop = attrs.get('to_property')
+        to_owner = attrs.get('to_owner')
+
+        if not to_dept and not to_prop and not to_owner:
+            raise serializers.ValidationError(
+                "At least one of to_department, to_property, or to_owner must be specified."
+            )
+
+        if asset:
+            # Check if all provided destinations match current state (no change)
+            changes = []
+            if to_dept:
+                changes.append(to_dept != asset.department)
+            if to_prop:
+                changes.append(str(to_prop) != str(asset.property_id))
+            if to_owner:
+                asset_owner_id = asset.owner_id
+                to_owner_id = int(to_owner) if to_owner else None
+                changes.append(to_owner_id != asset_owner_id)
+            if changes and not any(changes):
+                raise serializers.ValidationError(
+                    "Transfer destination is the same as the current location. No change would occur."
+                )
+
+        return attrs
+
+    def create(self, validated_data):
+        """Create the transfer and snapshot current asset state."""
+        asset = validated_data['asset']
+        request = self.context.get('request')
+
+        to_owner = validated_data.get('to_owner')
+        to_property = validated_data.get('to_property')
+
+        # Resolve IDs to model instances if needed
+        if to_owner and not isinstance(to_owner, User):
+            to_owner = User.objects.get(id=to_owner)
+        if to_property and not hasattr(to_property, 'pk'):
+            to_property = Property.objects.get(id=str(to_property))
+
+        transfer = AssetTransfer(
+            asset=asset,
+            from_department=asset.department or '',
+            from_owner=asset.owner,
+            from_property=asset.property,
+            from_location=asset.location or '',
+            to_department=validated_data.get('to_department') or asset.department or '',
+            to_owner=to_owner,
+            to_property=to_property,
+            to_location=validated_data.get('to_location') or '',
+            reason=validated_data['reason'],
+            notes=validated_data.get('notes') or '',
+            quantity=validated_data.get('quantity', 1),
+            requested_by=request.user if request else None,
+        )
+        transfer.transfer_code = transfer.generate_transfer_code()
+        transfer.save()
+        return transfer
+
+
+class AssetTransferActionSerializer(serializers.Serializer):
+    """Serializer for approve/reject/cancel/complete actions."""
+    reason = serializers.CharField(required=False, allow_blank=True, default='')
+

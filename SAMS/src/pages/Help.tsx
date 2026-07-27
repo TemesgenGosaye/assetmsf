@@ -326,7 +326,7 @@ export default function Help() {
 
   return (
     <div className="space-y-8 pb-10">
-      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Help Center" }]} />
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Help Center" }]} />
 
       {/* Hero Section */}
       <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-12 shadow-sm sm:px-12 sm:py-16">

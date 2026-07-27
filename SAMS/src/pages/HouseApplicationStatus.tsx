@@ -128,6 +128,7 @@ export default function HouseApplicationStatus() {
                 ["Gender", detail.gender],
                 ["Job Position", detail.job_position],
                 ["Job Grade", detail.job_grade || "-"],
+                ["Job Type", detail.job_type || "-"],
                 ["Years of Service", String(detail.years_of_service)],
                 ["Marital Status", detail.marital_status],
                 ["Disability", detail.has_disability ? "Yes" : "No"],

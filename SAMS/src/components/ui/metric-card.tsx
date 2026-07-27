@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { CountUp } from "@/components/ui/count-up";
 
@@ -24,84 +23,75 @@ type MetricCardProps = {
 
 const variantStyles: Record<MetricCardVariant, {
   card: string;
-  iconWrap: string;
+  iconBg: string;
   icon: string;
   title: string;
   value: string;
   caption: string;
-  accentBar: string;
 }> = {
   blue: {
-    card: "bg-gradient-to-br from-blue-50 to-blue-100/60 border-blue-200/70 dark:from-blue-950/40 dark:to-blue-900/20 dark:border-blue-800/40",
-    iconWrap: "bg-blue-500/15 ring-blue-400/30",
-    icon: "text-blue-600 dark:text-blue-400",
-    title: "text-blue-700/80 dark:text-blue-300/70",
-    value: "text-blue-900 dark:text-blue-50",
-    caption: "text-blue-600/70 dark:text-blue-400/60",
-    accentBar: "bg-blue-500",
+    card: "bg-[hsl(221,83%,53%)] hover:bg-[hsl(221,83%,48%)]",
+    iconBg: "bg-white/20",
+    icon: "text-white",
+    title: "text-white/80",
+    value: "text-white",
+    caption: "text-white/70",
   },
   violet: {
-    card: "bg-gradient-to-br from-violet-50 to-violet-100/60 border-violet-200/70 dark:from-violet-950/40 dark:to-violet-900/20 dark:border-violet-800/40",
-    iconWrap: "bg-violet-500/15 ring-violet-400/30",
-    icon: "text-violet-600 dark:text-violet-400",
-    title: "text-violet-700/80 dark:text-violet-300/70",
-    value: "text-violet-900 dark:text-violet-50",
-    caption: "text-violet-600/70 dark:text-violet-400/60",
-    accentBar: "bg-violet-500",
+    card: "bg-[hsl(262,83%,58%)] hover:bg-[hsl(262,83%,53%)]",
+    iconBg: "bg-white/20",
+    icon: "text-white",
+    title: "text-white/80",
+    value: "text-white",
+    caption: "text-white/70",
   },
   emerald: {
-    card: "bg-gradient-to-br from-emerald-50 to-emerald-100/60 border-emerald-200/70 dark:from-emerald-950/40 dark:to-emerald-900/20 dark:border-emerald-800/40",
-    iconWrap: "bg-emerald-500/15 ring-emerald-400/30",
-    icon: "text-emerald-600 dark:text-emerald-400",
-    title: "text-emerald-700/80 dark:text-emerald-300/70",
-    value: "text-emerald-900 dark:text-emerald-50",
-    caption: "text-emerald-600/70 dark:text-emerald-400/60",
-    accentBar: "bg-emerald-500",
+    card: "bg-[hsl(142,71%,45%)] hover:bg-[hsl(142,71%,40%)]",
+    iconBg: "bg-white/20",
+    icon: "text-white",
+    title: "text-white/80",
+    value: "text-white",
+    caption: "text-white/70",
   },
   amber: {
-    card: "bg-gradient-to-br from-amber-50 to-amber-100/60 border-amber-200/70 dark:from-amber-950/40 dark:to-amber-900/20 dark:border-amber-800/40",
-    iconWrap: "bg-amber-500/15 ring-amber-400/30",
-    icon: "text-amber-600 dark:text-amber-400",
-    title: "text-amber-700/80 dark:text-amber-300/70",
-    value: "text-amber-900 dark:text-amber-50",
-    caption: "text-amber-600/70 dark:text-amber-400/60",
-    accentBar: "bg-amber-500",
+    card: "bg-[hsl(47,95%,57%)] hover:bg-[hsl(47,95%,52%)]",
+    iconBg: "bg-white/20",
+    icon: "text-white",
+    title: "text-white/80",
+    value: "text-white",
+    caption: "text-white/70",
   },
   rose: {
-    card: "bg-gradient-to-br from-rose-50 to-rose-100/60 border-rose-200/70 dark:from-rose-950/40 dark:to-rose-900/20 dark:border-rose-800/40",
-    iconWrap: "bg-rose-500/15 ring-rose-400/30",
-    icon: "text-rose-600 dark:text-rose-400",
-    title: "text-rose-700/80 dark:text-rose-300/70",
-    value: "text-rose-900 dark:text-rose-50",
-    caption: "text-rose-600/70 dark:text-rose-400/60",
-    accentBar: "bg-rose-500",
+    card: "bg-[hsl(339,90%,51%)] hover:bg-[hsl(339,90%,46%)]",
+    iconBg: "bg-white/20",
+    icon: "text-white",
+    title: "text-white/80",
+    value: "text-white",
+    caption: "text-white/70",
   },
   cyan: {
-    card: "bg-gradient-to-br from-cyan-50 to-cyan-100/60 border-cyan-200/70 dark:from-cyan-950/40 dark:to-cyan-900/20 dark:border-cyan-800/40",
-    iconWrap: "bg-cyan-500/15 ring-cyan-400/30",
-    icon: "text-cyan-600 dark:text-cyan-400",
-    title: "text-cyan-700/80 dark:text-cyan-300/70",
-    value: "text-cyan-900 dark:text-cyan-50",
-    caption: "text-cyan-600/70 dark:text-cyan-400/60",
-    accentBar: "bg-cyan-500",
+    card: "bg-[hsl(191,91%,46%)] hover:bg-[hsl(191,91%,41%)]",
+    iconBg: "bg-white/20",
+    icon: "text-white",
+    title: "text-white/80",
+    value: "text-white",
+    caption: "text-white/70",
   },
   orange: {
-    card: "bg-gradient-to-br from-orange-50 to-orange-100/60 border-orange-200/70 dark:from-orange-950/40 dark:to-orange-900/20 dark:border-orange-800/40",
-    iconWrap: "bg-orange-500/15 ring-orange-400/30",
-    icon: "text-orange-600 dark:text-orange-400",
-    title: "text-orange-700/80 dark:text-orange-300/70",
-    value: "text-orange-900 dark:text-orange-50",
-    caption: "text-orange-600/70 dark:text-orange-400/60",
-    accentBar: "bg-orange-500",
+    card: "bg-[hsl(31,97%,55%)] hover:bg-[hsl(31,97%,50%)]",
+    iconBg: "bg-white/20",
+    icon: "text-white",
+    title: "text-white/80",
+    value: "text-white",
+    caption: "text-white/70",
   },
   default: {
-    card: "bg-card border-border/60",
-    iconWrap: "bg-primary/5 ring-primary/10",
-    icon: "text-primary",
-    title: "text-muted-foreground",
-    value: "text-foreground",
-    caption: "text-muted-foreground/80",
-    accentBar: "bg-primary",
+    card: "bg-[hsl(221,83%,53%)] hover:bg-[hsl(221,83%,48%)]",
+    iconBg: "bg-white/20",
+    icon: "text-white",
+    title: "text-white/80",
+    value: "text-white",
+    caption: "text-white/70",
   },
 };
 
@@ -124,46 +114,41 @@ export function MetricCard({
   const isClickable = Boolean(onClick);
 
   return (
-    <Card
+    <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border shadow-sm transition-all",
+        "group flex items-center gap-3 rounded-xl px-4 py-3 text-white shadow-sm transition-all duration-200",
         styles.card,
-        isClickable && "cursor-pointer hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm",
-        className
+        isClickable &&
+          "cursor-pointer hover:shadow-md active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        className,
       )}
       onClick={onClick}
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
       onKeyDown={isClickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } } : undefined}
     >
-      {/* Accent bar on the left edge */}
-      <div className={cn("absolute inset-y-0 left-0 w-1 rounded-l-2xl", styles.accentBar)} />
+      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", styles.iconBg)}>
+        <Icon className={cn("h-4 w-4", styles.icon, iconClassName)} />
+      </div>
 
-      <CardContent className={cn("p-5 pl-6", contentClassName)}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1 min-w-0">
-            <p className={cn("text-xs font-semibold uppercase tracking-wider", styles.title)}>{title}</p>
-            <div className={cn("text-3xl font-bold tracking-tight", styles.value, valueClassName)}>
-              {typeof countValue === "number" ? (
-                <CountUp
-                  value={countValue}
-                  duration={countDuration ?? 1200}
-                  format={countFormat ?? ((n) => Math.round(n).toLocaleString())}
-                />
-              ) : (
-                value
-              )}
-            </div>
-            {caption && (
-              <p className={cn("text-xs leading-snug", styles.caption)}>{caption}</p>
-            )}
-          </div>
-          <div className={cn("shrink-0 rounded-xl p-2.5 ring-1 ring-inset", styles.iconWrap)}>
-            <Icon className={cn("h-5 w-5", styles.icon, iconClassName)} />
-          </div>
+      <div className={cn("min-w-0 flex-1", contentClassName)}>
+        <p className={cn("truncate text-[10px] font-medium uppercase tracking-wider", styles.title)}>{title}</p>
+        <div className={cn("text-xl font-bold tracking-tight tabular-nums", styles.value, valueClassName)}>
+          {typeof countValue === "number" ? (
+            <CountUp
+              value={countValue}
+              duration={countDuration ?? 1000}
+              format={countFormat ?? ((n) => Math.round(n).toLocaleString())}
+            />
+          ) : (
+            value
+          )}
         </div>
-      </CardContent>
-    </Card>
+        {caption && (
+          <p className={cn("mt-0.5 truncate text-[10px] leading-tight", styles.caption)}>{caption}</p>
+        )}
+      </div>
+    </div>
   );
 }
 

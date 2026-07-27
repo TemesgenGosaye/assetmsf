@@ -16,6 +16,10 @@ from .models import QRCode, Vendor
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health_check(request):
+    try:
+        return StandardResponse.success({"status": "ok"}, "Health check passed")
+    except Exception as e:
+        return StandardResponse.error(str(e), None, status.HTTP_500_INTERNAL_SERVER_ERROR)
     """Simple health check endpoint to verify backend is running."""
     return StandardResponse.success({"status": "ok"}, "Health check passed")
 

@@ -1,17 +1,19 @@
 /**
  * Houses service – talks to Django REST /api/houses/
  */
-import { djangoRequest } from "./djangoAuth";
-import { invalidateCache, setCachedValue, peekCachedValue } from "@/lib/data-cache";
+import { djangoRequest } from "./djangoAuth.ts";
+import { invalidateCache, setCachedValue, peekCachedValue } from "../lib/data-cache.ts";
 
 export type HouseType = "Staff" | "A" | "B" | "C" | "D" | "E";
 export type HouseStatus = "Active" | "Inactive";
+export type AllocationCategory = "R" | "G";
 
 export type DamagedItemKey = "damaged_door" | "damaged_windows" | "damaged_walls" | "damaged_switch" | "damaged_bulb" | "damaged_water";
 
 export type House = {
   id: string;
   house_id: string;
+  house_number: string;
   location: string;
   house_type: HouseType;
   status: HouseStatus;
@@ -22,8 +24,14 @@ export type House = {
   damaged_bulb: boolean;
   damaged_water: boolean;
   damaged_items: string[];
+  inside_items: string[];
   description: string;
   capacity: number;
+  allocation_category: AllocationCategory;
+  allocation_status?: string;
+  assigned_employee_id?: string | null;
+  assigned_employee_name?: string | null;
+  assigned_application_no?: string | null;
   created_at?: string;
   updated_at?: string;
   is_active?: boolean;
@@ -39,8 +47,10 @@ export type HouseFormData = {
   damaged_switch: boolean;
   damaged_bulb: boolean;
   damaged_water: boolean;
+  inside_items: string[];
   description: string;
   capacity: number;
+  allocation_category: AllocationCategory;
 };
 
 const CACHE_KEY = "houses:list";
@@ -49,6 +59,7 @@ function fromDjango(row: any): House {
   return {
     id:             String(row.id),
     house_id:       row.house_id       ?? "",
+    house_number:   row.house_number   ?? "",
     location:       row.location       ?? "",
     house_type:     row.house_type     ?? "Staff",
     status:         row.status         ?? "Active",
@@ -59,8 +70,14 @@ function fromDjango(row: any): House {
     damaged_bulb:    row.damaged_bulb    ?? false,
     damaged_water:   row.damaged_water   ?? false,
     damaged_items:   row.damaged_items   ?? [],
+    inside_items:    row.inside_items    ?? [],
     description:    row.description    ?? "",
     capacity:       row.capacity       ?? 1,
+    allocation_category: row.allocation_category ?? "R",
+    allocation_status: row.allocation_status ?? "Unassigned",
+    assigned_employee_id: row.assigned_employee_id ?? null,
+    assigned_employee_name: row.assigned_employee_name ?? null,
+    assigned_application_no: row.assigned_application_no ?? null,
     created_at:     row.created_at,
     updated_at:     row.updated_at,
     is_active:      row.is_active,
@@ -83,9 +100,10 @@ export async function getHouse(id: string): Promise<House> {
 }
 
 export async function createHouse(data: HouseFormData): Promise<House> {
+  const payload = data;
   const res = await djangoRequest<any>("/houses/", {
     method: "POST",
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (res.success) {
     const house = fromDjango(res.data);
@@ -104,9 +122,10 @@ export async function createHouse(data: HouseFormData): Promise<House> {
 }
 
 export async function updateHouse(id: string, data: HouseFormData): Promise<House> {
+  const payload = data;
   const res = await djangoRequest<any>(`/houses/${id}/`, {
     method: "PATCH",
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (res.success) {
     const house = fromDjango(res.data);
@@ -140,6 +159,10 @@ export async function deleteHouse(id: string): Promise<void> {
 
 export const HOUSE_TYPES: HouseType[] = ["Staff", "A", "B", "C", "D", "E"];
 export const HOUSE_STATUSES: HouseStatus[] = ["Active", "Inactive"];
+export const ALLOCATION_CATEGORY_OPTIONS: { value: AllocationCategory; label: string }[] = [
+  { value: "R", label: "Regular" },
+  { value: "G", label: "Guest" },
+];
 export const DAMAGE_OPTIONS: { key: DamagedItemKey; label: string }[] = [
   { key: "damaged_door",    label: "Door" },
   { key: "damaged_windows", label: "Windows" },

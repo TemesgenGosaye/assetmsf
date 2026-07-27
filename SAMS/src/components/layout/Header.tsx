@@ -1,6 +1,6 @@
 import { Bell, Search, Menu, Settings as SettingsIcon, Users as UsersIcon, LogOut, ShieldCheck, Sun, Moon, Sparkles, BarChart3, Activity, AlertCircle, CheckCircle, XCircle, Clock, Calendar, MessageSquare, Heart, Star, Zap, TrendingUp, Database, LayoutDashboard, QrCode, Package, AlertTriangle, Building2, User, Home, Megaphone, ClipboardCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { isDemoMode } from "@/lib/demo";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -52,16 +52,13 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   const handleSignOut = () => {
     try {
+      localStorage.removeItem('django_access_token');
+      localStorage.removeItem('django_refresh_token');
+      localStorage.removeItem('django_user');
       localStorage.removeItem('current_user_id');
       localStorage.removeItem('auth_user');
-      if (isDemoMode()) {
-        sessionStorage.removeItem('demo_current_user_id');
-        sessionStorage.removeItem('demo_auth_user');
-        localStorage.removeItem('demo_current_user_id');
-        localStorage.removeItem('demo_auth_user');
-      }
     } catch {}
-    navigate(isDemoMode() ? '/demo/login' : '/login', { replace: true });
+    navigate('/login', { replace: true });
   };
 
   const toggleTheme = () => {
@@ -121,7 +118,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   useEffect(() => {
     try {
-      if (isDemoMode()) {
+      if (false) {
         const raw = sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user');
         setAuthUser(raw ? JSON.parse(raw) : null);
       } else {
@@ -136,7 +133,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     (async () => {
       try {
         // In demo, show a fixed set on every load
-        if (isDemoMode()) {
+        if (false) {
           // If user cleared them, keep empty just for this session; after hard reload we re-seed.
           const cleared = sessionStorage.getItem('demo_notifs_cleared') === '1';
           if (!cleared) {
@@ -157,7 +154,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   // Realtime notification polling — refreshes every 30 seconds in the background
   useEffect(() => {
-    if (isDemoMode()) return;
+    if (false) return;
     const interval = setInterval(async () => {
       try {
         const data = await listNotifications(50);
@@ -182,7 +179,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   const badgeLabel = unreadCount > 9 ? "9+" : String(unreadCount || "");
 
-  const prefix = isDemoMode() ? '/demo' : '';
+  const prefix = false ? '/demo' : '';
   const navItems = [
     { label: 'Dashboard', path: `${prefix}/` === '/demo/' ? '/demo' : '/', roles: ['admin','manager','user'] },
     { label: 'Assets', path: `${prefix}/assets`, roles: ['admin','manager','user'] },
@@ -205,28 +202,28 @@ export function Header({ onMenuClick }: HeaderProps) {
     if (type.startsWith('ticket')) {
       const id = getTicketId();
       const path = id ? `/tickets?id=${encodeURIComponent(id)}` : '/tickets';
-      return isDemoMode() ? `/demo${path}` : path;
+      return false ? `/demo${path}` : path;
     }
     if (type === 'qr') {
       const m = (n.message || '').match(/\b([A-Z]+-\d+)\b/);
       const assetId = m?.[1];
       const path = assetId ? `/assets/${assetId}` : '/qr-codes';
-      return assetId ? path : (isDemoMode() ? `/demo${path}` : path);
+      return assetId ? path : (false ? `/demo${path}` : path);
     }
-    if (type === 'report') { return isDemoMode() ? '/demo/reports' : '/reports'; }
-    if (type === 'system') { return isDemoMode() ? '/demo' : '/'; }
-    if (type === 'asset') { return isDemoMode() ? '/demo/assets' : '/assets'; }
-    if (type === 'property') { return isDemoMode() ? '/demo/properties' : '/properties'; }
-    if (type === 'user') { return isDemoMode() ? '/demo/users' : '/users'; }
-    if (type === 'house') { return isDemoMode() ? '/demo/houses' : '/houses'; }
-    if (type === 'newsletter') { return isDemoMode() ? '/demo/newsletter' : '/newsletter'; }
-    if (type === 'allocation') { return isDemoMode() ? '/demo/residential-hub' : '/residential-hub'; }
-    if (type === 'license') { return isDemoMode() ? '/demo/license' : '/license'; }
-    if (type === 'audit') { return isDemoMode() ? '/demo/audit' : '/audit'; }
-    if (type === 'scan') { return isDemoMode() ? '/demo/audit' : '/audit'; }
-    if (type === 'department') { return isDemoMode() ? '/demo/users' : '/users'; }
-    if (type === 'approval') { return isDemoMode() ? '/demo/approvals' : '/approvals'; }
-    if (type === 'setting') { return isDemoMode() ? '/demo/settings' : '/settings'; }
+    if (type === 'report') { return false ? '/demo/reports' : '/reports'; }
+    if (type === 'system') { return false ? '/demo' : '/'; }
+    if (type === 'asset') { return false ? '/demo/assets' : '/assets'; }
+    if (type === 'property') { return false ? '/demo/properties' : '/properties'; }
+    if (type === 'user') { return false ? '/demo/users' : '/users'; }
+    if (type === 'house') { return false ? '/demo/house-opp' : '/house-opp'; }
+    if (type === 'newsletter') { return false ? '/demo/newsletter' : '/newsletter'; }
+    if (type === 'allocation') { return false ? '/demo/residential-hub' : '/residential-hub'; }
+    if (type === 'license') { return false ? '/demo/license' : '/license'; }
+    if (type === 'audit') { return false ? '/demo/audit' : '/audit'; }
+    if (type === 'scan') { return false ? '/demo/audit' : '/audit'; }
+    if (type === 'department') { return false ? '/demo/users' : '/users'; }
+    if (type === 'approval') { return false ? '/demo/approvals' : '/approvals'; }
+    if (type === 'setting') { return false ? '/demo/settings' : '/settings'; }
     return isDemoMode() ? '/demo' : '/';
   }
 
@@ -247,7 +244,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       { terms: ['approvals','approval','requests'], label: 'Approvals', path: navItems.find(i=>i.label==='Approvals')?.path || '/approvals' },
   ];
   // In demo mode, do not suggest Audit via synonyms
-  if (!isDemoMode()) {
+  if (!false) {
     synonyms.push({ terms: ['audit','audits'], label: 'Audit', path: navItems.find(i=>i.label==='Audit')?.path || '/audit' });
   }
   
@@ -357,7 +354,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                onClick={async () => {
                  await clearAllNotifications();
                  setNotifications([]);
-                 if (isDemoMode()) {
+                 if (false) {
                    try { sessionStorage.setItem('demo_notifs_cleared', '1'); } catch {}
                  }
                }}
@@ -504,7 +501,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 {userEmail}
               </p>
             )}
-            {roleLower && !isDemoMode() && (
+            {roleLower && !false && (
               <Badge
                 variant="outline"
                 className="border-primary/40 bg-primary/10 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary"
@@ -516,14 +513,14 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
         <div className="py-2">
           <DropdownMenuItem
-            onClick={() => navigate(isDemoMode() ? '/demo/profile' : '/profile')}
+            onClick={() => navigate(false ? '/demo/profile' : '/profile')}
             className="mx-2 flex items-center gap-2 rounded-lg px-3 py-2"
           >
             <UsersIcon className="h-4 w-4" />
             <span>Profile</span>
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => navigate(isDemoMode() ? '/demo/settings' : '/settings')}
+            onClick={() => navigate(false ? '/demo/settings' : '/settings')}
             className="mx-2 flex items-center gap-2 rounded-lg px-3 py-2"
           >
             <SettingsIcon className="h-4 w-4" />
@@ -533,7 +530,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             <>
               <DropdownMenuSeparator className="my-2" />
               <DropdownMenuItem
-                onClick={() => navigate(isDemoMode() ? '/demo/users' : '/users')}
+                onClick={() => navigate(false ? '/demo/users' : '/users')}
                 className="mx-2 flex items-center gap-2 rounded-lg px-3 py-2"
               >
                 <UsersIcon className="h-4 w-4" />
@@ -575,7 +572,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                </button>
              </div>
            <Link
-             to={prefix || "/"}
+              to={prefix || "/dashboard"}
              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
              aria-label="Go to dashboard"
            >

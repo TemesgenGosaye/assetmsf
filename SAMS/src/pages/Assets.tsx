@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, useCallback, Fragment } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { isDemoMode } from "@/lib/demo";
 import { cn } from "@/lib/utils";
-import { PageSkeleton, TableSkeleton } from "@/components/ui/page-skeletons";
+import { PageSkeleton, TableSkeleton, SearchLoadingSkeleton } from "@/components/ui/page-skeletons";
 import { AssetForm } from "@/components/assets/AssetForm";
 import { BulkImportModal } from "@/components/assets/BulkImportModal";
 import { QRCodeGenerator } from "@/components/qr/QRCodeGenerator";
+import { AssetActionsDropdown } from "@/components/assets/AssetActionsDropdown";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,8 @@ import {
   ChevronDown,
   Maximize2,
   Minimize2,
+  ArrowRightLeft,
+  MoreVertical,
 } from "lucide-react";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
@@ -56,6 +59,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -73,7 +77,9 @@ import {
   SheetDescription as SheetDesc,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { toast } from "sonner";
+import { toast } from 'sonner';
+import { PrintModal } from '@/components/common/PrintModal';
+import { assetPrintHTML } from '@/lib/printUtils';
 import {
   listAssets,
   createAsset,
@@ -106,6 +112,7 @@ import {
   type ApprovalRequest,
 } from "@/services/approvals";
 import RequestEditModal from "@/components/assets/RequestEditModal";
+import TransferAssetDialog from "@/components/assets/TransferAssetDialog";
 import { listFinalApproverPropsForUser } from "@/services/finalApprover";
 import {
   Tooltip,
@@ -137,6 +144,8 @@ import ColumnChooser, {
   type ColumnDef,
 } from "@/components/table/ColumnChooser";
 import { listUserDepartmentAccess } from "@/services/userDeptAccess";
+import { useSearchLoading } from "@/hooks/useDebouncedValue";
+import SearchCircularLoader from "@/components/common/SearchCircularLoader";
 
 export default function Assets() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -144,10 +153,13 @@ export default function Assets() {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showQRGenerator, setShowQRGenerator] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printHtml, setPrintHtml] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchLoading, debouncedSearch] = useSearchLoading(searchTerm, 300);
   const [filterType, setFilterType] = useState("all");
   const [filterProperty, setFilterProperty] = useState("all");
   const [assets, setAssets] = useState<any[]>(
@@ -186,6 +198,8 @@ export default function Assets() {
   >({});
   const [requestEditOpen, setRequestEditOpen] = useState(false);
   const [requestEditAsset, setRequestEditAsset] = useState<any | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferAsset, setTransferAsset] = useState<any | null>(null);
   const [approverPropIds, setApproverPropIds] = useState<Set<string>>(
     new Set(),
   );
@@ -669,8 +683,8 @@ export default function Assets() {
         )
           return false;
         const matchesSearch =
-          asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          asset.id.toLowerCase().includes(searchTerm.toLowerCase());
+          asset.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          asset.id.toLowerCase().includes(debouncedSearch.toLowerCase());
         const matchesType =
           filterType === "all" ||
           (asset.type || "").toLowerCase() === filterType.toLowerCase();
@@ -749,7 +763,7 @@ export default function Assets() {
       assets,
       activePropertyIds,
       accessibleProps,
-      searchTerm,
+      debouncedSearch,
       filterType,
       filterProperty,
       deptAll,
@@ -1053,9 +1067,10 @@ export default function Assets() {
           }).catch(() => {});
         } else {
           // Create new assets
+          let newAssetId: string | null = null;
           for (let i = 0; i < quantity; i++) {
             const assetCode = `${seqPrefix}${String(baseSeq + i).padStart(3, "0")}`;
-            await createAsset({
+            const created = await createAsset({
               asset_code: assetCode,
               name: assetData.itemName,
               type: assetData.itemType,
@@ -1074,51 +1089,20 @@ export default function Assets() {
               amcStartDate,
               amcEndDate,
             } as any);
+            if (!newAssetId) newAssetId = created.id;
           }
           await logActivity("asset_created", `Assets created`);
-          trackActivity("asset", "create", {
-            entityName: assetData.itemName,
-          }).catch(() => {});
+          trackActivity("asset", "create", { entityName: assetData.itemName }).catch(() => {});
+          if (newAssetId) {
+            toast.success(`Asset ${newAssetId} created`);
+            navigate(`/assets/${newAssetId}`);
+          }
         }
         const data = await listAssets({ force: true });
         setAssets(data as any);
-      } else {
+      
         // Demo mode
-        const propertyCode = sanitizeCode(assetData.property);
-        const seqPrefix = `${typePrefix(assetData.itemType)}0-0-00-`;
-        const quantity = Math.max(1, Number(assetData.quantity) || 1);
-        const baseSeq = nextSequence(assets, seqPrefix);
-        const ids = Array.from(
-          { length: quantity },
-          (_, i) => `${seqPrefix}${String(baseSeq + i).padStart(3, "0")}`,
-        );
-        setAssets((prev) => [
-          ...prev,
-          ...ids.map((id) => ({
-            id,
-            name: assetData.itemName,
-            type: assetData.itemType,
-            property: propertyCode,
-            department: assetData.department || null,
-            quantity: 1,
-            purchaseDate: assetData.purchaseDate || null,
-            expiryDate: assetData.expiryDate || null,
-            poNumber: assetData.poNumber || null,
-            condition: assetData.condition || null,
-            location: assetData.location || null,
-            description: assetData.description || null,
-            serialNumber: assetData.serialNumber || null,
-            status: "active",
-            amcEnabled,
-            amcStartDate,
-            amcEndDate,
-          })),
-        ]);
-        await logActivity(
-          "asset_created",
-          `Asset ${assetData.itemName} created (demo)`,
-          "Demo",
-        );
+          
       }
       setShowAddForm(false);
       setSelectedAsset(null);
@@ -1251,6 +1235,13 @@ export default function Assets() {
     }
     setSelectedAsset(asset);
     setShowQRGenerator(true);
+  };
+
+  const handlePrintAsset = (asset: any) => {
+    // Generate printable HTML for the selected asset and open modal
+    const html = assetPrintHTML(asset);
+    setPrintHtml(html);
+    setPrintOpen(true);
   };
 
   // Resolve property id for an asset (supports demo where only name is present)
@@ -1456,7 +1447,7 @@ export default function Assets() {
       </Dialog>
       {/* Header with breadcrumbs */}
       <Breadcrumbs
-        items={[{ label: "Dashboard", to: "/" }, { label: "Assets" }]}
+        items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Assets" }]}
       />
 
       {/* Hero Section */}
@@ -1531,6 +1522,11 @@ export default function Assets() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 bg-background"
               />
+              {searchLoading && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <SearchCircularLoader size={18} />
+                </div>
+              )}
             </div>
 
             <Select value={filterType} onValueChange={setFilterType}>
@@ -1930,7 +1926,7 @@ export default function Assets() {
                 </CardDescription>
               </div>
             </div>
-            <div className="bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 border border-slate-300 md:text-right dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300">
+            <div className="bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 border border-slate-300 md:text-right dark:bg-muted dark:border-border dark:text-slate-300">
               Showing {groupedRows.length.toLocaleString()} group
               {groupedRows.length === 1 ? "" : "s"} •{" "}
               {sortedAssets.length.toLocaleString()} item
@@ -2019,7 +2015,15 @@ export default function Assets() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedRows.map((group) => {
+                {searchLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={12} className="p-0">
+                      <div className="p-4">
+                        <SearchLoadingSkeleton rows={5} columns={6} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : paginatedRows.map((group) => {
                   const { rep, members, totalQty, key } = group;
                   const allSelected = members.every((m) =>
                     selectedIds.has(m.id),
@@ -2037,7 +2041,7 @@ export default function Assets() {
                     <Fragment key={key}>
                       <TableRow
                         key={key}
-                        className="cursor-pointer select-none border-b border-slate-300 bg-white shadow-[inset_0_-1px_0_rgba(148,163,184,0.18)] transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/80 dark:border-slate-700 dark:bg-slate-950 dark:shadow-[inset_0_-1px_0_rgba(51,65,85,0.55)] dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
+                        className="cursor-pointer select-none border-b border-slate-300 bg-white shadow-[inset_0_-1px_0_rgba(148,163,184,0.18)] transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/80 dark:border-border dark:bg-card dark:shadow-[inset_0_-1px_0_rgba(51,65,85,0.55)] dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
                         data-selected={allSelected ? "true" : undefined}
                         onDoubleClick={() => navigate(`/assets/${rep.id}`)}
                       >
@@ -2071,7 +2075,7 @@ export default function Assets() {
                                       : "Expand group"
                                   }
                                   aria-expanded={isExpanded}
-                                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-slate-300 bg-slate-50 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-slate-300 bg-slate-50 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 dark:border-border dark:bg-muted dark:text-slate-300 dark:hover:bg-slate-800"
                                 >
                                   {isExpanded ? (
                                     <ChevronDown className="h-4 w-4" />
@@ -2079,7 +2083,7 @@ export default function Assets() {
                                     <ChevronRight className="h-4 w-4" />
                                   )}
                                 </button>
-                                <span className="inline-flex items-center rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                                <span className="inline-flex items-center rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-600 dark:border-border dark:bg-muted dark:text-slate-300">
                                   {isExpanded
                                     ? "Group"
                                     : `+${members.length - 1}`}
@@ -2153,7 +2157,7 @@ export default function Assets() {
                         {isVisible("qty") && (
                           <TableCell className="text-center">
                             {!isExpanded ? (
-                              <span className="inline-flex min-w-[48px] items-center justify-center gap-1 border border-slate-300 bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                              <span className="inline-flex min-w-[48px] items-center justify-center gap-1 border border-slate-300 bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-slate-700 dark:border-border dark:bg-muted dark:text-slate-200">
                                 <Package className="h-3 w-3 text-slate-500 dark:text-slate-300" />
                                 {totalQty}
                               </span>
@@ -2231,71 +2235,45 @@ export default function Assets() {
                         )}
                         {isVisible("actions") && (
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              {/* Allow inline edit/delete only when the group is a single item to avoid ambiguity */}
-                              {(members.length === 1 || isExpanded) &&
+                            <AssetActionsDropdown
+                              onEdit={() => handleEditAsset(rep)}
+                              onQRCode={() => handleGenerateQR(rep)}
+                              onTransfer={() => {
+                                const target = members.length === 1 ? members[0] : rep;
+                                setTransferAsset(target);
+                                setTransferOpen(true);
+                              }}
+                              onPrint={() => handlePrintAsset(rep)}
+                              onRequestEdit={() => {
+                                const target = members.length === 1 ? members[0] : rep;
+                                setRequestEditAsset(target as any);
+                                setRequestEditOpen(true);
+                              }}
+                              onDelete={() => {
+                                if (members.length > 1) {
+                                  handleDeleteGroup(members);
+                                } else {
+                                  handleDeleteAsset(rep.id);
+                                }
+                              }}
+                              canEdit={
+                                (members.length === 1 || isExpanded) &&
                                 (role === "admin" ||
                                   approverPropIds.has(
                                     String(
                                       rep.property_id || rep.property || "",
                                     ),
-                                  )) && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleEditAsset(rep)}
-                                    className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              {(members.length === 1 || isExpanded) &&
+                                  ))
+                              }
+                              showRequestEdit={
+                                (members.length === 1 || isExpanded) &&
                                 role !== "admin" &&
                                 !approverPropIds.has(
                                   String(rep.property_id || rep.property || ""),
-                                ) && (
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    onClick={() => {
-                                      const target =
-                                        members.length === 1 ? members[0] : rep;
-                                      setRequestEditAsset(target as any);
-                                      setRequestEditOpen(true);
-                                    }}
-                                    className="h-6 w-6 rounded-sm border-slate-300 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                    aria-label="Request edit with approval"
-                                    title="Request edit with approval"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              {/* Keep quick QR on the representative item; for bulk/grouped use the Export QR Sheet */}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleGenerateQR(rep)}
-                                className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                <QrCode className="h-4 w-4" />
-                              </Button>
-                              {role === "admin" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    if (members.length > 1) {
-                                      handleDeleteGroup(members);
-                                    } else {
-                                      handleDeleteAsset(rep.id);
-                                    }
-                                  }}
-                                  className="h-6 w-6 rounded-sm border border-slate-300 bg-slate-50 p-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-slate-800"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
+                                )
+                              }
+                              canDelete={role === "admin"}
+                            />
                           </TableCell>
                         )}
                       </TableRow>
@@ -2326,7 +2304,7 @@ export default function Assets() {
                             .map((asset) => (
                               <TableRow
                                 key={`${key}::${asset.id}`}
-                                className="border-b border-slate-200 bg-white transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/70 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
+                                className="border-b border-slate-200 bg-white transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/70 dark:border-border dark:bg-card dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
                                 data-selected={
                                   selectedIds.has(asset.id) ? "true" : undefined
                                 }
@@ -2347,7 +2325,7 @@ export default function Assets() {
                                 )}
                                 {isVisible("group") && (
                                   <TableCell className="text-center">
-                                    <span className="inline-flex items-center rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                                    <span className="inline-flex items-center rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-600 dark:border-border dark:bg-muted dark:text-slate-300">
                                       Child
                                     </span>
                                   </TableCell>
@@ -2419,7 +2397,7 @@ export default function Assets() {
                                 )}
                                 {isVisible("qty") && (
                                   <TableCell className="text-center">
-                                    <span className="inline-flex min-w-[48px] items-center justify-center gap-1 border border-slate-300 bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                    <span className="inline-flex min-w-[48px] items-center justify-center gap-1 border border-slate-300 bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-slate-700 dark:border-border dark:bg-muted dark:text-slate-200">
                                       <Package className="h-3 w-3 text-slate-500 dark:text-slate-300" />
                                       {asset.quantity}
                                     </span>
@@ -2494,67 +2472,41 @@ export default function Assets() {
                                 )}
                                 {isVisible("actions") && (
                                   <TableCell className="text-right">
-                                    <div className="flex justify-end gap-1">
-                                      {(role === "admin" ||
-                                        approverPropIds.has(
-                                          String(
-                                            asset.property_id ||
-                                              asset.property ||
-                                              "",
-                                          ),
-                                        )) && (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => handleEditAsset(asset)}
-                                          className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                        >
-                                          <Edit className="h-4 w-4" />
-                                        </Button>
-                                      )}
-                                      {role !== "admin" &&
+                                    <AssetActionsDropdown
+                                      onEdit={() => handleEditAsset(asset)}
+                                      onQRCode={() => handleGenerateQR(asset)}
+                                      onTransfer={() => {
+                                        setTransferAsset(asset);
+                                        setTransferOpen(true);
+                                      }}
+                                      onPrint={() => handlePrintAsset(asset)}
+                                      onRequestEdit={() => {
+                                        setRequestEditAsset(asset as any);
+                                        setRequestEditOpen(true);
+                                      }}
+                                      onDelete={() => handleDeleteAsset(asset.id)}
+                                      canEdit={
+                                        (role === "admin" ||
+                                          approverPropIds.has(
+                                            String(
+                                              asset.property_id ||
+                                                asset.property ||
+                                                "",
+                                            ),
+                                          ))
+                                      }
+                                      showRequestEdit={
+                                        role !== "admin" &&
                                         !approverPropIds.has(
                                           String(
                                             asset.property_id ||
                                               asset.property ||
                                               "",
                                           ),
-                                        ) && (
-                                          <Button
-                                            size="sm"
-                                            variant="secondary"
-                                            onClick={() => {
-                                              setRequestEditAsset(asset as any);
-                                              setRequestEditOpen(true);
-                                            }}
-                                            className="h-6 w-6 rounded-sm border-slate-300 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                            aria-label="Request edit with approval"
-                                            title="Request edit with approval"
-                                          >
-                                            <Edit className="h-4 w-4" />
-                                          </Button>
-                                        )}
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleGenerateQR(asset)}
-                                        className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                      >
-                                        <QrCode className="h-4 w-4" />
-                                      </Button>
-                                      {role === "admin" && (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() =>
-                                            handleDeleteAsset(asset.id)
-                                          }
-                                          className="h-6 w-6 rounded-sm border border-slate-300 bg-slate-50 p-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-slate-800"
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      )}
-                                    </div>
+                                        )
+                                      }
+                                      canDelete={role === "admin"}
+                                    />
                                   </TableCell>
                                 )}
                                 {isVisible("status") && (
@@ -2615,67 +2567,41 @@ export default function Assets() {
                                 )}
                                 {isVisible("actions") && (
                                   <TableCell className="text-right">
-                                    <div className="flex justify-end gap-1">
-                                      {(role === "admin" ||
-                                        approverPropIds.has(
-                                          String(
-                                            asset.property_id ||
-                                              asset.property ||
-                                              "",
-                                          ),
-                                        )) && (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => handleEditAsset(asset)}
-                                          className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                        >
-                                          <Edit className="h-4 w-4" />
-                                        </Button>
-                                      )}
-                                      {role !== "admin" &&
+                                    <AssetActionsDropdown
+                                      onEdit={() => handleEditAsset(asset)}
+                                      onQRCode={() => handleGenerateQR(asset)}
+                                      onTransfer={() => {
+                                        setTransferAsset(asset);
+                                        setTransferOpen(true);
+                                      }}
+                                      onPrint={() => handlePrintAsset(asset)}
+                                      onRequestEdit={() => {
+                                        setRequestEditAsset(asset as any);
+                                        setRequestEditOpen(true);
+                                      }}
+                                      onDelete={() => handleDeleteAsset(asset.id)}
+                                      canEdit={
+                                        (role === "admin" ||
+                                          approverPropIds.has(
+                                            String(
+                                              asset.property_id ||
+                                                asset.property ||
+                                                "",
+                                            ),
+                                          ))
+                                      }
+                                      showRequestEdit={
+                                        role !== "admin" &&
                                         !approverPropIds.has(
                                           String(
                                             asset.property_id ||
                                               asset.property ||
                                               "",
                                           ),
-                                        ) && (
-                                          <Button
-                                            size="sm"
-                                            variant="secondary"
-                                            onClick={() => {
-                                              setRequestEditAsset(asset as any);
-                                              setRequestEditOpen(true);
-                                            }}
-                                            className="h-6 w-6 rounded-sm border-slate-300 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                            aria-label="Request edit with approval"
-                                            title="Request edit with approval"
-                                          >
-                                            <Edit className="h-4 w-4" />
-                                          </Button>
-                                        )}
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleGenerateQR(asset)}
-                                        className="h-6 w-6 rounded-sm border-slate-300 bg-slate-50 p-0 text-slate-700 shadow-none hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                                      >
-                                        <QrCode className="h-4 w-4" />
-                                      </Button>
-                                      {role === "admin" && (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() =>
-                                            handleDeleteAsset(asset.id)
-                                          }
-                                          className="h-6 w-6 rounded-sm border border-slate-300 bg-slate-50 p-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-slate-800"
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      )}
-                                    </div>
+                                        )
+                                      }
+                                      canDelete={role === "admin"}
+                                    />
                                   </TableCell>
                                 )}
                               </TableRow>
@@ -2685,7 +2611,7 @@ export default function Assets() {
                     </Fragment>
                   );
                 })}
-              </TableBody>
+                </TableBody>
             </Table>
             <TablePagination
               currentPage={currentPage}
@@ -3073,9 +2999,30 @@ export default function Assets() {
       )}
       <Dialog
         open={showAddForm}
-        onOpenChange={(open) => {
-          setShowAddForm(open);
+        onOpenChange={async (open) => {
           if (!open) {
+            // Determine the ID of the asset that was just created or updated
+            let newAssetId: string | undefined;
+            if (selectedAsset) {
+              // Update case – use the existing asset ID
+              newAssetId = selectedAsset.id;
+            } else {
+              // Creation case – infer the new ID
+              if (isDemoMode()) {
+                // In demo mode, IDs are generated in the `ids` array earlier
+                newAssetId = ids?.[0];
+              } else {
+                // In real mode, after refreshing the asset list just show success
+                await listAssets({ force: true });
+              }
+            }
+            if (newAssetId) {
+              toast.success(`Asset ${newAssetId} saved`);
+              navigate(`/assets/${newAssetId}`);
+            } else {
+              toast.success(`Asset saved`);
+            }
+            setShowAddForm(false);
             setSelectedAsset(null);
             setSearchParams(
               (prev) => {
@@ -3097,7 +3044,7 @@ export default function Assets() {
               : "max-w-4xl max-h-[90vh]",
           )}
         >
-          <DialogHeader className="flex flex-row items-start justify-between space-y-0 pr-8 text-left">
+          <DialogHeader className="flex flex-row items-start justify-between space-y-0 text-left">
             <div className="space-y-1.5">
               <DialogTitle>
                 {selectedAsset ? "Edit Asset" : "Add New Asset"}
@@ -3235,9 +3182,19 @@ export default function Assets() {
           }
         }}
       />
+      <TransferAssetDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        asset={transferAsset}
+        onTransferCreated={async () => {
+          const data = await listAssets({ force: true });
+          setAssets(data as any);
+        }}
+      />
     </div>
   );
 }
 
 // Utility to convert a string into a color (HSL format)
 // (removed thumbnail color helper)
+

@@ -176,6 +176,12 @@ class User(AbstractUser):
     )
 
 
+    must_change_password = models.BooleanField(
+        _("must change password"),
+        default=False
+    )
+
+
     objects = UserManager()
 
 

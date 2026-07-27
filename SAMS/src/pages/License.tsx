@@ -203,7 +203,7 @@ export default function LicensePage() {
       setAdminEmail(email);
       if (role !== 'admin') {
         toast.error('Unauthorized');
-        navigate('/');
+        navigate('/dashboard');
         return;
       }
       // If recently verified in this session (5 min), skip prompt
@@ -260,11 +260,8 @@ export default function LicensePage() {
     try {
       if (!newForm.name.trim()) { toast.error('Enter a property name'); return; }
       setAdding(true);
-      // Generate ID if missing
-      const id = newForm.id.trim() || `PROP-${Math.floor(Math.random()*900+100)}`;
       let created: Property | null = null;
       created = await sbCreateProperty({
-        id,
         name: newForm.name.trim(),
         address: newForm.address.trim() || null,
         type: newForm.type,
@@ -390,7 +387,7 @@ export default function LicensePage() {
   return (
     <div className="space-y-8 pb-10">
       <div className="space-y-4 print:hidden">
-        <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "License" }]} />
+        <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "License" }]} />
         
         <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
           <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
@@ -629,29 +626,19 @@ export default function LicensePage() {
             <DialogDescription>Create a property and assign an initial license.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Property ID</Label>
-                <Input 
-                  placeholder="Auto-generated" 
-                  value={newForm.id} 
-                  onChange={(e) => setNewForm(prev => ({ ...prev, id: e.target.value }))} 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <Select value={newForm.type} onValueChange={(v) => setNewForm(prev => ({ ...prev, type: v }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Office">Office</SelectItem>
-                    <SelectItem value="Storage">Storage</SelectItem>
-                    <SelectItem value="Manufacturing">Manufacturing</SelectItem>
-                    <SelectItem value="Site Office">Site Office</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={newForm.type} onValueChange={(v) => setNewForm(prev => ({ ...prev, type: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Office">Office</SelectItem>
+                  <SelectItem value="Storage">Storage</SelectItem>
+                  <SelectItem value="Manufacturing">Manufacturing</SelectItem>
+                  <SelectItem value="Site Office">Site Office</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             
             <div className="space-y-2">

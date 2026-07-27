@@ -26,6 +26,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating users."""
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True, required=True)
+    role = serializers.CharField(required=False, default='FIELD_STAFF')
+    status = serializers.CharField(required=False, default='active')
 
     class Meta:
         model = User
@@ -33,6 +35,22 @@ class UserCreateSerializer(serializers.ModelSerializer):
             'email', 'name', 'phone', 'department', 'role', 'status',
             'password', 'password_confirm', 'email_notifications', 'dark_mode'
         ]
+
+    def validate_status(self, value):
+        """Normalize status to lowercase to match backend choices."""
+        normalized = value.lower().strip()
+        valid = {c[0] for c in User.Status.choices}
+        if normalized not in valid:
+            raise serializers.ValidationError(f'"{value}" is not a valid choice.')
+        return normalized
+
+    def validate_role(self, value):
+        """Normalize role to UPPERCASE to match backend choices."""
+        normalized = value.upper().replace(' ', '_').strip()
+        valid = {c[0] for c in User.Role.choices}
+        if normalized not in valid:
+            raise serializers.ValidationError(f'"{value}" is not a valid choice.')
+        return normalized
 
     def validate(self, attrs):
         """Validate that passwords match."""
@@ -52,6 +70,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating users."""
+    status = serializers.CharField(required=False)
     
     class Meta:
         model = User
@@ -59,6 +78,16 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             'name', 'phone', 'department', 'status', 'profile_image',
             'email_notifications', 'dark_mode'
         ]
+
+    def validate_status(self, value):
+        """Normalize status to lowercase to match backend choices."""
+        if not value:
+            return value
+        normalized = value.lower().strip()
+        valid = {c[0] for c in User.Status.choices}
+        if normalized not in valid:
+            raise serializers.ValidationError(f'"{value}" is not a valid choice.')
+        return normalized
 
 
 class ChangePasswordSerializer(serializers.Serializer):

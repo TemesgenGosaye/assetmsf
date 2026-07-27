@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { isDemoMode } from "@/lib/demo";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Home, ArrowLeft, MapPin, Compass, Mail } from "lucide-react";
 
@@ -45,7 +44,7 @@ const NotFound = () => {
               <p>Still lost? Please reach out to support and include the URL above.</p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Button onClick={() => navigate(isDemoMode() ? "/demo" : "/")} className="gap-2 rounded-xl px-5">
+              <Button onClick={() => navigate("/dashboard")} className="gap-2 rounded-xl px-5">
                 <Home className="h-4 w-4" />
                 Back to Dashboard
               </Button>
@@ -71,8 +70,8 @@ const NotFound = () => {
                 <Mail className="mt-0.5 h-4 w-4 text-primary" />
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-foreground">Email</p>
-                  <a href="mailto:karthik@samsproject.com" className="text-xs text-muted-foreground hover:text-primary">
-                    karthik@samsproject.com
+                  <a href="mailto:tamizowarrior7@gmail.com" className="text-xs text-muted-foreground hover:text-primary">
+                    tamizowarrior7@gmail.com
                   </a>
                   <p className="text-xs text-muted-foreground">
                     Share the page link above so we can track it quickly.

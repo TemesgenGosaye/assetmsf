@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { isDemoMode } from "@/lib/demo";
 import {
   Calendar,
   MapPin,
@@ -21,7 +22,7 @@ import {
 import { getAssetById, deleteAsset, type Asset } from "@/services/assets";
 import { listProperties, type Property } from "@/services/properties";
 import { listFinalApproverPropsForUser } from "@/services/finalApprover";
-import { isDemoMode } from "@/lib/demo";
+
 import { generateQrPng } from "@/lib/qr";
 import DetailPage from "@/components/detail/DetailPage";
 
@@ -204,7 +205,7 @@ export default function AssetDetails() {
       <DetailPage
         backTo="/assets"
         breadcrumbs={[
-          { label: "SAMS", to: "/" },
+          { label: "SAMS", to: "/dashboard" },
           { label: "Assets", to: "/assets" },
           { label: "Asset Details" },
         ]}
@@ -223,12 +224,12 @@ export default function AssetDetails() {
     <DetailPage
       backTo="/assets"
       breadcrumbs={[
-        { label: "SAMS", to: "/" },
-        { label: "Assets", to: "/assets" },
-        { label: "Asset Details" },
-      ]}
-      title="Asset Profile"
-      hero={{
+          { label: "SAMS", to: "/dashboard" },
+          { label: "Assets", to: "/assets" },
+          { label: "Asset Details" },
+        ]}
+        title="Asset Profile"
+        hero={{
         icon: <Package className="h-8 w-8 text-primary" />,
         name: asset.name || "Asset Details",
         subtitle: asset.type || "Unknown type",

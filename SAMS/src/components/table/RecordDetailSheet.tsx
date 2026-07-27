@@ -91,7 +91,7 @@ export function RecordDetailSheet<T extends Record<string, any>>({
         className="w-full sm:max-w-md flex flex-col p-0 overflow-hidden gap-0"
       >
         {/* Header */}
-        <div className="relative shrink-0 px-6 pt-8 pb-6 border-b border-border/60 bg-[radial-gradient(120%_100%_at_0%_0%,theme(colors.primary/12%),transparent_60%)]">
+        <div className="relative shrink-0 px-6 pt-8 pb-6 border-b border-border/60 bg-[radial-gradient(120%_100%_at_0%_0%,hsl(var(--primary)/0.12),transparent_60%)]">
           <div className="flex items-start gap-4">
             {Icon && (
               <div className="h-14 w-14 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/15">

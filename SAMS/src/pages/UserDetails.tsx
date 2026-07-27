@@ -86,7 +86,7 @@ export default function UserDetails() {
     return (
       <DetailPage
         backTo="/users"
-        breadcrumbs={[{ label: "SAMS", to: "/" }, { label: "Users", to: "/users" }, { label: "User Details" }]}
+        breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Users", to: "/users" }, { label: "User Details" }]}
         title="User Profile"
         hero={{ name: "" }}
         sections={[]}
@@ -105,7 +105,7 @@ export default function UserDetails() {
     <>
       <DetailPage
         backTo="/users"
-        breadcrumbs={[{ label: "SAMS", to: "/" }, { label: "Users", to: "/users" }, { label: "User Details" }]}
+        breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Users", to: "/users" }, { label: "User Details" }]}
         title="User Profile"
         hero={{
           initials,

@@ -74,3 +74,24 @@ export function TableSkeleton({ rows = 8 }: { rows?: number }) {
     </div>
   );
 }
+
+export function SearchLoadingSkeleton({ rows = 5, columns = 6 }: { rows?: number; columns?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, r) => (
+        <div key={r} className="flex items-center gap-3 rounded-lg border border-border/50 bg-muted/20 px-4 py-3 animate-pulse" style={{ animationDelay: `${r * 80}ms` }}>
+          {Array.from({ length: columns }).map((_, c) => (
+            <Skeleton
+              key={c}
+              className="h-3.5"
+              style={{
+                width: c === 0 ? "4rem" : c === columns - 1 ? "5rem" : `${Math.max(20, 60 - c * 10)}%`,
+                flex: c === 0 || c === columns - 1 ? "0 0 auto" : "1 1 0",
+              }}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}

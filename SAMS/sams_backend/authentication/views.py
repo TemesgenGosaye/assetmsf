@@ -9,7 +9,12 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.conf import settings
-from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.password_validation import (
+    validate_password,
+    MinimumLengthValidator,
+    CommonPasswordValidator,
+    NumericPasswordValidator,
+)
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from core.responses import StandardResponse
@@ -315,12 +320,43 @@ def change_password(request):
     if serializer.is_valid():
         user = request.user
         user.set_password(serializer.validated_data['new_password'])
+        if user.must_change_password:
+            user.must_change_password = False
         user.save()
         return StandardResponse.success(None, "Password changed successfully")
     return StandardResponse.validation_error(
         "Validation failed",
         serializer.errors
     )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_set_password(request, id):
+    """Admin: set a user's password without knowing the old one."""
+    if not (request.user.is_superuser or getattr(request.user, 'role', '') in ('ADMIN', 'SUPER_ADMIN')):
+        return StandardResponse.forbidden("Only admins can reset passwords.")
+    try:
+        target_user = User.objects.get(pk=id)
+    except User.DoesNotExist:
+        return StandardResponse.not_found("User not found")
+    new_password = request.data.get('new_password')
+    if not new_password:
+        return StandardResponse.validation_error("new_password is required")
+    if len(new_password) < 8:
+        return StandardResponse.validation_error("Password must be at least 8 characters.")
+    admin_validators = [MinimumLengthValidator(8), CommonPasswordValidator(), NumericPasswordValidator()]
+    errors = []
+    for v in admin_validators:
+        try:
+            v.validate(new_password, user=target_user)
+        except ValidationError as e:
+            errors.extend(e.messages)
+    if errors:
+        return StandardResponse.validation_error("Password validation failed", errors)
+    target_user.set_password(new_password)
+    target_user.save()
+    return StandardResponse.success(None, "Password set successfully")
 
 
 @api_view(['POST'])

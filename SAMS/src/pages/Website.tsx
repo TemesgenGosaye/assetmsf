@@ -23,8 +23,8 @@ const structuredData = {
   },
   author: {
     "@type": "Person",
-    name: "Karthik Lal",
-    email: "mailto:karthik@samsproject.in",
+    name: "Temesgen",
+    email: "mailto:tamizowarrior7@gmail.com",
   },
   publisher: {
     "@type": "Organization",
@@ -43,7 +43,7 @@ export default function Website() {
           name="keywords"
           content="asset management software, qr code asset tracking, supabase asset system, equipment tracking, facilities management, audit-ready reporting, open source asset platform"
         />
-        <meta name="author" content="Karthik Lal" />
+        <meta name="author" content="Temesgen" />
         <link rel="canonical" href={BaseUrl} />
         <meta property="og:title" content="SAMS — Smart Asset Management System" />
         <meta property="og:description" content={HeroDescription} />
@@ -129,35 +129,98 @@ export default function Website() {
             <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
               <h4 className="font-semibold mb-2">Asset Registry</h4>
               <p className="text-sm text-muted-foreground">
-                Centralized database for IT and non-IT assets with QR code generation and bulk management capabilities.
+                Centralized database for IT and non-IT assets with QR code generation, custody tracking, and bulk management capabilities.
               </p>
             </div>
             
             <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
               <h4 className="font-semibold mb-2">Property Management</h4>
               <p className="text-sm text-muted-foreground">
-                Manage physical locations, branches, and office spaces to organize assets geographically.
+                Manage physical locations, branches, and office spaces to organize assets geographically and monitor space allocation.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">Employee Directory</h4>
+              <p className="text-sm text-muted-foreground">
+                Track staff profiles, job positions, department assignments, and asset custody history across the organization.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">Residential Hub</h4>
+              <p className="text-sm text-muted-foreground">
+                Comprehensive housing and property allocation management across Permanent, Seasonal, and Guest residential categories.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">Housing Application Engine</h4>
+              <p className="text-sm text-muted-foreground">
+                End-to-end application submission, custom scoring engine, queue reviews, and real-time status tracking for housing requests.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">Approvals Workflow</h4>
+              <p className="text-sm text-muted-foreground">
+                Multi-tier authorization system for asset transfers, maintenance requests, and administrative operations.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">QR Codes & Mobile Scanning</h4>
+              <p className="text-sm text-muted-foreground">
+                Automated QR code label generation, printable tags, and camera-based mobile scanning for instant asset verification.
               </p>
             </div>
 
             <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
               <h4 className="font-semibold mb-2">Audit Center</h4>
               <p className="text-sm text-muted-foreground">
-                Plan and execute physical verification drives. Track progress and resolve missing assets.
+                Plan and execute physical verification drives, assign department audits, capture photo evidence, and reconcile discrepancies.
               </p>
             </div>
 
             <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
-              <h4 className="font-semibold mb-2">Help Desk</h4>
+              <h4 className="font-semibold mb-2">Help Desk & Ticketing</h4>
               <p className="text-sm text-muted-foreground">
-                Internal ticketing system for asset repairs, requests, and maintenance scheduling.
+                Internal support ticketing system for asset repairs, service requests, SLA tracking, and maintenance scheduling.
               </p>
             </div>
 
             <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
-              <h4 className="font-semibold mb-2">Analytics Dashboard</h4>
+              <h4 className="font-semibold mb-2">Reports & Analytics</h4>
               <p className="text-sm text-muted-foreground">
-                Real-time insights into asset value, category distribution, and audit compliance status.
+                Real-time dashboard insights, asset valuation schedules, category distributions, and exportable audit trail reports.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">User Access Control</h4>
+              <p className="text-sm text-muted-foreground">
+                Role-based authorization (Admin, Manager, User, Requester, Applicant) with granular department-level permissions.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">System Settings & Customization</h4>
+              <p className="text-sm text-muted-foreground">
+                Visual theme configurations, UI density modes, notification controls, and system-wide operational parameters.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">License & Governance</h4>
+              <p className="text-sm text-muted-foreground">
+                Enterprise software licensing compliance management, feature access oversight, and system module governance.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <h4 className="font-semibold mb-2">System Status & Health</h4>
+              <p className="text-sm text-muted-foreground">
+                Real-time service health monitoring, database connectivity diagnostics, and operational status tracking.
               </p>
             </div>
           </div>
@@ -184,45 +247,14 @@ export default function Website() {
               <h3 className="text-xl font-bold mb-4">Support & Governance</h3>
               <div className="space-y-3 text-muted-foreground">
                 <p>
-                  Email <a href="mailto:karthik@samsproject.in" className="text-primary hover:underline">karthik@samsproject.in</a> for guided walkthroughs or implementation planning.
+                  Email <a href="mailto:tamizowarrior7@gmail.com" className="text-primary hover:underline">tamizowarrior7@gmail.com</a> for guided walkthroughs or implementation planning.
                 </p>
                 <p>
-                  Report bugs or request enhancements via our <a href="https://github.com/karthik558/SAMS/issues" className="text-primary hover:underline">GitHub issues</a>.
+                  Report bugs or request enhancements via our <a href="https://github.com/TemesgenGosaye/assetmsf" className="text-primary hover:underline">GitHub issues</a>.
                 </p>
                 <p>The project ships under the MIT License with a community Code of Conduct.</p>
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* Demo / CTA Section */}
-        <section id="demo" className="py-24 bg-primary text-primary-foreground">
-          <div className="container px-4 md:px-6 text-center">
-            <h2 className="text-3xl font-bold tracking-tight mb-6">Ready to modernize your operations?</h2>
-            
-            <div className="max-w-sm mx-auto bg-primary-foreground/10 rounded-lg p-6 mb-8 backdrop-blur-sm border border-primary-foreground/20 text-left">
-              <h3 className="text-lg font-semibold mb-4 text-center">Demo Credentials</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center bg-background/10 p-3 rounded">
-                  <span className="text-sm opacity-90">Email</span>
-                  <code className="font-mono font-bold">demo@demo.com</code>
-                </div>
-                <div className="flex justify-between items-center bg-background/10 p-3 rounded">
-                  <span className="text-sm opacity-90">Password</span>
-                  <code className="font-mono font-bold">demo@123</code>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-primary-foreground/80 max-w-2xl mx-auto mb-8 text-lg">
-              Join organizations that trust SAMS for their asset management and audit requirements.
-            </p>
-            <Link 
-              to="/demo/login" 
-              className="inline-flex h-11 items-center justify-center rounded-md bg-background px-8 text-sm font-medium text-primary shadow transition-colors hover:bg-background/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-            >
-              Access Demo Environment
-            </Link>
           </div>
         </section>
       </div>

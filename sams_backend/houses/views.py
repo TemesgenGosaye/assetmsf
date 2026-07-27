@@ -268,6 +268,7 @@ class HouseApplicationDashboardView(generics.GenericAPIView):
 
     def get(self, request, *args, **kwargs):
         qs = HouseApplication.objects.filter(is_active=True)
+        houses_qs = House.objects.filter(is_active=True)
         user = request.user
         if user.is_requester():
             qs = qs.filter(requester=user)
@@ -282,5 +283,20 @@ class HouseApplicationDashboardView(generics.GenericAPIView):
             "allocated": qs.filter(status="Allocated").count(),
             "rejected": qs.filter(status="Rejected").count(),
             "returned": qs.filter(status="Returned").count(),
+            # House analytics metrics
+            "total_houses": houses_qs.count(),
+            "active_houses": houses_qs.filter(status="Active").count(),
+            "inactive_houses": houses_qs.filter(status="Inactive").count(),
+            "houses_by_type": {
+                "Staff": houses_qs.filter(house_type="Staff").count(),
+                "Type A": houses_qs.filter(house_type="A").count(),
+                "Type B": houses_qs.filter(house_type="B").count(),
+                "Type C": houses_qs.filter(house_type="C").count(),
+                "Type D": houses_qs.filter(house_type="D").count(),
+                "Type E": houses_qs.filter(house_type="E").count(),
+            }
         }
-        return StandardResponse.success(counts, "Dashboard data retrieved successfully")
+        return StandardResponse.success(counts, "Dashboard analytics retrieved successfully")
+
+
+

@@ -1,6 +1,6 @@
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { LayoutDashboard, Package, Building2, FileBarChart, ClipboardCheck, QrCode, Settings, Users, Ticket, ShieldCheck, ScanLine, Menu, Box, LifeBuoy, Megaphone, LogOut, Search, Bell, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Package, Building2, FileBarChart, ClipboardCheck, QrCode, Settings, Users, Ticket, ShieldCheck, ScanLine, Menu, LifeBuoy, Megaphone, LogOut, Search, Bell, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,9 +14,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getUserPreferences, peekCachedUserPreferences } from '@/services/userPreferences';
 import { getCurrentUserId, listUserPermissions, mergeDefaultsWithOverrides, type PageKey } from '@/services/permissions';
-import { isDemoMode } from '@/lib/demo';
+
 import { isAuditActive, getActiveSession, getAssignment } from '@/services/audit';
-import { listNotifications, addNotification, markAllRead, clearAllNotifications, type Notification } from "@/services/notifications";
+import { listNotifications, markAllRead, type Notification } from "@/services/notifications";
 import CommandPalette from "@/components/layout/CommandPalette";
 import { formatDistanceToNow, parseISO } from "date-fns";
 
@@ -106,15 +106,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
   useEffect(() => {
     (async () => {
       try {
-        if (isDemoMode()) {
-          const cleared = sessionStorage.getItem('demo_notifs_cleared') === '1';
-          if (!cleared) {
-            await clearAllNotifications();
-            await addNotification({ title: 'Welcome to the SAMS Demo', message: 'Explore the app with sample data. Changes are not saved.', type: 'system' }, { silent: true });
-            await addNotification({ title: 'QR generated', message: 'QR for AST-005 is ready to download.', type: 'qr' }, { silent: true });
-            await addNotification({ title: 'Report ready', message: 'Monthly Asset Report has been generated.', type: 'report' }, { silent: true });
-          }
-        }
         const data = await listNotifications(50);
         setNotifications(data);
       } catch { /* ignore */ }
@@ -123,7 +114,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
 
   // Realtime notification polling — refreshes every 30 seconds in the background
   useEffect(() => {
-    if (isDemoMode()) return;
     const interval = setInterval(async () => {
       try {
         const data = await listNotifications(50);
@@ -152,30 +142,28 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
     };
     if (type.startsWith('ticket')) {
       const id = getTicketId();
-      const path = id ? `/tickets?id=${encodeURIComponent(id)}` : '/tickets';
-      return isDemoMode() ? `/demo${path}` : path;
+      return id ? `/tickets?id=${encodeURIComponent(id)}` : '/tickets';
     }
     if (type === 'qr') {
       const m = (n.message || '').match(/\b([A-Z]+-\d+)\b/);
       const assetId = m?.[1];
-      const path = assetId ? `/assets/${assetId}` : '/qr-codes';
-      return assetId ? path : (isDemoMode() ? `/demo${path}` : path);
+      return assetId ? `/assets/${assetId}` : '/qr-codes';
     }
-    if (type === 'report') { return isDemoMode() ? '/demo/reports' : '/reports'; }
-    if (type === 'system') { return isDemoMode() ? '/demo' : '/'; }
-    if (type === 'asset') { return isDemoMode() ? '/demo/assets' : '/assets'; }
-    if (type === 'property') { return isDemoMode() ? '/demo/properties' : '/properties'; }
-    if (type === 'user') { return isDemoMode() ? '/demo/users' : '/users'; }
-    if (type === 'house') { return isDemoMode() ? '/demo/houses' : '/houses'; }
-    if (type === 'newsletter') { return isDemoMode() ? '/demo/newsletter' : '/newsletter'; }
-    if (type === 'allocation') { return isDemoMode() ? '/demo/residential-hub' : '/residential-hub'; }
-    if (type === 'license') { return isDemoMode() ? '/demo/license' : '/license'; }
-    if (type === 'audit') { return isDemoMode() ? '/demo/audit' : '/audit'; }
-    if (type === 'scan') { return isDemoMode() ? '/demo/audit' : '/audit'; }
-    if (type === 'department') { return isDemoMode() ? '/demo/users' : '/users'; }
-    if (type === 'approval') { return isDemoMode() ? '/demo/approvals' : '/approvals'; }
-    if (type === 'setting') { return isDemoMode() ? '/demo/settings' : '/settings'; }
-    return isDemoMode() ? '/demo' : '/';
+    if (type === 'report') { return '/reports'; }
+    if (type === 'system') { return '/'; }
+    if (type === 'asset') { return '/assets'; }
+    if (type === 'property') { return '/properties'; }
+    if (type === 'user') { return '/users'; }
+    if (type === 'house') { return '/house-opp'; }
+    if (type === 'newsletter') { return '/newsletter'; }
+    if (type === 'allocation') { return '/residential-hub'; }
+    if (type === 'license') { return '/license'; }
+    if (type === 'audit') { return '/audit'; }
+    if (type === 'scan') { return '/audit'; }
+    if (type === 'department') { return '/users'; }
+    if (type === 'approval') { return '/approvals'; }
+    if (type === 'setting') { return '/settings'; }
+    return '/';
   }
 
   useEffect(() => {
@@ -254,20 +242,17 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
 
   const handleSignOut = () => {
     try {
+      localStorage.removeItem('django_access_token');
+      localStorage.removeItem('django_refresh_token');
+      localStorage.removeItem('django_user');
       localStorage.removeItem('current_user_id');
       localStorage.removeItem('auth_user');
-      if (isDemoMode()) {
-        sessionStorage.removeItem('demo_current_user_id');
-        sessionStorage.removeItem('demo_auth_user');
-        localStorage.removeItem('demo_current_user_id');
-        localStorage.removeItem('demo_auth_user');
-      }
     } catch {}
-    navigate(isDemoMode() ? '/demo/login' : '/login', { replace: true });
+    navigate('/login', { replace: true });
   };
 
   const navItemsBase = [
-    { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Properties', href: '/properties', icon: Building2 },
     { label: 'House Opp', href: '/house-opp', icon: Home },
     { label: 'Assets', href: '/assets', icon: Package },
@@ -283,7 +268,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
     { label: 'License', href: '/license', icon: ShieldCheck, roles: ['admin'] },
   ];
 
-  const demo = isDemoMode();
   const labelToKey: Record<string, PageKey | null> = {
     Dashboard: null,
     Properties: 'properties',
@@ -303,7 +287,7 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
   };
 
   const roleLower = role?.toLowerCase() || '';
-  const roleForPerm = demo ? roleLower || 'admin' : roleLower;
+  const roleForPerm = roleLower;
   const effectivePerm = mergeDefaultsWithOverrides(roleForPerm, (perm || {}) as any);
 
   const computedItems = (() => {
@@ -322,7 +306,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
     const filtered = working
       .filter((item) => !item.roles || item.roles.includes(roleLower))
       .filter((item) => {
-        if (demo && (item.label === 'Audit' || item.label === 'License')) return false;
         if (item.label === 'Dashboard' || item.label === 'Scan' || item.label === 'Tickets') return true;
         if (item.label === 'Newsletter') return showNewsletter;
         if (item.label === 'Help Center') return showHelpCenter;
@@ -359,7 +342,7 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
         </button>
         <button
           type="button"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/dashboard')}
           className="hidden md:inline-flex items-center justify-center rounded-md transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           aria-label="Dashboard"
         >
@@ -477,9 +460,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
                   onClick={async () => {
                     await clearAllNotifications();
                     setNotifications([]);
-                    if (isDemoMode()) {
-                      try { sessionStorage.setItem('demo_notifs_cleared', '1'); } catch {}
-                    }
                   }}
                   className="text-xs font-semibold text-primary hover:text-primary/80"
                 >
@@ -581,14 +561,14 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
             </div>
             <div className="p-1">
                   <DropdownMenuItem
-                    onClick={() => navigate(isDemoMode() ? '/demo/profile' : '/profile')}
+                    onClick={() => navigate('/profile')}
                     className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium"
                   >
                     <Users className="h-3.5 w-3.5" />
                     <span>Profile</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => navigate(isDemoMode() ? '/demo/settings' : '/settings')}
+                    onClick={() => navigate('/settings')}
                     className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium"
                   >
                     <Settings className="h-3.5 w-3.5" />
@@ -598,7 +578,7 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
                     <>
                       <DropdownMenuSeparator className="my-1" />
                       <DropdownMenuItem
-                        onClick={() => navigate(isDemoMode() ? '/demo/users' : '/users')}
+                        onClick={() => navigate('/users')}
                         className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium"
                       >
                         <Users className="h-3.5 w-3.5" />

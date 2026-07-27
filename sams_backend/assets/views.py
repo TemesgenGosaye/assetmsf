@@ -41,7 +41,7 @@ class AssetListView(generics.ListCreateAPIView):
         # Check for all_properties permission
         has_all_props = UserPermission.objects.filter(
             user=user,
-            page=UserPermission.Page.ALL_PROPERTIES,
+            page=UserPermission.Page.PROPERTIES,
             can_view=True
         ).exists()
         
@@ -57,22 +57,15 @@ class AssetListView(generics.ListCreateAPIView):
             queryset = queryset.filter(property_id__in=accessible_property_ids)
         
         # Filter by department access
-        has_all_depts = UserPermission.objects.filter(
-            user=user,
-            page=UserPermission.Page.ALL_DEPARTMENTS,
-            can_view=True
-        ).exists()
-        
-        if not has_all_depts:
-            accessible_departments = UserDepartmentAccess.objects.filter(
-                user=user
-            ).values_list('department', flat=True)
-            if accessible_departments:
-                queryset = queryset.filter(department__in=accessible_departments)
-            elif user.department:
-                queryset = queryset.filter(department=user.department)
-            else:
-                queryset = Asset.objects.none()
+        accessible_departments = UserDepartmentAccess.objects.filter(
+            user=user
+        ).values_list('department', flat=True)
+        if accessible_departments:
+            queryset = queryset.filter(department__in=accessible_departments)
+        elif user.department:
+            queryset = queryset.filter(department=user.department)
+        else:
+            queryset = Asset.objects.none()
         
         return queryset
     

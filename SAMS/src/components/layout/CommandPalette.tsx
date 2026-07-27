@@ -9,10 +9,10 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
-import { isDemoMode } from "@/lib/demo";
+
 import { getUserPreferences, peekCachedUserPreferences } from "@/services/userPreferences";
 import { getCurrentUserId, listUserPermissions, mergeDefaultsWithOverrides, type PageKey } from "@/services/permissions";
-import { isAuditActive } from "@/services/audit";
+import { isDemoMode } from "@/lib/demo";
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
@@ -123,7 +123,7 @@ export default function CommandPalette({ open, onOpenChange, role }: Props) {
   const applyPrefix = useCallback(
     (route: string) => {
       if (!prefix) return route;
-      if (route === "/") return prefix || "/";
+      if (route === "/dashboard") return prefix || "/dashboard";
       return `${prefix}${route}`;
     },
     [prefix]
@@ -131,7 +131,7 @@ export default function CommandPalette({ open, onOpenChange, role }: Props) {
 
   const pages = useMemo<PageItem[]>(() => {
     const base = [
-      { label: "Dashboard", route: "/", icon: LayoutDashboard },
+      { label: "Dashboard", route: "/dashboard", icon: LayoutDashboard },
       { label: "Assets", route: "/assets", icon: Package },
       { label: "Properties", route: "/properties", icon: Building2 },
       { label: "House Opp", route: "/house-opp", icon: Home },
@@ -197,7 +197,7 @@ export default function CommandPalette({ open, onOpenChange, role }: Props) {
 
     const defs = [
       { label: "Add Asset", route: "/assets?new=1", icon: PlusCircle, allowed: allowAssetEdit },
-      { label: "Bulk Import Assets", route: "/", icon: UploadCloud, allowed: allowAssetEdit },
+      { label: "Bulk Import Assets", route: "/dashboard", icon: UploadCloud, allowed: allowAssetEdit },
       { label: "Generate QR Codes", route: "/qr-codes", icon: QrCode, allowed: allowQrView },
       { label: "New Ticket", route: "/tickets", icon: Ticket, allowed: true },
       { label: "Open Scanner", route: "/scan", icon: ScanLine, allowed: true },

@@ -35,9 +35,12 @@ import {
   createApplication,
   getApplication,
   updateApplication,
+  validateEmployeeId,
   GENDER_OPTIONS,
   MARITAL_STATUS_OPTIONS,
   HOUSE_CATEGORIES,
+  POSITION_TYPE_OPTIONS,
+  JOB_TYPE_OPTIONS,
   type HouseApplication,
 } from "@/services/houseApplication";
 
@@ -48,11 +51,12 @@ const EMPTY_FORM = {
   gender: "",
   job_position: "",
   job_grade: "",
+  job_type: "Permanent",
+  position_type: "",
   years_of_service: 0,
   marital_status: "",
   has_disability: false,
   family_size: 1,
-  number_of_children: 0,
   requested_house_category: "",
   reason_for_request: "",
   preferred_location: "",
@@ -98,6 +102,7 @@ export default function ApplicantApplicationNew() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [application, setApplication] = useState<HouseApplication | null>(null);
+  const [employeeChecking, setEmployeeChecking] = useState(false);
 
   const canEdit =
     !application ||
@@ -105,8 +110,34 @@ export default function ApplicantApplicationNew() {
     application.status === "Returned";
 
   const set = (field: string, value: any) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === "marital_status" && value === "Single") {
+        next.family_size = 1;
+      }
+      return next;
+    });
     setErrors((prev) => ({ ...prev, [field]: "" }));
+  };
+
+  const handleEmployeeIdBlur = async () => {
+    if (!canEdit) return;
+    const id = form.employee_id.trim();
+    if (!id) return;
+    setEmployeeChecking(true);
+    try {
+      const result = await validateEmployeeId(id);
+      if (!result.valid) {
+        setErrors((prev) => ({ ...prev, employee_id: `Employee ID "${id}" not found in the system. Please verify your ID.` }));
+      } else {
+        setErrors((prev) => ({ ...prev, employee_id: "" }));
+        if (!form.employee_name.trim() && result.employee_name) {
+          setForm((prev) => ({ ...prev, employee_name: result.employee_name! }));
+        }
+      }
+    } finally {
+      setEmployeeChecking(false);
+    }
   };
 
   useEffect(() => {
@@ -132,11 +163,12 @@ export default function ApplicantApplicationNew() {
           gender: data.gender || "",
           job_position: data.job_position || "",
           job_grade: data.job_grade || "",
+          job_type: data.job_type || "Permanent",
+          position_type: data.position_type || "",
           years_of_service: data.years_of_service ?? 0,
           marital_status: data.marital_status || "",
           has_disability: Boolean(data.has_disability),
           family_size: data.family_size ?? 1,
-          number_of_children: data.number_of_children ?? 0,
           requested_house_category: data.requested_house_category || "",
           reason_for_request: data.reason_for_request || "",
           preferred_location: data.preferred_location || "",
@@ -162,6 +194,8 @@ export default function ApplicantApplicationNew() {
     if (!form.national_id.trim()) e.national_id = "National ID is required";
     if (!form.gender) e.gender = "Gender is required";
     if (!form.job_position.trim()) e.job_position = "Job position is required";
+    if (!form.position_type) e.position_type = "Position type is required";
+    if (!form.job_type) e.job_type = "Job type is required";
     if (form.years_of_service < 0 || Number.isNaN(form.years_of_service)) {
       e.years_of_service = "Years of service must be 0 or more";
     }
@@ -170,9 +204,6 @@ export default function ApplicantApplicationNew() {
       e.requested_house_category = "House category is required";
     if (form.family_size < 1 || Number.isNaN(form.family_size))
       e.family_size = "Family size must be at least 1";
-    if (form.number_of_children < 0 || Number.isNaN(form.number_of_children)) {
-      e.number_of_children = "Number of children must be 0 or more";
-    }
     if (file && file.size > 5 * 1024 * 1024)
       e.supporting_document = "File must be under 5 MB";
     if (
@@ -193,6 +224,23 @@ export default function ApplicantApplicationNew() {
       return;
     }
     if (!validate()) return;
+
+    // Re-verify employee ID before submitting
+    const empId = form.employee_id.trim();
+    if (empId) {
+      setEmployeeChecking(true);
+      try {
+        const result = await validateEmployeeId(empId);
+        if (!result.valid) {
+          setErrors((prev) => ({ ...prev, employee_id: `Employee ID "${empId}" not found in the system. Please verify your ID.` }));
+          setSaving(false);
+          setEmployeeChecking(false);
+          return;
+        }
+      } finally {
+        setEmployeeChecking(false);
+      }
+    }
 
     setSaving(true);
     try {
@@ -429,9 +477,11 @@ export default function ApplicantApplicationNew() {
               <Input
                 value={form.employee_id}
                 onChange={(e) => set("employee_id", e.target.value)}
-                placeholder="EMP-0001"
+                onBlur={handleEmployeeIdBlur}
+                placeholder="e.g. 0001"
                 disabled={!canEdit}
               />
+              {employeeChecking && <p className="text-xs text-muted-foreground animate-pulse">Verifying employee…</p>}
               {errors.employee_id && (
                 <p className="text-xs text-destructive">{errors.employee_id}</p>
               )}
@@ -517,6 +567,54 @@ export default function ApplicantApplicationNew() {
             </div>
             <div className="space-y-2">
               <Label>
+                Job Type <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={form.job_type}
+                onValueChange={(v) => set("job_type", v)}
+                disabled={!canEdit}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select job type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {JOB_TYPE_OPTIONS.map((o) => (
+                    <SelectItem key={o} value={o}>
+                      {o}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.job_type && (
+                <p className="text-xs text-destructive">{errors.job_type}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>
+                Position Type <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={form.position_type}
+                onValueChange={(v) => set("position_type", v)}
+                disabled={!canEdit}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {POSITION_TYPE_OPTIONS.map((o) => (
+                    <SelectItem key={o} value={o}>
+                      {o}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.position_type && (
+                <p className="text-xs text-destructive">{errors.position_type}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>
                 Years of Service <span className="text-destructive">*</span>
               </Label>
               <Input
@@ -583,30 +681,18 @@ export default function ApplicantApplicationNew() {
                 type="number"
                 min={1}
                 value={form.family_size}
+                disabled={!canEdit || form.marital_status === "Single"}
                 onChange={(e) =>
                   set("family_size", parseInt(e.target.value, 10) || 1)
                 }
-                disabled={!canEdit}
               />
+              {form.marital_status === "Single" && (
+                <p className="text-xs text-muted-foreground">
+                  Family size is 1 for single applicants
+                </p>
+              )}
               {errors.family_size && (
                 <p className="text-xs text-destructive">{errors.family_size}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Number of Children</Label>
-              <Input
-                type="number"
-                min={0}
-                value={form.number_of_children}
-                onChange={(e) =>
-                  set("number_of_children", parseInt(e.target.value, 10) || 0)
-                }
-                disabled={!canEdit}
-              />
-              {errors.number_of_children && (
-                <p className="text-xs text-destructive">
-                  {errors.number_of_children}
-                </p>
               )}
             </div>
             <div className="space-y-2">

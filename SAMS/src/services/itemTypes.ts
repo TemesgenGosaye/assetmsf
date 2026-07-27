@@ -2,8 +2,8 @@
  * Item Types service – talks to Django REST /api/item-types/
  * Supabase removed: all CRUD via djangoRequest with localStorage fallback
  */
-import { djangoRequest } from "./djangoAuth";
-import { getCachedValue, invalidateCache } from "@/lib/data-cache";
+import { djangoRequest } from "./djangoAuth.ts";
+import { getCachedValue, invalidateCache } from "../lib/data-cache.ts";
 
 export type ItemType = { id?: string; name: string; created_at?: string };
 
@@ -12,9 +12,9 @@ const CACHE_TTL = 120_000;
 const LS_FALLBACK = "item_types_fallback";
 
 const DEFAULTS = [
-  "irrigation item", "bridge item", "factory equipment", "heavy machinery",
-  "light vehicle", "office furniture", "household furniture",
-  "agricultural equipment", "miscellaneous",
+  "Irrigation Item", "Bridge Item", "Factory Equipment", "Heavy Machinery",
+  "Light Vehicle", "Office Furniture", "Household Furniture",
+  "Agricultural Equipment", "Miscellaneous",
 ];
 
 export const ITEM_TYPE_PREFIXES: Record<string, string> = {

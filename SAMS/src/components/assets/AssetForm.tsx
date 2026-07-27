@@ -27,6 +27,7 @@ import {
   Info,
   AlertTriangle,
 } from "lucide-react";
+import { isDemoMode } from "@/lib/demo";
 import { toast } from "sonner";
 import { listProperties, type Property } from "@/services/properties";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
@@ -34,14 +35,15 @@ import { getLicenseSnapshot, type LicenseSnapshot } from "@/services/license";
 import { ITEM_TYPE_PREFIXES } from "@/services/itemTypes";
 import { listDepartments, type Department } from "@/services/departments";
 import { listUserDepartmentAccess } from "@/services/userDeptAccess";
-import { isDemoMode } from "@/lib/demo";
+
 import { Checkbox } from "@/components/ui/checkbox";
 
 interface AssetFormProps {
-  onSubmit?: (data: any) => boolean | void | Promise<boolean | void>;
+  onSubmit?: (data: any) => boolean | void | Promise<boolean> | void;
   initialData?: any;
   mode?: "page" | "modal";
   onCancel?: () => void;
+  showAllProperties?: boolean;
 }
 
 export function AssetForm({
@@ -49,6 +51,7 @@ export function AssetForm({
   initialData,
   mode = "page",
   onCancel,
+  showAllProperties = true,
 }: AssetFormProps) {
   const [formData, setFormData] = useState({
     itemName: initialData?.itemName || "",
@@ -105,7 +108,7 @@ export function AssetForm({
         // Properties from Django (or fallback handled in page state)
         if (!isDemoMode()) {
           let props = await listProperties();
-          // Filter by access for non-admin users
+          // Filter by access for non-admin users unless showAllProperties is true
           try {
             const raw =
               (isDemoMode()
@@ -114,7 +117,7 @@ export function AssetForm({
                 : null) || localStorage.getItem("auth_user");
             const cu = raw ? JSON.parse(raw) : null;
             const role = (cu?.role || "").toLowerCase();
-            if (role !== "admin") {
+            if (role !== "admin" && !(showAllProperties ?? false)) {
               const access = await getAccessiblePropertyIdsForCurrentUser();
               const accessIds = new Set(Array.from(access).map(String));
               const filtered = props.filter((p) => accessIds.has(String(p.id)));
@@ -274,21 +277,48 @@ export function AssetForm({
       amcEndDate: amcEnabled ? amcEnd : undefined,
     };
 
-    // Basic validation
-    const deptVal = (toSubmit as any).department?.toString().trim();
+    // Basic validation — department falls back to currentUser's department
+    // (mirrors the enforcement logic below so auto-filled values are accepted)
+    const deptVal = (
+      (toSubmit as any).department?.toString().trim() ||
+      currentUser?.department?.toString().trim() ||
+      ""
+    );
     const locVal = (toSubmit as any).location?.toString().trim();
     const condVal = (toSubmit as any).condition?.toString().trim();
-    if (
-      !toSubmit.itemName ||
-      !toSubmit.quantity ||
-      (role === "admin" && !toSubmit.itemType) ||
-      !toSubmit.property ||
-      !deptVal ||
-      !locVal ||
-      !condVal
-    ) {
-      toast.error("Please fill in all required fields");
+
+    if (!toSubmit.itemName) {
+      toast.error("Item Name is required");
       return;
+    }
+    if (!toSubmit.quantity) {
+      toast.error("Quantity is required");
+      return;
+    }
+    if (role === "admin" && !toSubmit.itemType) {
+      toast.error("Item Type is required");
+      return;
+    }
+    if (!toSubmit.property) {
+      toast.error("Property is required");
+      return;
+    }
+    if (!deptVal) {
+      toast.error("Department is required");
+      return;
+    }
+    if (!locVal) {
+      toast.error("Location is required");
+      return;
+    }
+    if (!condVal) {
+      toast.error("Condition is required");
+      return;
+    }
+
+    // Ensure the resolved department is carried into toSubmit
+    if (!toSubmit.department && deptVal) {
+      (toSubmit as any).department = deptVal;
     }
 
     // Generic enforcement: if user is not admin and has allowed departments, selected department must be in that list
@@ -455,17 +485,18 @@ export function AssetForm({
           <div className="space-y-2">
             <Label htmlFor="property">Property *</Label>
             <Select
-              value={formData.property}
+              value={String(formData.property || "")}
               onValueChange={(value) => handleInputChange("property", value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select property" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="">Select a property</SelectItem>
                 {properties
                   .filter((p) => p.id)
                   .map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
+                    <SelectItem key={p.id} value={String(p.id)}>
                       {p.name}
                     </SelectItem>
                   ))}

@@ -79,7 +79,7 @@ export default function Status() {
 
   return (
     <div className="space-y-8 pb-10">
-      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "System Status" }]} />
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "System Status" }]} />
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/5 via-primary/10 to-background p-6 md:p-10 shadow-sm border border-primary/10">
         <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">

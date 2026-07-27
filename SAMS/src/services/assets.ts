@@ -1,11 +1,11 @@
-import { isDemoMode, getDemoAssets } from "@/lib/demo";
+import { isDemoMode, getDemoAssets } from "../lib/demo.ts";
 import {
   getCachedValue,
   invalidateCache,
   peekCachedValue,
   subscribeToCache,
-} from "@/lib/data-cache";
-import { djangoRequest } from "./djangoAuth";
+} from "../lib/data-cache.ts";
+import { djangoRequest } from "./djangoAuth.ts";
 
 export type Asset = {
   id: string; // UUID from Django
@@ -270,7 +270,7 @@ export async function getAssetById(id: string): Promise<Asset | null> {
 }
 
 // Helper to generate asset code (can be removed if backend handles it)
-import { generateAssetId } from "./itemTypes";
+import { generateAssetId } from "./itemTypes.ts";
 
 export function generateAssetCode(
   type: string,

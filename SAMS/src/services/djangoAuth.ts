@@ -1,4 +1,12 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+const viteEnv = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {};
+export const API_BASE_URL = viteEnv.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || process.env.API_BASE_URL || 'http://localhost:8000/api';
+
+// Simple fallback storage for non‑browser environments (e.g., ts-node)
+const LS = typeof localStorage !== 'undefined' ? localStorage : {
+  getItem: (key: string) => null as any,
+  setItem: (key: string, value: string) => {},
+  removeItem: (key: string) => {},
+};
 
 export type DjangoUser = {
   id: number;
@@ -11,6 +19,7 @@ export type DjangoUser = {
   profile_image: string | null;
   email_notifications: boolean;
   dark_mode: boolean;
+  must_change_password: boolean;
   created_at: string;
   updated_at: string;
   is_active: boolean;
@@ -32,11 +41,11 @@ export interface DjangoResponse<T> {
 // ── Session helpers ────────────────────────────────────────────────────────
 
 function clearTokens() {
-  localStorage.removeItem('django_access_token');
-  localStorage.removeItem('django_refresh_token');
-  localStorage.removeItem('django_user');
-  localStorage.removeItem('current_user_id');
-  localStorage.removeItem('auth_user');
+  LS.removeItem('django_access_token');
+  LS.removeItem('django_refresh_token');
+  LS.removeItem('django_user');
+  LS.removeItem('current_user_id');
+  LS.removeItem('auth_user');
 }
 
 /**
@@ -45,7 +54,9 @@ function clearTokens() {
  */
 function notifySessionExpired() {
   clearTokens();
-  window.dispatchEvent(new CustomEvent('sams:session-expired'));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sams:session-expired'));
+  }
 }
 
 // ── Token refresh ─────────────────────────────────────────────────────────
@@ -62,7 +73,7 @@ async function refreshAccessToken(): Promise<string | null> {
 
   _isRefreshing = true;
   try {
-    const refreshToken = localStorage.getItem('django_refresh_token');
+    const refreshToken = LS.getItem('django_refresh_token');
     if (!refreshToken) return null;
 
     const response = await fetch(`${API_BASE_URL}/auth/token/refresh/`, {
@@ -82,7 +93,7 @@ async function refreshAccessToken(): Promise<string | null> {
     const newAccess = data?.access;
     if (!newAccess) return null;
 
-    localStorage.setItem('django_access_token', newAccess);
+    LS.setItem('django_access_token', newAccess);
     _refreshQueue.forEach(cb => cb(newAccess));
     return newAccess;
   } catch {
@@ -101,7 +112,7 @@ export async function djangoRequest<T>(
 ): Promise<DjangoResponse<T>> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  const token = localStorage.getItem('django_access_token');
+  const token = LS.getItem('django_access_token');
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
 
   if (!(options.body instanceof FormData)) {
@@ -160,11 +171,11 @@ export async function loginWithDjango(email: string, password: string): Promise<
     }
 
     const loginData = data.data as LoginResponse;
-    localStorage.setItem('django_access_token', loginData.access);
-    localStorage.setItem('django_refresh_token', loginData.refresh);
-    localStorage.setItem('django_user', JSON.stringify(loginData.user));
-    localStorage.setItem('current_user_id', String(loginData.user.id));
-    localStorage.setItem('auth_user', JSON.stringify({
+    LS.setItem('django_access_token', loginData.access);
+    LS.setItem('django_refresh_token', loginData.refresh);
+    LS.setItem('django_user', JSON.stringify(loginData.user));
+    LS.setItem('current_user_id', String(loginData.user.id));
+    LS.setItem('auth_user', JSON.stringify({
       id: String(loginData.user.id),
       name: loginData.user.name,
       email: loginData.user.email,
@@ -194,7 +205,7 @@ export async function getCurrentUser(): Promise<DjangoUser | null> {
 
 export async function logoutFromDjango(): Promise<void> {
   try {
-    const refreshToken = localStorage.getItem('django_refresh_token');
+    const refreshToken = LS.getItem('django_refresh_token');
     await djangoRequest('/auth/logout/', {
       method: 'POST',
       body: JSON.stringify({ refresh_token: refreshToken }),
@@ -208,7 +219,7 @@ export async function logoutFromDjango(): Promise<void> {
 
 export function getStoredUser(): DjangoUser | null {
   try {
-    const userStr = localStorage.getItem('django_user');
+    const userStr = LS.getItem('django_user');
     if (userStr) {
       return JSON.parse(userStr);
     }
@@ -219,5 +230,5 @@ export function getStoredUser(): DjangoUser | null {
 }
 
 export function isAuthenticated(): boolean {
-  return Boolean(localStorage.getItem('django_access_token'));
+  return Boolean(LS.getItem('django_access_token'));
 }

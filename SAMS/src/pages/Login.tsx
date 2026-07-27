@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
   QrCode, Eye, EyeOff, Mail, Lock, ArrowLeft,
-  Shield, Check, KeyRound, Sun, Moon, Boxes, Home as HomeIcon, Sprout,
+  Shield, KeyRound, Sun, Moon,
 } from "lucide-react";
+
 import { Label } from "@/components/ui/label";
 import { loginWithDjango, type DjangoUser } from "@/services/djangoAuth";
 import {
@@ -26,232 +27,22 @@ const stepLabels: Record<Step, { title: string; desc: string }> = {
   "reset-password": { title: "Choose a new password", desc: "Use at least 8 characters." },
 };
 
-/* ---------------------------------------------------------------------- */
-/*  Brand panel — sugarcane line motif, bilingual identity, module list   */
-/* ---------------------------------------------------------------------- */
+/* ------------------------------------------------------------------ */
+/*  Ambient backdrop — a single quiet signature instead of a split panel */
+/* ------------------------------------------------------------------ */
 
-function CaneField() {
-  // Deterministic "field" of stalks: varied height, spacing and node count —
-  // a signature element grounded in the factory's own subject matter.
-  const stalks = useMemo(
-    () =>
-      Array.from({ length: 16 }).map((_, i) => {
-        const x = (i / 15) * 100;
-        const height = 55 + ((i * 37) % 40); // 55–95
-        const nodes = 3 + (i % 3);
-        const sway = 3 + (i % 4);
-        const delay = (i % 6) * 0.4;
-        const opacity = i % 3 === 0 ? 0.55 : 0.22;
-        return { x, height, nodes, sway, delay, opacity, key: i };
-      }),
-    []
-  );
-
-  return (
-    <svg
-      className="pointer-events-none absolute inset-x-0 bottom-0 h-[70%] w-full"
-      viewBox="0 0 400 260"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-    >
-      {stalks.map((s) => {
-        const baseX = (s.x / 100) * 400;
-        const topY = 260 - (s.height / 100) * 260;
-        return (
-          <g
-            key={s.key}
-            style={{
-              transformOrigin: `${baseX}px 260px`,
-              animation: `cane-sway ${4 + s.sway}s ease-in-out ${s.delay}s infinite`,
-            }}
-          >
-            <line
-              x1={baseX}
-              y1="260"
-              x2={baseX}
-              y2={topY}
-              stroke="#C98A3D"
-              strokeWidth="1.4"
-              strokeOpacity={s.opacity}
-              strokeLinecap="round"
-            />
-            {Array.from({ length: s.nodes }).map((_, n) => {
-              const ny = 260 - ((n + 1) * (260 - topY)) / (s.nodes + 1);
-              return (
-                <line
-                  key={n}
-                  x1={baseX - 3}
-                  y1={ny}
-                  x2={baseX + 3}
-                  y2={ny}
-                  stroke="#C98A3D"
-                  strokeWidth="1.4"
-                  strokeOpacity={s.opacity + 0.15}
-                  strokeLinecap="round"
-                />
-              );
-            })}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-function BrandPanel() {
-  const modules = [
-    { icon: Boxes, label: "Asset Management", note: "Track, tag and audit factory equipment" },
-    { icon: HomeIcon, label: "House Allocation", note: "Manage staff housing and assignments" },
-    { icon: Shield, label: "Secured access", note: "JWT-authenticated, LAN restricted" },
-  ];
-
-  return (
-    <div className="relative hidden w-[46%] shrink-0 flex-col justify-between overflow-hidden bg-[#0B4F2F] px-14 py-12 lg:flex">
-      {/* Background field */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0B4F2F] via-[#0E5A37] to-[#093F26]" />
-        <CaneField />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0B4F2F] via-transparent to-transparent" />
-      </div>
-
-      {/* Top: identity */}
-      <div className="relative z-10">
-        <div className="flex items-center gap-3">
-          <img src="/msf_logo.jpg" alt="MSF" className="h-11 w-11 rounded-lg object-contain ring-1 ring-white/15" />
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">
-              Enterprise Asset Management
-            </p>
-            <p
-              className="text-[15px] text-white/90"
-              style={{ fontFamily: "'Noto Sans Ethiopic', sans-serif" }}
-            >
-              መተሐራ ስኳር ፋብሪካ
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Middle: headline */}
-      <div className="relative z-10 max-w-md">
-        <h1
-          className="text-[38px] font-medium leading-[1.15] text-white"
-          style={{ fontFamily: "'Fraunces', serif" }}
-        >
-          One system for every asset on the factory floor.
-        </h1>
-        <p className="mt-4 text-[15px] leading-relaxed text-white/60">
-          EAMS brings asset tracking and staff housing into a single record for
-          Metahara Sugar Factory's IT Department.
-        </p>
-
-        <div className="mt-10 space-y-5">
-          {modules.map(({ icon: Icon, label, note }) => (
-            <div key={label} className="flex items-start gap-3.5">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/10">
-                <Icon className="h-[18px] w-[18px] text-[#E3B36C]" />
-              </div>
-              <div>
-                <p className="text-[14px] font-medium text-white/90">{label}</p>
-                <p className="text-[13px] text-white/45">{note}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Bottom: footer meta */}
-      <div className="relative z-10 flex items-center gap-2 text-[12px] text-white/40">
-        <Sprout className="h-[14px] w-[14px]" />
-        <span>Metahara, Oromia &middot; IT Department &middot; Internal network only</span>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- */
-/*  Form building blocks                                                   */
-/* ---------------------------------------------------------------------- */
-
-interface PasswordInputProps {
-  id: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  autoComplete?: string;
-  show: boolean;
-  onToggle: () => void;
-}
-
-function PasswordInput({ id, value, onChange, placeholder, autoComplete, show, onToggle }: PasswordInputProps) {
-  return (
-    <div className="relative">
-      <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground/45" />
-      <Input
-        id={id}
-        type={show ? "text" : "password"}
-        placeholder={placeholder || "Enter your password"}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-[48px] w-full rounded-xl border border-border/60 bg-background pl-[42px] pr-12 text-[14.5px] shadow-sm transition-all duration-200 focus:border-[#0B4F2F]/50 focus:shadow-[0_0_0_4px_rgba(11,79,47,0.08)] placeholder:text-muted-foreground/40"
-        autoComplete={autoComplete}
-      />
-      <button
-        type="button"
-        onClick={onToggle}
-        className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground/45 hover:bg-muted/40 hover:text-foreground transition-colors"
-        tabIndex={-1}
-        aria-label={show ? "Hide password" : "Show password"}
-      >
-        {show ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
-      </button>
-    </div>
-  );
-}
-
-function SubmitButton({ loading, label, loadingLabel, disabled }: {
-  loading: boolean; label: string; loadingLabel: string; disabled?: boolean;
-}) {
-  return (
-    <Button
-      type="submit"
-      disabled={disabled || loading}
-      className="mt-2 h-[48px] w-full rounded-xl bg-[#0B4F2F] text-[14.5px] font-medium text-white shadow-[0_6px_20px_-6px_rgba(11,79,47,0.5)] transition-all duration-200 hover:bg-[#0E5A37] hover:shadow-[0_8px_28px_-6px_rgba(11,79,47,0.55)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      {loading ? (
-        <span className="flex items-center justify-center gap-2.5">
-          <span className="h-4 w-4 rounded-full border-2 border-white/25 border-t-white animate-spin" />
-          {loadingLabel}
-        </span>
-      ) : (
-        label
-      )}
-    </Button>
-  );
-}
-
-function FormDivider() {
-  return (
-    <div className="relative my-5">
-      <div className="absolute inset-0 flex items-center">
-        <span className="w-full border-t border-border/50" />
-      </div>
-      <div className="relative flex justify-center text-[11px] uppercase">
-        <span className="bg-background px-3 tracking-[0.1em] text-muted-foreground/45 font-medium">or</span>
-      </div>
-    </div>
-  );
-}
-
-const inputClass = "h-[48px] w-full rounded-xl border border-border/60 bg-background pl-[42px] text-[14.5px] shadow-sm transition-all duration-200 focus:border-[#0B4F2F]/50 focus:shadow-[0_0_0_4px_rgba(11,79,47,0.08)] placeholder:text-muted-foreground/40";
-
-/* ---------------------------------------------------------------------- */
-/*  Page                                                                   */
-/* ---------------------------------------------------------------------- */
+/** A handful of crystal facets settle into place once on load, low in the
+ *  frame, behind the card — raw cane resolving into structured sugar,
+ *  echoing raw input resolving into a structured asset record. */
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
 
 export default function Login() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
   const [step, setStep] = useState<Step>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -263,16 +54,31 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [animKey, setAnimKey] = useState(0);
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    try { return localStorage.getItem("theme") === "dark" || (!localStorage.getItem("theme") && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch { return false; }
+  });
 
   useEffect(() => {
-    setIsDark(document.documentElement.classList.contains("dark"));
+    const root = document.documentElement;
+    const syncDark = () => setIsDark(root.classList.contains("dark"));
+    syncDark();
+    const obs = new MutationObserver(syncDark);
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
   }, []);
 
   const toggleTheme = () => {
-    setIsDark(!isDark);
-    document.documentElement.classList.toggle("dark");
-    localStorage.setItem("theme", isDark ? "light" : "dark");
+    const root = document.documentElement;
+    const next = !isDark;
+    setIsDark(next);
+    if (next) {
+      root.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      root.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+    window.dispatchEvent(new Event("storage"));
   };
 
   const isAuthed = useMemo(() => {
@@ -280,26 +86,48 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
-    if (isAuthed) navigate("/", { replace: true });
-  }, [isAuthed, navigate]);
+    if (isAuthed) navigate(returnTo || "/dashboard", { replace: true });
+  }, [isAuthed, navigate, returnTo]);
 
   const finishLogin = useCallback(async (user: DjangoUser) => {
     setAttempts(0);
     setPassword("");
     setEmail(user.email);
-    // Redirect applicants to their dashboard, others to main app
-    if (user.role === "APPLICANT") {
+    if ((user as any).must_change_password) {
+      navigate("/force-change-password", { replace: true });
+      return;
+    }
+    if (returnTo) {
+      navigate(returnTo, { replace: true });
+    } else if (user.role === "APPLICANT") {
       navigate("/applicant/dashboard", { replace: true });
     } else {
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     }
-  }, [navigate]);
+  }, [navigate, returnTo]);
 
   const validateEmail = (v: string) => {
     if (!v.trim()) return "Email is required";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())) return "Enter a valid email address";
     return "";
   };
+
+  const passwordStrength = (p: string): number => {
+    let s = 0;
+    if (p.length >= 8) s++;
+    if (p.length >= 12) s++;
+    if (/[A-Z]/.test(p) && /[a-z]/.test(p)) s++;
+    if (/\d/.test(p)) s++;
+    if (/[^A-Za-z0-9]/.test(p)) s++;
+    return Math.min(s, 4);
+  };
+  const strengthMeta = [
+    { label: "Too weak", color: "bg-destructive" },
+    { label: "Weak", color: "bg-amber-500" },
+    { label: "Fair", color: "bg-yellow-400" },
+    { label: "Good", color: "bg-lime-500" },
+    { label: "Strong", color: "bg-primary" },
+  ];
 
   const changeStep = (s: Step) => {
     setStep(s);
@@ -339,10 +167,10 @@ export default function Login() {
       changeStep("verify-otp");
     } catch (error: any) {
       if (error.message === "EMAIL_NOT_FOUND") {
-        toast({ 
-          title: "Email not found", 
-          description: "No account exists with this email address. Please check and try again.", 
-          variant: "destructive" 
+        toast({
+          title: "Email not found",
+          description: "No account exists with this email address. Please check and try again.",
+          variant: "destructive"
         });
       } else {
         toast({ title: "Failed to send code", description: "Something went wrong. Please try again.", variant: "destructive" });
@@ -378,67 +206,98 @@ export default function Login() {
     } finally { setLoading(false); }
   };
 
-  const currentYear = new Date().getFullYear();
   const stepInfo = stepLabels[step];
 
   return (
-    <div className="relative flex min-h-screen w-full bg-background">
-      {/* Fonts. For production, move this into index.html <head> instead. */}
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden px-6 py-12">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&family=Noto+Sans+Ethiopic:wght@400;500&display=swap');
-        @keyframes cane-sway {
-          0%, 100% { transform: rotate(0deg); }
-          50% { transform: rotate(1.4deg); }
+        @import url('https://fonts.googleapis.com/css2?family=Petrona:opsz,wght@8..30,400;8..30,500;8..30,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+Ethiopic:wght@400;500&display=swap');
+
+        @keyframes card-rise {
+          0% { opacity: 0; transform: translateY(14px); }
+          100% { opacity: 1; transform: translateY(0); }
         }
+        .card-rise { animation: card-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @media (prefers-reduced-motion: reduce) {
-          [style*="cane-sway"] { animation: none !important; }
+          .crystal-facet { animation: none !important; opacity: 1 !important; }
+          .card-rise { animation: none !important; }
         }
       `}</style>
 
-      <BrandPanel />
+      {/* Ambient backdrop with modern gradient */}
+      <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, var(--bg-start), var(--bg-end))` }} />
 
-      {/* Mobile brand strip */}
-      <div className="absolute inset-x-0 top-0 flex items-center gap-3 bg-[#0B4F2F] px-6 py-4 lg:hidden">
-        <img src="/msf_logo.jpg" alt="MSF" className="h-8 w-8 rounded-md object-contain ring-1 ring-white/15" />
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">EAMS</p>
-          <p className="text-[13px] text-white/85" style={{ fontFamily: "'Noto Sans Ethiopic', sans-serif" }}>
-            መተሐራ ስኳር ፋብሪካ
-          </p>
+      {/* Modern header bar */}
+      <div className="absolute top-0 left-0 right-0 z-20">
+        <div className="mx-auto max-w-7xl px-6 py-4">
+          <div className="flex items-center justify-end">
+            {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white backdrop-blur-md transition-all hover:bg-white/20 hover:scale-105"
+              aria-label="Toggle theme"
+            >
+              {isDark ? <Sun className="h-[20px] w-[20px]" /> : <Moon className="h-[20px] w-[20px]" />}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Form panel */}
-      <div className="flex flex-1 items-center justify-center px-6 pb-10 pt-24 sm:px-10 lg:px-16 lg:py-12">
-        <button
-          onClick={toggleTheme}
-          className="absolute right-6 top-6 z-20 flex h-10 w-10 items-center justify-center rounded-xl border border-border/50 bg-background/80 text-muted-foreground/70 backdrop-blur-sm transition-colors hover:bg-muted/40 hover:text-foreground"
-          aria-label="Toggle theme"
-        >
-          {isDark ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
-        </button>
+      {/* Decorative elements */}
+      <div className="absolute top-32 left-10 h-32 w-32 rounded-full bg-white/10 blur-3xl" />
+      <div className="absolute bottom-20 right-10 h-40 w-40 rounded-full bg-purple-400/20 blur-3xl" />
 
-        <div className="w-full max-w-[380px]">
-          <div className="mb-9">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#0B4F2F] dark:text-[#7BC29A]">
-              EAMS
-            </p>
-            <h1
-              className="mt-2 text-[26px] font-medium text-foreground"
-              style={{ fontFamily: "'Fraunces', serif" }}
-            >
-              {stepInfo.title}
-            </h1>
-            <p className="mt-1.5 text-[14px] text-muted-foreground/75">{stepInfo.desc}</p>
+      {/* Centered card */}
+      <div className="card-rise relative z-10 w-full max-w-[420px]" style={{ background: "var(--card-bg)" }}>
+        {/* Outer glow — subtle accent ring in dark mode */}
+        <div className="absolute -inset-px rounded-[20px] bg-gradient-to-br from-primary/20 via-transparent to-primary/10 opacity-60 dark:opacity-40 blur-sm pointer-events-none" />
+        {/* Card body */}
+        <div className="relative rounded-[20px] border border-border/60 bg-white/80 p-8 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.06),0_24px_60px_-12px_rgba(0,0,0,0.12)] backdrop-blur-2xl dark:border-white/[0.08] dark:bg-white/[0.03] dark:shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_24px_60px_-12px_rgba(0,0,0,0.5)] sm:p-9">
+          {/* Logo */}
+          <div className="flex items-center gap-4 mb-8">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-white/20 blur-xl" />
+              <img src="/msf_logo.jpg" alt="MSF" className="relative h-14 w-14 rounded-2xl object-cover shadow-2xl ring-2 ring-white/30" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-foreground dark:text-white tracking-tight" style={{ fontFamily: "'Petrona', serif" }}>
+                MSF Asset Management
+              </h1>
+              <p className="text-xs text-foreground/70 dark:text-white/70" style={{ fontFamily: "'Noto Sans Ethiopic', sans-serif" }}>
+                መተሐራ ስኳር ፋብሪካ
+              </p>
+            </div>
           </div>
 
-          <div key={animKey} className="animate-fade-in">
+          <h1
+            className="text-[26px] font-medium leading-tight text-foreground dark:text-white"
+            style={{ fontFamily: "'Petrona', serif" }}
+          >
+            {stepInfo.title}
+          </h1>
+          <p className="mt-1.5 text-[14px] text-muted-foreground dark:text-white/50">{stepInfo.desc}</p>
+
+          {step !== "login" && (
+            <div className="mb-1 mt-6 flex items-center gap-2">
+              {(["forgot-password", "verify-otp", "reset-password"] as Step[]).map((s) => {
+                const order: Record<string, number> = { "forgot-password": 1, "verify-otp": 2, "reset-password": 3 };
+                const active = order[s] <= order[step];
+                return (
+                  <div key={s} className="flex flex-1 items-center gap-2">
+                    <div className={`h-1 flex-1 rounded-full transition-colors duration-500 ${active ? "bg-primary" : "bg-border dark:bg-white/10"}`} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div key={animKey} className="mt-7 animate-float-up stagger">
             {step === "login" && (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-[13px] font-medium text-foreground/70">Email</Label>
+                  <Label htmlFor="email" className="text-[13px] font-medium text-muted-foreground dark:text-white/70">Email</Label>
                   <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground/45" />
+                    <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground dark:text-white/35" />
                     <Input
                       id="email"
                       type="email"
@@ -446,47 +305,86 @@ export default function Login() {
                       value={email}
                       onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
                       autoFocus
-                      className={`${inputClass} ${emailError ? "border-destructive/60 focus:border-destructive/60 focus:shadow-[0_0_0_4px_rgba(220,38,38,0.1)]" : ""}`}
+                      className={`h-[48px] w-full rounded-xl border border-border bg-background pl-[42px] text-[14.5px] text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:border-primary/50 focus:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] dark:border-white/15 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/25 dark:focus:border-primary/50 ${emailError ? "border-destructive/60 focus:border-destructive/60 focus:shadow-[0_0_0_4px_rgba(220,38,38,0.15)]" : ""}`}
                       autoComplete="email"
                       aria-invalid={!!emailError}
                     />
                   </div>
-                  {emailError && <p className="pl-1 text-[12px] text-destructive/80">{emailError}</p>}
+                  {emailError && <p className="pl-1 text-[12px] text-destructive dark:text-red-400">{emailError}</p>}
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="password" className="text-[13px] font-medium text-foreground/70">Password</Label>
+                    <Label htmlFor="password" className="text-[13px] font-medium text-muted-foreground dark:text-white/70">Password</Label>
                     <button
                       type="button"
                       onClick={() => changeStep("forgot-password")}
-                      className="text-[12.5px] font-medium text-[#0B4F2F] hover:underline dark:text-[#7BC29A]"
+                      className="text-[12.5px] font-medium text-primary hover:underline"
                     >
                       Forgot password?
                     </button>
                   </div>
-                  <PasswordInput
-                    id="password"
-                    value={password}
-                    onChange={setPassword}
-                    show={showPassword}
-                    onToggle={() => setShowPassword(!showPassword)}
-                    autoComplete="current-password"
-                  />
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground dark:text-white/35" />
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-[48px] w-full rounded-xl border border-border bg-background pl-[42px] pr-12 text-[14.5px] text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:border-primary/50 focus:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] dark:border-white/15 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/25 dark:focus:border-primary/50"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground dark:text-white/35 dark:hover:bg-white/10 dark:hover:text-white"
+                      tabIndex={-1}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    </button>
+                  </div>
                 </div>
 
-                <SubmitButton loading={loading} label="Sign in" loadingLabel="Signing in..." />
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-2 h-[48px] w-full rounded-xl bg-primary text-[14.5px] font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:bg-[hsl(var(--primary-hover))] hover:shadow-primary/35 active:scale-[0.98] disabled:opacity-50"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2.5">
+                      <span className="h-4 w-4 rounded-full border-2 border-[#1B120A]/25 border-t-[#1B120A] animate-spin" />
+                      Signing in...
+                    </span>
+                  ) : (
+                    "Sign in"
+                  )}
+                  
+                </Button>
 
-                <FormDivider />
+                <div className="relative my-5">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-border dark:border-white/10" />
+                  </div>
+                  <div className="relative flex justify-center text-[11px] uppercase">
+                    <span
+                      className="px-3 tracking-[0.14em] text-slate-400 font-medium"
+                      style={{ fontFamily: "'IBM Plex Mono', monospace" }}
+                    >
+                      or
+                    </span>
+                  </div>
+                </div>
 
                 <Button
                   variant="outline"
                   type="button"
                   onClick={() => navigate("/scan")}
-                  className="h-[48px] w-full rounded-xl border-border/60 bg-background text-[14.5px] font-medium text-muted-foreground hover:bg-muted/30 hover:text-foreground"
+                  className="h-[48px] w-full rounded-xl border border-border bg-background text-[14.5px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground dark:border-white/15 dark:bg-white/[0.03] dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white"
                 >
                   <QrCode className="mr-2.5 h-[18px] w-[18px]" />
-                  Scan QR code
+                  Scan QR code 
                 </Button>
               </form>
             )}
@@ -494,9 +392,9 @@ export default function Login() {
             {step === "forgot-password" && (
               <form onSubmit={handleRequestPasswordReset} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="reset-email" className="text-[13px] font-medium text-foreground/70">Email address</Label>
+                  <Label htmlFor="reset-email" className="text-[13px] font-medium text-muted-foreground dark:text-white/70">Email address</Label>
                   <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground/45" />
+                    <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground dark:text-white/35" />
                     <Input
                       id="reset-email"
                       type="email"
@@ -504,18 +402,31 @@ export default function Login() {
                       value={email}
                       onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
                       autoFocus
-                      className={inputClass}
+                      className="h-[48px] w-full rounded-xl border border-border bg-background pl-[42px] text-[14.5px] text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:border-primary/50 focus:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] dark:border-white/15 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/25 dark:focus:border-primary/50"
                       autoComplete="email"
                     />
                   </div>
                 </div>
 
-                <SubmitButton loading={loading} label="Send verification code" loadingLabel="Sending code..." />
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-2 h-[48px] w-full rounded-xl bg-primary text-[14.5px] font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:bg-[hsl(var(--primary-hover))] active:scale-[0.98] disabled:opacity-50"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2.5">
+                      <span className="h-4 w-4 rounded-full border-2 border-[#1B120A]/25 border-t-[#1B120A] animate-spin" />
+                      Sending code...
+                    </span>
+                  ) : (
+                    "Send verification code"
+                  )}
+                </Button>
 
                 <button
                   type="button"
                   onClick={() => changeStep("login")}
-                  className="flex w-full items-center justify-center gap-1.5 pt-1 text-[13px] text-muted-foreground/60 hover:text-foreground"
+                  className="flex w-full items-center justify-center gap-1.5 pt-1 text-[13px] text-muted-foreground hover:text-foreground dark:text-white/45 dark:hover:text-white"
                 >
                   <ArrowLeft className="h-[14px] w-[14px]" />
                   Back to sign in
@@ -526,9 +437,9 @@ export default function Login() {
             {step === "verify-otp" && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="otp" className="text-[13px] font-medium text-foreground/70">Verification code</Label>
+                  <Label htmlFor="otp" className="text-[13px] font-medium text-muted-foreground dark:text-white/70">Verification code</Label>
                   <div className="relative">
-                    <Shield className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground/45" />
+                    <Shield className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground dark:text-white/35" />
                     <Input
                       id="otp"
                       type="text"
@@ -538,19 +449,33 @@ export default function Login() {
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                       maxLength={6}
                       autoFocus
-                      className="h-[52px] w-full rounded-xl border border-border/60 bg-background pl-[42px] text-center text-[22px] tracking-[0.4em] text-foreground shadow-sm focus:border-[#0B4F2F]/50 focus:shadow-[0_0_0_4px_rgba(11,79,47,0.08)]"
+                      className="h-[52px] w-full rounded-xl border border-border bg-background pl-[42px] text-center text-[22px] tracking-[0.4em] text-foreground shadow-sm focus:border-primary/50 focus:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] dark:border-white/15 dark:bg-white/[0.04] dark:text-white dark:focus:border-primary/50"
+                      style={{ fontFamily: "'IBM Plex Mono', monospace" }}
                       autoComplete="one-time-code"
                     />
                   </div>
                 </div>
 
-                <SubmitButton loading={loading} label="Verify code" loadingLabel="Verifying..." disabled={otp.length !== 6} />
+                <Button
+                  type="submit"
+                  disabled={loading || otp.length !== 6}
+                  className="mt-2 h-[48px] w-full rounded-xl bg-primary text-[14.5px] font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:bg-[hsl(var(--primary-hover))] active:scale-[0.98] disabled:opacity-50"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2.5">
+                      <span className="h-4 w-4 rounded-full border-2 border-[#1B120A]/25 border-t-[#1B120A] animate-spin" />
+                      Verifying...
+                    </span>
+                  ) : (
+                    "Verify code"
+                  )}
+                </Button>
 
                 <div className="flex flex-col items-center gap-2.5 pt-1">
-                  <button type="button" onClick={() => changeStep("forgot-password")} className="text-[13px] text-muted-foreground/60 hover:text-foreground">
+                  <button type="button" onClick={() => changeStep("forgot-password")} className="text-[13px] text-muted-foreground hover:text-foreground dark:text-white/45 dark:hover:text-white">
                     Change email address
                   </button>
-                  <button type="button" onClick={() => changeStep("login")} className="flex items-center gap-1.5 text-[13px] text-muted-foreground/60 hover:text-foreground">
+                  <button type="button" onClick={() => changeStep("login")} className="flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground dark:text-white/45 dark:hover:text-white">
                     <ArrowLeft className="h-[14px] w-[14px]" />
                     Back to sign in
                   </button>
@@ -561,58 +486,84 @@ export default function Login() {
             {step === "reset-password" && (
               <form onSubmit={handleResetPassword} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="new-password" className="text-[13px] font-medium text-foreground/70">New password</Label>
-                  <PasswordInput
-                    id="new-password"
-                    value={newPassword}
-                    onChange={setNewPassword}
-                    placeholder="Enter new password"
-                    show={showPassword}
-                    onToggle={() => setShowPassword(!showPassword)}
-                    autoComplete="new-password"
-                  />
+                  <Label htmlFor="new-password" className="text-[13px] font-medium text-muted-foreground dark:text-white/70">New password</Label>
+                  <div className="relative">
+                    <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground dark:text-white/35" />
+                    <Input
+                      id="new-password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="h-[48px] w-full rounded-xl border border-border bg-background pl-[42px] pr-12 text-[14.5px] text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:border-primary/50 focus:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] dark:border-white/15 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/25 dark:focus:border-primary/50"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground dark:text-white/35 dark:hover:bg-white/10 dark:hover:text-white"
+                      tabIndex={-1}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    </button>
+                  </div>
                   {newPassword && (
-                    <div className="flex items-center gap-1.5 pt-0.5">
-                      <div className={`flex h-4 w-4 items-center justify-center rounded-full transition-colors ${newPassword.length >= 8 ? "bg-[#0B4F2F]/15 text-[#0B4F2F] dark:text-[#7BC29A]" : "bg-muted/40 text-muted-foreground/30"}`}>
-                        <Check className="h-2.5 w-2.5" />
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex gap-1.5">
+                        {[0, 1, 2, 3].map((i) => (
+                          <div
+                            key={i}
+                            className={`h-1 flex-1 rounded-full transition-colors duration-300 ${i < passwordStrength(newPassword) ? strengthMeta[passwordStrength(newPassword)].color : "bg-border dark:bg-white/10"}`}
+                          />
+                        ))}
                       </div>
-                      <span className={`text-[12px] ${newPassword.length >= 8 ? "text-[#0B4F2F] dark:text-[#7BC29A]" : "text-muted-foreground/45"}`}>
-                        At least 8 characters
-                      </span>
+                      <p className={`text-[12px] ${passwordStrength(newPassword) >= 3 ? "text-primary" : "text-muted-foreground dark:text-white/40"}`}>
+                        {strengthMeta[passwordStrength(newPassword)].label}
+                        {passwordStrength(newPassword) >= 3 ? " — ready" : newPassword.length < 8 ? " · at least 8 characters" : ""}
+                      </p>
                     </div>
                   )}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="confirm-password" className="text-[13px] font-medium text-foreground/70">Confirm password</Label>
+                  <Label htmlFor="confirm-password" className="text-[13px] font-medium text-muted-foreground dark:text-white/70">Confirm password</Label>
                   <div className="relative">
-                    <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground/45" />
+                    <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground dark:text-white/35" />
                     <Input
                       id="confirm-password"
                       type={showPassword ? "text" : "password"}
                       placeholder="Confirm new password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className={inputClass + " pr-3"}
+                      className="h-[48px] w-full rounded-xl border border-border bg-background pl-[42px] text-[14.5px] text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:border-primary/50 focus:shadow-[0_0_0_4px_hsl(var(--primary)/0.12)] dark:border-white/15 dark:bg-white/[0.04] dark:text-white dark:placeholder:text-white/25 dark:focus:border-primary/50"
                       autoComplete="new-password"
                     />
                   </div>
                   {confirmPassword && newPassword !== confirmPassword && (
-                    <p className="pt-0.5 text-[12px] text-destructive/80">Passwords do not match</p>
+                    <p className="pt-0.5 text-[12px] text-red-400">Passwords do not match</p>
                   )}
                 </div>
 
-                <SubmitButton
-                  loading={loading}
-                  label="Reset password"
-                  loadingLabel="Resetting password..."
-                  disabled={!newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 8}
-                />
+                <Button
+                  type="submit"
+                  disabled={!newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 8 || loading}
+                  className="mt-2 h-[48px] w-full rounded-xl bg-primary text-[14.5px] font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:bg-[hsl(var(--primary-hover))] active:scale-[0.98] disabled:opacity-50"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2.5">
+                      <span className="h-4 w-4 rounded-full border-2 border-[#1B120A]/25 border-t-[#1B120A] animate-spin" />
+                      Resetting password...
+                    </span>
+                  ) : (
+                    "Reset password"
+                  )}
+                </Button>
 
                 <button
                   type="button"
                   onClick={() => changeStep("login")}
-                  className="flex w-full items-center justify-center gap-1.5 pt-1 text-[13px] text-muted-foreground/60 hover:text-foreground"
+                  className="flex w-full items-center justify-center gap-1.5 pt-1 text-[13px] text-muted-foreground hover:text-foreground dark:text-white/45 dark:hover:text-white"
                 >
                   <ArrowLeft className="h-[14px] w-[14px]" />
                   Back to sign in
@@ -620,11 +571,15 @@ export default function Login() {
               </form>
             )}
           </div>
-
-          <p className="mt-10 text-center text-[12px] text-muted-foreground/40">
-            &copy; {currentYear} Metahara Sugar Factory &middot; IT Department
-          </p>
         </div>
+
+        <p
+          className="mt-6 flex items-center justify-center text-center text-[11px] text-slate-400"
+          style={{ fontFamily: "'IBM Plex Mono', monospace" }}
+        >
+          <span>&copy; 20206 powered by Temesgen Msf IT Departement</span>
+          
+        </p>
       </div>
     </div>
   );

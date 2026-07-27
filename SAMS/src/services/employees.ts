@@ -11,11 +11,13 @@ export type Employee = {
   national_id: string;
   job_position: string;
   job_grade: string;
+  job_type: string;
   department: string | null;         // UUID of department FK
   department_name: string | null;
   hire_date: string | null;
   service_years: number;
   family_size: number;
+  marital_status: string;
   has_disability: boolean;
   status: "Active" | "On Leave" | "Terminated";
   cv_file: string | null;
@@ -29,6 +31,7 @@ export type EmployeeFormData = {
   national_id: string;
   job_position: string;
   job_grade: string;
+  job_type: string;
   department: string | null;  // UUID
   hire_date: string | null;
   family_size: number;
@@ -55,11 +58,13 @@ function fromDjango(row: any): Employee {
     national_id: row.national_id ?? "",
     job_position: row.job_position ?? "",
     job_grade: row.job_grade ?? "",
+    job_type: row.job_type ?? "Permanent",
     department: row.department ? String(row.department) : null,
     department_name: row.department_name ?? null,
     hire_date: row.hire_date ?? null,
     service_years: row.service_years ?? 0,
     family_size: row.family_size ?? 0,
+    marital_status: row.marital_status ?? "Single",
     has_disability: !!row.has_disability,
     status: row.status ?? "Active",
     cv_file: row.cv_file ?? null,
@@ -76,6 +81,7 @@ function toFormData(data: EmployeeFormData): FormData {
   fd.append("national_id", data.national_id);
   fd.append("job_position", data.job_position);
   fd.append("job_grade", data.job_grade ?? "");
+  fd.append("job_type", data.job_type ?? "Permanent");
   if (data.department) fd.append("department", data.department);
   if (data.hire_date) fd.append("hire_date", data.hire_date);
   fd.append("family_size", String(data.family_size ?? 0));
@@ -127,6 +133,7 @@ export async function createEmployee(data: EmployeeFormData): Promise<Employee> 
       national_id: data.national_id,
       job_position: data.job_position,
       job_grade: data.job_grade ?? "",
+      job_type: data.job_type ?? "Permanent",
       department: data.department ?? null,
       hire_date: data.hire_date ?? null,
       family_size: data.family_size ?? 0,
@@ -165,6 +172,7 @@ export async function updateEmployee(id: string, data: EmployeeFormData): Promis
       national_id: data.national_id,
       job_position: data.job_position,
       job_grade: data.job_grade ?? "",
+      job_type: data.job_type ?? "Permanent",
       department: data.department ?? null,
       hire_date: data.hire_date ?? null,
       family_size: data.family_size ?? 0,

@@ -79,7 +79,6 @@ function toDjango(p: Partial<Property>) {
     type: denormalizeLabel(p.type, REVERSE_TYPE_MAP, "office"),
     status: denormalizeLabel(p.status, REVERSE_STATUS_MAP, "active"),
   };
-  if (p.id) payload.id = p.id;
   return payload;
 }
 

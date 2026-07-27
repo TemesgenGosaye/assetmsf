@@ -52,6 +52,7 @@ export default function Settings() {
   const [showHelpCenter, setShowHelpCenter] = useState(() => cachedPrefs?.show_help_center !== false);
 
   // Theme customization
+  const [enableAccentColor, setEnableAccentColor] = useState(() => localStorage.getItem('theme_accent_enabled') !== 'false');
   const [accentColor, setAccentColor] = useState(() => localStorage.getItem('theme_accent') || 'orange');
   const [darkLevel, setDarkLevel] = useState(() => localStorage.getItem('theme_dark_level') || 'standard');
 
@@ -104,6 +105,20 @@ export default function Settings() {
 
     localStorage.setItem('theme_accent', accentColor);
   }, [accentColor, darkMode]);
+
+  useEffect(() => {
+    localStorage.setItem('theme_accent_enabled', String(enableAccentColor));
+    // When disabled, revert to the default orange accent
+    if (!enableAccentColor) {
+      const root = document.documentElement;
+      const fallback = ACCENT_COLORS.find(c => c.id === 'orange') || ACCENT_COLORS[0];
+      root.style.setProperty('--primary', fallback.value);
+      root.style.setProperty('--primary-hover', fallback.hover);
+      root.style.setProperty('--ring', fallback.value);
+      root.style.setProperty('--sidebar-primary', fallback.value);
+      root.style.setProperty('--sidebar-ring', fallback.value);
+    }
+  }, [enableAccentColor]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -267,7 +282,7 @@ export default function Settings() {
   const handleSave = async () => {
     try {
       // Validate default landing page against whitelist
-      const allowedLanding = new Set(["/", "/assets", "/properties", "/tickets", "/reports", "/newsletter", "/settings", "/approvals"]);
+      const allowedLanding = new Set(["/dashboard", "/assets", "/properties", "/tickets", "/reports", "/newsletter", "/settings", "/approvals"]);
       let landingToSave: string | null = (defaultLanding || "") || null;
       if (landingToSave && !allowedLanding.has(landingToSave)) {
         landingToSave = null; // coerce invalid to null (system default)
@@ -393,7 +408,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-8 pb-10">
-      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Settings" }]} />
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Settings" }]} />
 
       {/* Hero Section */}
       <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
@@ -597,36 +612,46 @@ export default function Settings() {
 
                   <Card className="md:col-span-2">
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-base">Accent Color</CardTitle>
-                      <CardDescription>Primary brand color for your interface</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-3">
-                        {ACCENT_COLORS.map((color) => (
-                          <button
-                            key={color.id}
-                            onClick={() => setAccentColor(color.id)}
-                            className={`group relative flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all hover:scale-105 ${
-                              accentColor === color.id
-                                ? 'border-primary bg-primary/5 shadow-md'
-                                : 'border-border/60 hover:border-border hover:bg-muted/30'
-                            }`}
-                            title={color.label}
-                          >
-                            <span
-                              className="h-8 w-8 rounded-full shadow-sm ring-2 ring-background"
-                              style={{ backgroundColor: `hsl(${color.value})` }}
-                            />
-                            <span className="text-xs font-medium text-foreground/80">{color.label}</span>
-                            {accentColor === color.id && (
-                              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                                <Palette className="h-3 w-3" />
-                              </span>
-                            )}
-                          </button>
-                        ))}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-base">Accent Color</CardTitle>
+                          <CardDescription>Primary brand color for your interface</CardDescription>
+                        </div>
+                        <Switch
+                          checked={enableAccentColor}
+                          onCheckedChange={setEnableAccentColor}
+                        />
                       </div>
-                    </CardContent>
+                    </CardHeader>
+                    {enableAccentColor && (
+                      <CardContent>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-3">
+                          {ACCENT_COLORS.map((color) => (
+                            <button
+                              key={color.id}
+                              onClick={() => setAccentColor(color.id)}
+                              className={`group relative flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-all hover:scale-105 ${
+                                accentColor === color.id
+                                  ? 'border-primary bg-primary/5 shadow-md'
+                                  : 'border-border/60 hover:border-border hover:bg-muted/30'
+                              }`}
+                              title={color.label}
+                            >
+                              <span
+                                className="h-8 w-8 rounded-full shadow-sm ring-2 ring-background"
+                                style={{ backgroundColor: `hsl(${color.value})` }}
+                              />
+                              <span className="text-xs font-medium text-foreground/80">{color.label}</span>
+                              {accentColor === color.id && (
+                                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                                  <Palette className="h-3 w-3" />
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </CardContent>
+                    )}
                   </Card>
                 </div>
               </section>
@@ -700,7 +725,7 @@ export default function Settings() {
                                 <SelectValue placeholder="System Default (Dashboard)" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="/">Dashboard</SelectItem>
+                                <SelectItem value="/dashboard">Dashboard</SelectItem>
                                 <SelectItem value="/assets">Assets</SelectItem>
                                 <SelectItem value="/properties">Properties</SelectItem>
                                 {canSeeApprovals && <SelectItem value="/approvals">Approvals</SelectItem>}

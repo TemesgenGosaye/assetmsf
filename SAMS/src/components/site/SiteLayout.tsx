@@ -56,7 +56,6 @@ export function SiteLayout({ children }: SiteLayoutProps) {
             <a href="#overview" className="transition-colors hover:text-foreground">Overview</a>
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
             <a href="#modules" className="transition-colors hover:text-foreground">Modules</a>
-            <a href="#demo" className="transition-colors hover:text-foreground">Demo</a>
           </nav>
           <div className="flex items-center gap-4">
             <ModeToggle />
@@ -102,12 +101,11 @@ export function SiteLayout({ children }: SiteLayoutProps) {
               <span className="font-semibold text-foreground">Product</span>
               <a href="#features" className="hover:text-foreground">Features</a>
               <a href="#modules" className="hover:text-foreground">Modules</a>
-              <a href="#demo" className="hover:text-foreground">Demo</a>
             </div>
             <div className="flex flex-col gap-2">
               <span className="font-semibold text-foreground">Support</span>
-              <a href="mailto:support@samsproject.in" className="hover:text-foreground">Contact</a>
-              <a href="https://github.com/karthik558/SAMS" className="hover:text-foreground">GitHub</a>
+              <a href="mailto:tamizowarrior7@gmail.com" className="hover:text-foreground">Contact</a>
+              <a href="https://github.com/temesgengosaye/SAMS" className="hover:text-foreground">GitHub</a>
             </div>
           </div>
         </div>

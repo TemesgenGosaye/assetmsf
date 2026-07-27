@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { listApprovals, decideApprovalFinal, forwardApprovalToAdmin, listApprovalEvents, adminOverrideApprove, addApprovalComment, type ApprovalRequest, type ApprovalEvent } from "@/services/approvals";
 import { trackActivity } from "@/services/notifications";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -88,6 +89,7 @@ export default function Approvals() {
   const [bulkLoading, setBulkLoading] = useState(false);
   // Inline diff comment state (field -> pending text)
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const navigate = useNavigate();
   const [refreshKey, setRefreshKey] = useState(0);
   const lastRefreshKey = useRef(0);
 
@@ -487,7 +489,7 @@ export default function Approvals() {
 
   return (
     <div className="space-y-8 pb-10">
-      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Approvals" }]} />
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Approvals" }]} />
       
       {/* Hero Section */}
       <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
@@ -696,7 +698,7 @@ export default function Approvals() {
             const requestedBy = a?.requestedBy || '-';
             const statusLabel = a?.status || '-';
             return (
-            <div key={a.id} className="border rounded p-3 bg-background">
+            <div key={a.id} className="border rounded p-3 bg-background cursor-pointer" onDoubleClick={() => navigate(`/approvals/${a.id}`)}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-medium">{actionLabel} • Asset {assetLabel}</div>

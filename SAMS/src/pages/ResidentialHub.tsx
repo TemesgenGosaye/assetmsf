@@ -6,11 +6,9 @@ import {
   Home, Users, CalendarClock, BedDouble, Plus, Edit, Trash2, Loader2,
   ShieldCheck, Building2, UserCheck, Clock, Accessibility,
   User, Hash, Briefcase, CalendarDays, StickyNote,
-  DoorOpen, MapPin, Filter, X, ChevronRight, Maximize2, Minimize2,
+  DoorOpen, MapPin, Filter, X, ChevronRight, Maximize2, Minimize2, MoreVertical,
 } from "lucide-react";
-import { useLiveData } from "@/hooks/useLiveData";
 import { peekCachedValue } from "@/lib/data-cache";
-import { listHouses } from "@/services/houses";
 import { listAllocations as _listAllocations } from "@/services/residentialAllocations";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import MetricCard from "@/components/ui/metric-card";
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import DataTable, { type ColDef } from "@/components/table/DataTable";
+import { ResidentialActionsDropdown } from "@/components/residential/ResidentialActionsDropdown";
 import { logActivity } from "@/services/activity";
 import { trackActivity } from "@/services/notifications";
 import {
@@ -580,15 +579,12 @@ export function AllocationSection({ category }: { category: AllocationCategory }
     ...(isAdmin ? [{
       key: "actions", header: "", width: "w-20", pinned: true, align: "right" as const,
       cell: (r: ResidentAllocation) => (
-        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={e => { e.stopPropagation(); openEdit(r); }} title="Edit">
-            <Edit className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive"
-            onClick={e => { e.stopPropagation(); setDeleteTarget(r); }} title="Delete">
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        <ResidentialActionsDropdown
+          onEdit={() => openEdit(r)}
+          onDelete={() => setDeleteTarget(r)}
+          canEdit={isAdmin}
+          canDelete={isAdmin}
+        />
       ),
     }] : []),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -741,15 +737,6 @@ function HubCards() {
       gradient: "from-emerald-500 to-teal-600",
       bg: "bg-emerald-500/10",
       text: "text-emerald-600 dark:text-emerald-400",
-    },
-    {
-      href: "/houses",
-      label: "Houses",
-      description: "Manage housing units, buildings, and room inventory.",
-      icon: Building2,
-      gradient: "from-cyan-500 to-blue-600",
-      bg: "bg-cyan-500/10",
-      text: "text-cyan-600 dark:text-cyan-400",
     },
   ];
 

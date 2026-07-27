@@ -26,9 +26,8 @@ export function refreshSoundPreference() { loadPref(); }
 function ensureAudio(): HTMLAudioElement | null {
   try {
     if (!audioEl) {
-      audioEl = new Audio('/audio/notification.mp3');
+      audioEl = new Audio('/audio/sound.m4a');
       audioEl.preload = 'auto';
-      // Enable inline playback on iOS Safari
       try { (audioEl as any).playsInline = true; } catch {}
       audioEl.setAttribute('playsinline', 'true');
       audioEl.volume = 1.0;
@@ -53,12 +52,10 @@ export function playNotificationSound(): void {
   const el = ensureAudio();
   if (!el) return;
   try {
-    // Restart from beginning if already playing
     el.currentTime = 0;
     const p = el.play();
     if (p && typeof p.then === 'function') {
       p.catch(() => {
-        // Likely blocked by autoplay policy — queue and rely on unlock
         pendingBeeps = Math.min(pendingBeeps + 1, 3);
       });
     }
@@ -87,7 +84,6 @@ function unlockOnce() {
         // Keep listeners for a later gesture
       });
     } else {
-      // Older browsers that don't return a promise
       try { el.pause(); } catch {}
       el.currentTime = 0;
       el.muted = false;

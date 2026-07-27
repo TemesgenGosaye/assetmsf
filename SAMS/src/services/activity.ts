@@ -130,7 +130,7 @@ export async function logActivity(
   // Sync to backend (best effort, non-blocking)
   try {
     const uid = getCurrentUserId();
-    djangoRequest("/activity/", {
+    djangoRequest("/activity/log/", {
       method: "POST",
       body: JSON.stringify({
         type,

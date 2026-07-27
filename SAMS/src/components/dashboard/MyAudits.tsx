@@ -4,8 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ClipboardCheck } from "lucide-react";
-import { isDemoMode } from "@/lib/demo";
+
 import { listSessions, getSessionById, isAuditActive, getProgress, formatAuditSessionName } from "@/services/audit";
+import { isDemoMode } from "@/lib/demo";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
 
 type Row = { id: string; property?: string | null; startedAt?: string | null; status: string; submitted?: string };

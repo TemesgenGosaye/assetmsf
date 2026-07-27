@@ -229,8 +229,8 @@ export default function Users() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<string | undefined>(undefined);
-  const [department, setDepartment] = useState<string | undefined>(undefined);
+  const [role, setRole] = useState<string>("");
+  const [department, setDepartment] = useState<string>("");
   const [password, setPassword] = useState("");
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -292,8 +292,8 @@ export default function Users() {
   const [eLastName, setELastName] = useState("");
   const [eEmail, setEEmail] = useState("");
   const [ePhone, setEPhone] = useState("");
-  const [eRole, setERole] = useState<string | undefined>(undefined);
-  const [eDepartment, setEDepartment] = useState<string | undefined>(undefined);
+  const [eRole, setERole] = useState<string>("");
+  const [eDepartment, setEDepartment] = useState<string>("");
   const [editSelectedDepartments, setEditSelectedDepartments] = useState<
     string[]
   >([]);
@@ -349,25 +349,21 @@ export default function Users() {
   ];
 
   // initial load
+  const loadUsers = async (options?: { force?: boolean }) => {
+    setLoading(true);
+    try {
+      const data = await listUsers(options);
+      setUsers(data && data.length ? data : []);
+    } catch (e: any) {
+      console.error("Failed to load users:", e);
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await listUsers();
-        if (!cancelled)
-          setUsers(data && data.length ? data : seedLocalUsersIfEmpty());
-      } catch (e: any) {
-        // Fallback to localStorage when Supabase isn't configured
-        const seeded = seedLocalUsersIfEmpty();
-        if (!cancelled) setUsers(seeded);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    loadUsers();
   }, []);
 
   // Load departments for selectors and management (fallbacks handled in service)
@@ -673,8 +669,8 @@ export default function Users() {
     setLastName("");
     setEmail("");
     setPhone("");
-    setRole(undefined);
-    setDepartment(undefined);
+    setRole("");
+    setDepartment("");
     setPassword("");
     setMustChangePassword(false);
     setSelectedPropertyIds([]);
@@ -694,7 +690,20 @@ export default function Users() {
 
   const toTitle = (v?: string) =>
     v ? v.charAt(0).toUpperCase() + v.slice(1) : "";
-  const mapRole = (v?: string) => (v ? toTitle(v) : "User");
+  const mapRole = (v?: string) => {
+    if (!v) return "FIELD_STAFF";
+    const roleMap: Record<string, string> = {
+      "admin": "ADMIN",
+      "manager": "MANAGER",
+      "field staff": "FIELD_STAFF",
+      "fieldstaff": "FIELD_STAFF",
+      "user": "FIELD_STAFF",
+      "staff": "FIELD_STAFF",
+      "applicant": "APPLICANT"
+    };
+    const lower = v.toLowerCase().trim();
+    return roleMap[lower] || "FIELD_STAFF";
+  };
   // Normalize department against options to avoid duplicates like FinanceFINANCE
   const normalizeDeptInput = (v?: string): string | null => {
     if (!v) return null;
@@ -719,23 +728,29 @@ export default function Users() {
       });
       return;
     }
+    
+    // Generate a default password if not provided
+    const defaultPassword = "TempPassword123!";
+    const isAutoPassword = !password.trim();
+    const finalPassword = password.trim() || defaultPassword;
+    
     const payload = {
       name,
       email: email.trim(),
       role: mapRole(role),
       department: normalizeDeptInput(department),
       phone: phone || null,
-      last_login: null,
-      status: "Active",
-      avatar_url: null,
-      must_change_password: mustChangePassword,
-      password_changed_at: null,
-      // password is used only for local fallback or future auth integration
-      password: password || undefined,
-    } as Omit<AppUser, "id"> & { password?: string };
+      status: "active",
+      must_change_password: isAutoPassword || mustChangePassword,
+      ...(finalPassword ? { password: finalPassword, password_confirm: finalPassword } : {}),
+    } as Omit<AppUser, "id">;
+
+    console.log("Creating user with payload:", payload);
 
     try {
       const created = await createUser(payload);
+      // Force refresh users list from backend
+      await loadUsers({ force: true });
       await trackActivity("user", "create", {
         entityName: created.name || created.email,
         entityId: created.id,
@@ -824,69 +839,13 @@ export default function Users() {
         description: `${created.name} has been added.`,
       });
     } catch (e: any) {
-      // Fallback: persist to localStorage
-      const hash = password
-        ? ((await createPasswordHash(password)) ?? undefined)
-        : undefined;
-      const passwordChangedAt = hash
-        ? new Date().toISOString()
-        : payload.password_changed_at;
-      type LocalAppUser = AppUser & { password_hash?: string };
-      const local: LocalAppUser = {
-        id: crypto?.randomUUID?.() || String(Date.now()),
-        name: payload.name,
-        email: payload.email,
-        role: payload.role,
-        department: payload.department,
-        phone: payload.phone,
-        last_login: payload.last_login,
-        status: payload.status,
-        avatar_url: payload.avatar_url,
-        must_change_password: payload.must_change_password,
-        password_changed_at: passwordChangedAt,
-        // local-only field for demo mode; not part of AppUser API in backend
-        password_hash: hash,
-      } as LocalAppUser;
-      const next = [local, ...users];
-      setUsers(next);
-      writeLocalUsers(next);
-      // Local mapping fallback
-      if (selectedPropertyIds.length) {
-        try {
-          await setUserPropertyAccess(local.id, selectedPropertyIds);
-        } catch {}
-      }
-      try {
-        await setUserDepartmentAccess(local.id, selectedDepartments);
-      } catch {}
-      // Local per-page permissions fallback
-      try {
-        const payloadPerms = Object.fromEntries(
-          allPages.map((p) => [p, { v: !!permView[p], e: !!permEdit[p] }]),
-        ) as any;
-        await setUserPermissions(local.id, payloadPerms);
-      } catch {}
-      // Local Auditor Incharge fallback
-      try {
-        if (inchargePropertyIds.length) {
-          await setAuditInchargeForUser(
-            local.id,
-            local.name || null,
-            inchargePropertyIds,
-          );
-        }
-      } catch {}
-      // Final Approver assignments are Supabase-only. No local fallback.
+      console.error("Failed to create user:", e);
       toast({
-        title: "User added (local)",
-        description: `${local.name} stored locally.`,
+        title: "Failed to create user",
+        description: e.message || "Backend error. Please check console for details.",
+        variant: "destructive",
       });
-      setUserPropertyMap((prev) => ({
-        ...prev,
-        [local.id]: Array.from(
-          new Set(selectedPropertyIds.map((id) => String(id))),
-        ),
-      }));
+      throw e; // Don't fall back to localStorage
     }
     setIsAddUserOpen(false);
     setIsAddDialogMaximized(false);
@@ -1014,7 +973,7 @@ export default function Users() {
       phone: ePhone || null,
       role: mapRole(eRole),
       department: normalizeDeptInput(eDepartment),
-      status: eStatus === "inactive" ? "Inactive" : "Active",
+      status: eStatus === "inactive" ? "inactive" : "active",
       must_change_password: eMustChange,
     };
     try {
@@ -1242,7 +1201,7 @@ export default function Users() {
   return (
     <div className="space-y-6 sm:space-y-8">
       <Breadcrumbs
-        items={[{ label: "Dashboard", to: "/" }, { label: "Users" }]}
+        items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Users" }]}
       />
       <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm">
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
@@ -1480,6 +1439,7 @@ export default function Users() {
                           value={role}
                           onValueChange={setRole}
                           disabled={authRole !== "admin"}
+                          placeholder="Select role"
                         >
                           <SelectTrigger className="bg-background">
                             <SelectValue placeholder="Select role" />
@@ -2130,7 +2090,7 @@ export default function Users() {
       </div>
 
       <Card className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
-        <CardHeader className="space-y-4 border-b border-slate-300 bg-slate-50 px-4 py-4 dark:border-slate-700 dark:bg-slate-900 sm:px-6">
+        <CardHeader className="space-y-4 border-b border-slate-300 bg-slate-50 px-4 py-4 dark:border-border dark:bg-muted sm:px-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="text-xl font-semibold tracking-tight text-foreground">
@@ -2172,7 +2132,7 @@ export default function Users() {
                       <span className="text-foreground">
                         {roleFilter === "all"
                           ? "All Roles"
-                          : mapRole(roleFilter)}
+                          : toTitle(roleFilter)}
                       </span>
                     </div>
                   </SelectTrigger>
@@ -2757,7 +2717,7 @@ export default function Users() {
                     >
                       System Role
                     </Label>
-                    <Select value={eRole} onValueChange={setERole}>
+                    <Select value={eRole} onValueChange={setERole} placeholder="Select role">
                       <SelectTrigger className="bg-background">
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
@@ -2776,7 +2736,7 @@ export default function Users() {
                     >
                       Department
                     </Label>
-                    <Select value={eDepartment} onValueChange={setEDepartment}>
+                    <Select value={eDepartment} onValueChange={setEDepartment} placeholder="Select department">
                       <SelectTrigger className="bg-background">
                         <SelectValue placeholder="Select department" />
                       </SelectTrigger>
@@ -3370,3 +3330,4 @@ function DepartmentEditorDialog({
     </DialogContent>
   );
 }
+

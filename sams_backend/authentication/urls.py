@@ -13,11 +13,13 @@ from .views import (
     UserPermissionListView,
     UserPropertyAccessListView,
     UserSettingsView,
+    admin_set_password,
     change_password,
     current_user,
     list_permissions,
     list_user_access,
     list_user_dept_access,
+    login_page,
     logout,
     password_reset_request,
     password_reset_verify,
@@ -34,6 +36,7 @@ from .views import (
 urlpatterns = [
     # Authentication
     path("login/", CustomTokenObtainPairView.as_view(), name="login"),
+    path("login-page/", login_page, name="login_page"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("register/", register, name="register"),
     path("logout/", logout, name="logout"),
@@ -50,6 +53,7 @@ urlpatterns = [
     # User Management
     path("users/", UserListView.as_view(), name="user_list"),
     path("users/<int:id>/", UserDetailView.as_view(), name="user_detail"),
+    path("users/<int:user_id>/set-password/", admin_set_password, name="admin_set_password"),
     # User Settings
     path("settings/", UserSettingsView.as_view(), name="user_settings"),
     # User Permissions

@@ -2,6 +2,7 @@
 Views for authentication and user management.
 """
 from rest_framework import status, generics
+from django.shortcuts import render
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -210,15 +211,15 @@ User = get_user_model()
 class CustomTokenObtainPairView(generics.GenericAPIView):
     """Custom JWT token view with additional user data."""
     permission_classes = (AllowAny,)
+    serializer_class = LoginSerializer
     
     def post(self, request, *args, **kwargs):
         """Handle login with email-based authentication."""
-        # Handle email-based authentication
-        email = request.data.get('email')
-        password = request.data.get('password')
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         
-        if not email or not password:
-            return StandardResponse.bad_request("Email and password are required")
+        email = serializer.validated_data.get('email')
+        password = serializer.validated_data.get('password')
         
         # Authenticate using email
         from django.contrib.auth import authenticate
@@ -261,6 +262,13 @@ class CustomTokenObtainPairView(generics.GenericAPIView):
         else:
             ip = request.META.get('REMOTE_ADDR')
         return ip
+
+# Internal login page (HTML form)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def login_page(request):
+    """Render the internal credential login page."""
+    return render(request, 'authentication/login.html')
 
 
 @api_view(['POST'])
@@ -351,13 +359,16 @@ class UserListView(generics.ListCreateAPIView):
         return User.objects.filter(id=user.id)
     
     def create(self, request, *args, **kwargs):
-        """Create user with default settings."""
+        """Create user with default settings. Only admins/superadmins can create users."""
+        user = request.user
+        if not (user.is_super_admin() or user.is_admin()):
+            return StandardResponse.forbidden("Only admins can create users")
         serializer = UserCreateSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save()
-            UserSettings.objects.create(user=user)
+            new_user = serializer.save()
+            UserSettings.objects.create(user=new_user)
             return StandardResponse.created(
-                UserSerializer(user).data,
+                UserSerializer(new_user).data,
                 "User created successfully"
             )
         return StandardResponse.validation_error(
@@ -509,6 +520,37 @@ def verify_superuser(request):
         return StandardResponse.success({'valid': True}, "Superuser verified")
 
     return StandardResponse.error("Incorrect password.", None, status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_set_password(request, user_id):
+    """
+    Admin endpoint to set a user's password without needing the old password.
+    Requires admin/superadmin role.
+    """
+    requesting_user = request.user
+    if not (requesting_user.is_super_admin() or requesting_user.is_admin()):
+        return StandardResponse.forbidden("Only admins can set user passwords")
+
+    new_password = request.data.get('new_password')
+    if not new_password:
+        return StandardResponse.bad_request("new_password is required")
+
+    try:
+        target_user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return StandardResponse.not_found("User not found")
+
+    try:
+        validate_password(new_password, user=target_user)
+    except ValidationError as e:
+        return StandardResponse.validation_error("Invalid password", e.messages)
+
+    target_user.set_password(new_password)
+    target_user.save()
+
+    return StandardResponse.success(None, "Password set successfully")
 
 
 @api_view(['POST'])

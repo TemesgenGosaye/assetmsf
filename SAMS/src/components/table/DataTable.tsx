@@ -332,12 +332,12 @@ export function DataTable<T>({
   return (
     <div
       className={cn(
-        "group/table flex flex-col overflow-hidden border border-slate-300/90 bg-white dark:border-slate-700 dark:bg-slate-950 shadow-sm",
+        "group/table flex flex-col overflow-hidden border border-border bg-card dark:border-border dark:bg-card shadow-sm",
         className,
       )}
     >
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-2 border-b border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 border-b border-border dark:border-border bg-muted dark:bg-muted px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-2">
           {searchable && (
             <div className="relative max-w-sm flex-1">
@@ -347,7 +347,7 @@ export function DataTable<T>({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={searchPlaceholder}
-                className="h-8 rounded-sm border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 pl-8 pr-7 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
+                 className="h-8 rounded-sm border-border dark:border-border bg-card dark:bg-card pl-8 pr-7 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
               />
               {search && (
                 <button
@@ -391,7 +391,7 @@ export function DataTable<T>({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-52 rounded-sm border-slate-300 dark:border-slate-700"
+              className="w-52 rounded-sm border-slate-300 dark:border-border"
             >
               <DropdownMenuLabel className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
                 Columns
@@ -433,7 +433,7 @@ export function DataTable<T>({
       {/* ── Table ───────────────────────────────────────────────────── */}
       <div className="overflow-auto [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80 [&::-webkit-scrollbar-track]:bg-transparent">
         <table className="w-full caption-bottom border-separate border-spacing-0">
-          <thead className="sticky top-0 z-10 border-b border-slate-300 bg-slate-100/95 dark:border-slate-700 dark:bg-slate-900">
+          <thead className="sticky top-0 z-10 border-b border-border bg-muted dark:border-border dark:bg-muted">
             <tr>
               {selectable && (
                 <th className={cn("w-10 pl-4", rowHeight)}>
@@ -449,7 +449,7 @@ export function DataTable<T>({
                 <th
                   key={col.key}
                   className={cn(
-                    "select-none whitespace-nowrap border-b border-r border-slate-300 bg-slate-100/95 text-[11px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 last:border-r-0",
+                     "select-none whitespace-nowrap border-b border-r border-border bg-muted text-[11px] font-medium text-slate-700 dark:border-border dark:bg-muted dark:text-slate-200 last:border-r-0",
                     "align-middle",
                     rowHeight,
                     px,
@@ -531,9 +531,9 @@ export function DataTable<T>({
                     }}
                     className={cn(
                       "group transition-colors duration-100",
-                      "bg-white dark:bg-slate-950",
-                      isSelected && "bg-sky-100/80 dark:bg-slate-800",
-                      "hover:bg-sky-50 dark:hover:bg-slate-900/90",
+                      "bg-card dark:bg-card",
+                      isSelected && "bg-muted dark:bg-muted",
+                      "hover:bg-muted dark:hover:bg-muted",
                       onRowDoubleClick && "cursor-pointer select-none",
                     )}
                   >
@@ -554,7 +554,7 @@ export function DataTable<T>({
                           textSize,
                           rowHeight,
                           px,
-                          "border-b border-r border-slate-200 dark:border-slate-800 last:border-r-0",
+                          "border-b border-r border-slate-200 dark:border-border last:border-r-0",
                           "text-slate-700 dark:text-slate-200",
                           "align-middle",
                           col.align === "right"
@@ -599,7 +599,7 @@ export function DataTable<T>({
 
       {/* ── Footer: count + pagination ─────────────────────────────── */}
       {!loading && filtered.length > 0 && (
-        <div className="flex items-center justify-between border-t border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 py-2 text-xs text-slate-600 dark:text-slate-300">
+        <div className="flex items-center justify-between border-t border-border dark:border-border bg-muted dark:bg-muted px-4 py-2 text-xs text-slate-600 dark:text-slate-300">
           <span>
             {selected.size > 0 && (
               <span className="font-semibold text-foreground mr-2">
@@ -610,7 +610,7 @@ export function DataTable<T>({
             {search && ` (filtered from ${data.length})`}
           </span>
           {pageSize > 0 && totalPages > 1 && (
-            <div className="flex items-center gap-1 rounded-sm border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 p-1">
+            <div className="flex items-center gap-1 rounded-sm border border-border dark:border-border bg-card dark:bg-card p-1">
               <Button
                 size="icon"
                 variant="ghost"
@@ -676,3 +676,4 @@ export function DataTable<T>({
 }
 
 export default DataTable;
+

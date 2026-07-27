@@ -31,7 +31,7 @@ class PropertyListView(generics.ListCreateAPIView):
         from authentication.models import UserPermission
         has_all_props = UserPermission.objects.filter(
             user=user,
-            page=UserPermission.Page.ALL_PROPERTIES,
+            page=UserPermission.Page.PROPERTIES,
             can_view=True
         ).exists()
         

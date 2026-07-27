@@ -16,7 +16,7 @@ interface LayoutProps {
 
 const BASE_TITLE = "MSF-PMS";
 const ROUTE_TITLE_MAP: Record<string, string> = {
-  "/": "Dashboard",
+  "/dashboard": "Dashboard",
   "/assets": "Assets",
   "/properties": "Properties",
   "/qr-codes": "QR Codes",
@@ -151,7 +151,7 @@ export function Layout({ children }: LayoutProps) {
   // Hard refresh default landing redirect
   useEffect(() => {
     if (redirectedRef.current) return; // run only once
-    if (pathname !== "/") return; // only if we're at root/dashboard
+    if (pathname !== "/dashboard") return; // only if we're at root/dashboard
     let authed = false;
     try { authed = Boolean(localStorage.getItem("current_user_id")); } catch {}
     if (!authed) return;
@@ -160,7 +160,7 @@ export function Layout({ children }: LayoutProps) {
         const uid = localStorage.getItem("current_user_id");
         if (!uid) return;
         const prefs = await getUserPreferences(uid);
-        const rawTarget = prefs?.default_landing_page || "/";
+        const rawTarget = prefs?.default_landing_page || "/dashboard";
         // Apply sticky header & auto theme early if preference set
         try {
           const root = document.documentElement;
@@ -172,9 +172,9 @@ export function Layout({ children }: LayoutProps) {
               try { mq.addEventListener('change', apply); } catch { mq.addListener(apply); }
             }
         } catch {}
-        if (!rawTarget || rawTarget === "/") return; // dashboard already
+        if (!rawTarget || rawTarget === "/dashboard") return; // dashboard already
         // Validate and role gate approvals
-        const allowed = new Set(["/","/assets","/properties","/house-opp","/tickets","/reports","/newsletter","/settings","/approvals"]);
+        const allowed = new Set(["/dashboard","/assets","/properties","/house-opp","/tickets","/reports","/newsletter","/settings","/approvals"]);
         if (!allowed.has(rawTarget)) return;
         if (rawTarget === "/approvals") {
           let role = ""; try { const authRaw = localStorage.getItem("auth_user"); role = authRaw ? (JSON.parse(authRaw).role || '').toLowerCase() : ''; } catch {}
@@ -189,7 +189,7 @@ export function Layout({ children }: LayoutProps) {
   }, [pathname, navigate]);
 
   const mobileNavItems = [
-    { label: "Home", path: "/", icon: Home },
+    { label: "Home", path: "/dashboard", icon: Home },
     { label: "Assets", path: "/assets", icon: Package },
     { label: "Scan", path: "/scan", icon: ScanLine },
     { label: "QR", path: "/qr-codes", icon: QrCode },
@@ -198,8 +198,8 @@ export function Layout({ children }: LayoutProps) {
 
     useEffect(() => {
       const rawPath = pathname.split("?")[0].replace(/\/+$/, "") || "/";
-     const segments = rawPath === "/" ? [] : rawPath.split("/").filter(Boolean);
-     const baseKey = segments.length === 0 ? "/" : `/${segments[0]}`;
+     const segments = rawPath === "/dashboard" ? [] : rawPath.split("/").filter(Boolean);
+     const baseKey = segments.length === 0 ? "/dashboard" : `/${segments[0]}`;
      const knownTitle = ROUTE_TITLE_MAP[baseKey];
      const fallbackTitle = segments
        .map((segment) =>
@@ -212,7 +212,7 @@ export function Layout({ children }: LayoutProps) {
        .join(" / ");
      const suffix =
        knownTitle ||
-       (fallbackTitle ? fallbackTitle : ROUTE_TITLE_MAP["/"] || "Dashboard");
+        (fallbackTitle ? fallbackTitle : ROUTE_TITLE_MAP["/dashboard"] || "Dashboard");
      const nextTitle = `MSF-PMS - ${suffix}`;
      try {
        document.title = nextTitle;

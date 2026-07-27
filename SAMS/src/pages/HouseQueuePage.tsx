@@ -8,18 +8,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageSkeleton } from "@/components/ui/page-skeletons";
-import MetricCard from "@/components/ui/metric-card";
+
 import StatusChip from "@/components/ui/status-chip";
 import { listApplications, type HouseApplication } from "@/services/houseApplication";
 import {
   ArrowLeft,
   ArrowRight,
+  Award,
   Clock3,
   FileText,
   Home,
   Inbox,
   RefreshCw,
   ShieldCheck,
+  Trophy,
   Users,
 } from "lucide-react";
 
@@ -27,6 +29,35 @@ type QueueRow = HouseApplication & {
   queuePosition: number;
   queueTimestamp: string | null;
 };
+
+const CATEGORY_BADGE: Record<string, string> = {
+  Staff: "bg-violet-500/10 text-violet-700 border-violet-300",
+  A: "bg-blue-500/10 text-blue-700 border-blue-300",
+  B: "bg-emerald-500/10 text-emerald-700 border-emerald-300",
+  C: "bg-amber-500/10 text-amber-700 border-amber-300",
+  D: "bg-orange-500/10 text-orange-700 border-orange-300",
+  E: "bg-slate-500/10 text-slate-700 border-slate-300",
+};
+
+function CategoryBadge({ category }: { category: string }) {
+  return (
+    <Badge variant="outline" className={`text-xs font-medium ${CATEGORY_BADGE[category] || ""}`}>
+      {category === "E" ? "Barrack" : category === "Staff" ? "Staff" : `Type ${category}`}
+    </Badge>
+  );
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const color =
+    score >= 70 ? "bg-emerald-500/10 text-emerald-700 border-emerald-300"
+    : score >= 40 ? "bg-amber-500/10 text-amber-700 border-amber-300"
+    : "bg-slate-500/10 text-slate-700 border-slate-300";
+  return (
+    <Badge variant="outline" className={`text-xs font-bold tabular-nums ${color}`}>
+      {score.toFixed(1)}
+    </Badge>
+  );
+}
 
 export default function HouseQueuePage() {
   const navigate = useNavigate();
@@ -52,15 +83,22 @@ export default function HouseQueuePage() {
   const houseQueue = useMemo<QueueRow[]>(
     () =>
       applications
-        .filter((app) => app.status === "Submitted")
+        .filter((app) =>
+          ["Submitted", "Under Review", "Verified", "Waiting for Allocation", "Allocated"].includes(app.status)
+        )
         .sort((a, b) => {
+          // Put Allocated at the bottom or sort purely by score/FIFO
+          if (a.status === "Allocated" && b.status !== "Allocated") return 1;
+          if (b.status === "Allocated" && a.status !== "Allocated") return -1;
+          const scoreDiff = (b.priority_score || 0) - (a.priority_score || 0);
+          if (scoreDiff !== 0) return scoreDiff;
           const aTime = new Date(a.submitted_at || a.created_at).getTime();
           const bTime = new Date(b.submitted_at || b.created_at).getTime();
           return aTime - bTime;
         })
         .map((app, index) => ({
           ...app,
-          queuePosition: index + 1,
+          queuePosition: app.queue_position ?? index + 1,
           queueTimestamp: app.submitted_at || app.created_at,
         })),
     [applications],
@@ -72,12 +110,16 @@ export default function HouseQueuePage() {
     const averageFamilySize = houseQueue.length
       ? (houseQueue.reduce((sum, app) => sum + (app.family_size || 0), 0) / houseQueue.length).toFixed(1)
       : "0.0";
+    const averageScore = houseQueue.length
+      ? (houseQueue.reduce((sum, app) => sum + (app.priority_score || 0), 0) / houseQueue.length).toFixed(1)
+      : "0.0";
 
     return {
       total: houseQueue.length,
       withDocuments,
       disabilityFlagged,
       averageFamilySize,
+      averageScore,
     };
   }, [houseQueue]);
 
@@ -85,7 +127,7 @@ export default function HouseQueuePage() {
     (): ColDef<QueueRow>[] => [
       {
         key: "queuePosition",
-        header: "Queue #",
+        header: "Rank",
         width: "w-20",
         pinned: true,
         align: "center",
@@ -96,6 +138,15 @@ export default function HouseQueuePage() {
             {app.queuePosition}
           </span>
         ),
+      },
+      {
+        key: "priority_score",
+        header: "Score",
+        width: "w-24",
+        sortable: true,
+        align: "center",
+        value: (app) => app.priority_score || 0,
+        cell: (app) => <ScoreBadge score={app.priority_score || 0} />,
       },
       {
         key: "application_no",
@@ -124,17 +175,10 @@ export default function HouseQueuePage() {
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{app.employee_name}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {app.requester_name || app.requester || "Applicant"}
+              {app.job_position || "—"}
             </p>
           </div>
         ),
-      },
-      {
-        key: "national_id",
-        header: "National ID",
-        width: "w-40",
-        sortable: true,
-        value: (app) => app.national_id,
       },
       {
         key: "gender",
@@ -144,16 +188,9 @@ export default function HouseQueuePage() {
         value: (app) => app.gender,
       },
       {
-        key: "job_position",
-        header: "Job Position",
-        width: "min-w-[180px]",
-        sortable: true,
-        value: (app) => app.job_position,
-      },
-      {
         key: "job_grade",
-        header: "Job Grade",
-        width: "w-28",
+        header: "Grade",
+        width: "w-20",
         sortable: true,
         value: (app) => app.job_grade,
         cell: (app) => app.job_grade || "—",
@@ -161,17 +198,10 @@ export default function HouseQueuePage() {
       {
         key: "years_of_service",
         header: "Years",
-        width: "w-24",
+        width: "w-20",
         sortable: true,
         align: "center",
         value: (app) => app.years_of_service,
-      },
-      {
-        key: "marital_status",
-        header: "Marital",
-        width: "w-32",
-        sortable: true,
-        value: (app) => app.marital_status,
       },
       {
         key: "has_disability",
@@ -191,77 +221,34 @@ export default function HouseQueuePage() {
       },
       {
         key: "family_size",
-        header: "Family Size",
-        width: "w-28",
+        header: "Family",
+        width: "w-20",
         sortable: true,
         align: "center",
         value: (app) => app.family_size,
       },
       {
-        key: "number_of_children",
-        header: "Children",
-        width: "w-24",
+        key: "eligible_house_category",
+        header: "Eligible",
+        width: "w-28",
         sortable: true,
-        align: "center",
-        value: (app) => app.number_of_children,
+        value: (app) => app.eligible_house_category || "",
+        cell: (app) => app.eligible_house_category
+          ? <CategoryBadge category={app.eligible_house_category} />
+          : <span className="text-xs text-muted-foreground">—</span>,
       },
       {
         key: "requested_house_category",
         header: "Requested",
-        width: "w-32",
+        width: "w-28",
         sortable: true,
         value: (app) => app.requested_house_category,
-        cell: (app) => (
-          <Badge variant="outline" className="text-xs font-medium">
-            {app.requested_house_category === "E"
-              ? "Barrack"
-              : app.requested_house_category === "Staff"
-                ? "Staff"
-                : `Type ${app.requested_house_category}`}
-          </Badge>
-        ),
-      },
-      {
-        key: "preferred_location",
-        header: "Preferred Location",
-        width: "min-w-[180px]",
-        sortable: true,
-        value: (app) => app.preferred_location,
-        cell: (app) => app.preferred_location || "—",
-      },
-      {
-        key: "reason_for_request",
-        header: "Reason",
-        width: "min-w-[280px]",
-        sortable: true,
-        value: (app) => app.reason_for_request,
-        cell: (app) => (
-          <p className="line-clamp-2 max-w-[320px] text-sm text-muted-foreground">
-            {app.reason_for_request || "—"}
-          </p>
-        ),
-      },
-      {
-        key: "supporting_document",
-        header: "Document",
-        width: "w-28",
-        align: "center",
-        value: (app) => (app.supporting_document ? "Yes" : "No"),
-        cell: (app) =>
-          app.supporting_document ? (
-            <Button size="sm" variant="ghost" asChild>
-              <a href={app.supporting_document} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-                Open
-              </a>
-            </Button>
-          ) : (
-            <span className="text-xs text-muted-foreground">—</span>
-          ),
+        cell: (app) => <CategoryBadge category={app.requested_house_category} />,
       },
       {
         key: "queueTimestamp",
-        header: "Submitted At",
-        width: "min-w-[170px]",
+        header: "Submitted",
+        width: "min-w-[160px]",
         sortable: true,
         value: (app) => app.queueTimestamp,
         cell: (app) => (
@@ -274,7 +261,7 @@ export default function HouseQueuePage() {
       {
         key: "status",
         header: "Status",
-        width: "w-32",
+        width: "w-36",
         sortable: true,
         value: (app) => app.status,
         cell: (app) => <StatusChip status={app.status} />,
@@ -296,7 +283,7 @@ export default function HouseQueuePage() {
               }}
             >
               <ArrowRight className="h-3.5 w-3.5" />
-              Open
+              Review
             </Button>
           </div>
         ),
@@ -317,7 +304,7 @@ export default function HouseQueuePage() {
           <PageHeader
             icon={Inbox}
             title="House Queue"
-            description="FIFO queue of submitted applicant requests. Oldest submitted request is first in line."
+            description="Ranked by priority score. Higher score = higher priority. FIFO is the tie-breaker."
             actions={
               <>
                 <Button variant="outline" onClick={() => navigate("/house-opp")}>
@@ -337,44 +324,35 @@ export default function HouseQueuePage() {
               {metrics.total} active in queue
             </Badge>
             <Badge variant="secondary" className="gap-1 text-xs">
-              FIFO Standard
+              <Trophy className="h-3 w-3" />
+              Priority Score Ranked
             </Badge>
             <Badge variant="secondary" className="gap-1 text-xs">
-              Full Applicant Fields
+              FIFO Tie-Breaker
             </Badge>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          icon={Inbox}
-          title="Queued Requests"
-          value={metrics.total}
-          caption="Submitted and waiting in FIFO order"
-          variant="blue"
-        />
-        <MetricCard
-          icon={FileText}
-          title="With Documents"
-          value={metrics.withDocuments}
-          caption="Requests that include supporting files"
-          variant="emerald"
-        />
-        <MetricCard
-          icon={ShieldCheck}
-          title="Disability Flagged"
-          value={metrics.disabilityFlagged}
-          caption="Requests marked with accessibility needs"
-          variant="amber"
-        />
-        <MetricCard
-          icon={Users}
-          title="Avg Family Size"
-          value={metrics.averageFamilySize}
-          caption="Average household size across queued requests"
-          variant="violet"
-        />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {[
+          { icon: Inbox, label: "Queued", value: metrics.total, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/40", border: "border-l-blue-500" },
+          { icon: Award, label: "Avg Score", value: metrics.averageScore, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-50 dark:bg-violet-950/40", border: "border-l-violet-500" },
+          { icon: FileText, label: "With Docs", value: metrics.withDocuments, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-950/40", border: "border-l-emerald-500" },
+          { icon: ShieldCheck, label: "Disability", value: metrics.disabilityFlagged, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-50 dark:bg-rose-950/40", border: "border-l-rose-500" },
+          { icon: Users, label: "Avg Family", value: metrics.averageFamilySize, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/40", border: "border-l-amber-500" },
+        ].map((s) => (
+          <div
+            key={s.label}
+            className={`flex items-center gap-2.5 rounded-lg border-l-[3px] ${s.border} ${s.bg} px-3 py-2.5`}
+          >
+            <s.icon className={`h-4 w-4 shrink-0 ${s.color}`} />
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{s.label}</p>
+              <p className="text-base font-bold tabular-nums leading-tight text-foreground">{s.value}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       <Card className="overflow-hidden border-border/60 shadow-sm">

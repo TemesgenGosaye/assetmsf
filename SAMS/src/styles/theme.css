@@ -1,0 +1,13 @@
+/* src/styles/theme.css */
+
+:root {
+  --bg-start: #667eea;
+  --bg-end: #f093fb;
+  --card-bg: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme='dark'] {
+  --bg-start: #1a202c;
+  --bg-end: #2d3748;
+  --card-bg: rgba(0, 0, 0, 0.7);
+}

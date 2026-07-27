@@ -132,7 +132,7 @@ function djangoUserToMinimal(dj: DjangoUser): MinimalUser {
     phone: dj.phone,
     status: dj.status,
     avatar_url: dj.profile_image,
-    must_change_password: false,
+    must_change_password: (dj as any).must_change_password ?? false,
   };
 }
 
@@ -225,7 +225,7 @@ export async function changeOwnPassword(email: string, currentPassword: string, 
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      body: JSON.stringify({ old_password: currentPassword, new_password: newPassword, new_password_confirm: newPassword }),
     });
     const json = await res.json();
     if (!json?.success) throw new Error(json?.message || "Failed to change password");
@@ -253,33 +253,20 @@ export async function adminSetUserPassword(
 
   const token = localStorage.getItem("django_access_token");
   if (token) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/verify-password/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ password: adminPassword }),
-      });
-      const verifyJson = await res.json();
-      if (!verifyJson?.success || !verifyJson?.data?.valid) {
-        throw new Error("Admin password verification failed");
-      }
-    } catch {
-      throw new Error("Admin password verification failed");
-    }
-
-    const res = await fetch(`${API_BASE_URL}/auth/users/${targetUserId}/`, {
-      method: "PUT",
+    const res = await fetch(`${API_BASE_URL}/auth/users/${targetUserId}/set-password/`, {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ password: newPassword }),
+      body: JSON.stringify({ new_password: newPassword }),
     });
     const json = await res.json();
-    if (!json?.success) throw new Error(json?.message || "Failed to set password");
+    if (!json?.success) {
+      const details = json?.errors;
+      const msg = json?.message || "Failed to set password";
+      throw new Error(details ? `${msg}: ${Array.isArray(details) ? details.join(", ") : details}` : msg);
+    }
     return;
   }
 

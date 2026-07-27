@@ -10,7 +10,7 @@ import { ITEM_TYPE_PREFIXES } from "@/services/itemTypes";
 import { listDepartments, type Department } from "@/services/departments";
 import { listUserDepartmentAccess } from "@/services/userDeptAccess";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
-import { isDemoMode } from "@/lib/demo";
+
 import { type Asset } from "@/services/assets";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";

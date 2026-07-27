@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, no-empty */
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -140,6 +141,7 @@ export default function Reports() {
   const [qrDept, setQrDept] = useState<string>("ALL");
   const [qrProperty, setQrProperty] = useState<string>("all");
   // Recent Reports filters
+  const navigate = useNavigate();
   const [rrRange, setRrRange] = useState<'all' | 'today' | '7d' | 'custom'>('all');
   const [rrFrom, setRrFrom] = useState<Date | undefined>();
   const [rrTo, setRrTo] = useState<Date | undefined>();
@@ -1053,7 +1055,7 @@ export default function Reports() {
 
   return (
     <div className="space-y-6" id="reports-top">
-      <Breadcrumbs items={[{ label: "Dashboard", to: "/" }, { label: "Reports" }]} />
+      <Breadcrumbs items={[{ label: "Dashboard", to: "/dashboard" }, { label: "Reports" }]} />
 
       <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm">
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
@@ -1450,7 +1452,7 @@ export default function Reports() {
                 }
                 const limited = rrRange === 'all' ? filtered.slice(0, 5) : filtered;
                 return limited.map((report: any, index: number) => (
-                  <div key={report.id ?? index} className="group flex items-center justify-between p-4 transition-colors hover:bg-muted/30">
+                  <div key={report.id ?? index} className="group flex items-center justify-between p-4 transition-colors hover:bg-muted/30 cursor-pointer" onDoubleClick={() => navigate(`/reports/${report.id}`)}>
                     <div className="flex items-center gap-4">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary">
                         <FileText className="h-5 w-5" />

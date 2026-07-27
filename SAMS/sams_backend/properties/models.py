@@ -7,6 +7,22 @@ from core.models import BaseModel
 from authentication.models import User
 
 
+class PropertyManager(models.Manager):
+    """Custom manager for Property with auto-ID generation."""
+
+    def generate_next_id(self):
+        """Generate the next sequential property ID in format PROP-XXX."""
+        last = self.order_by('-id').values_list('id', flat=True).first()
+        if last and last.startswith('PROP-'):
+            try:
+                num = int(last.split('-')[1]) + 1
+            except (ValueError, IndexError):
+                num = 1
+        else:
+            num = 1
+        return f"PROP-{num:03d}"
+
+
 class Property(BaseModel):
     """
     Property model for physical locations where assets are stored.
@@ -27,6 +43,14 @@ class Property(BaseModel):
 
     id = models.CharField(_('property code'), max_length=50, primary_key=True)
     name = models.CharField(_('name'), max_length=255, db_index=True)
+
+    objects = PropertyManager()
+
+    def save(self, *args, **kwargs):
+        if not self.id:
+            self.id = Property.objects.generate_next_id()
+        super().save(*args, **kwargs)
+
     type = models.CharField(
         _('type'),
         max_length=20,

@@ -36,6 +36,7 @@ class PropertyCreateSerializer(serializers.ModelSerializer):
             'latitude', 'longitude', 'status', 'manager', 'contact_email',
             'contact_phone', 'total_area', 'description'
         ]
+        read_only_fields = ['id']
 
 
 class PropertyUpdateSerializer(serializers.ModelSerializer):

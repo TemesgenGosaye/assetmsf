@@ -24,13 +24,18 @@ function readLocal(): Department[] {
     const raw = localStorage.getItem(LS_FALLBACK);
     if (raw) return JSON.parse(raw) as Department[];
   } catch {}
-  const now = new Date().toISOString();
   const seeded: Department[] = [
-    { id: "IT", name: "IT", code: "IT", is_active: true, created_at: now },
-    { id: "HR", name: "HR", code: "HR", is_active: true, created_at: now },
-    { id: "FIN", name: "Finance", code: "FIN", is_active: true, created_at: now },
-    { id: "OPS", name: "Operations", code: "OPS", is_active: true, created_at: now },
-  ];
+  { id: "DEP-001", name: "Finance", code: "FIN", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-002", name: "Human Resources", code: "HR", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-003", name: "Information Technology", code: "IT", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-004", name: "Operations", code: "OPS", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-005", name: "Marketing", code: "MKT", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-006", name: "Sales", code: "SAL", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-007", name: "Customer Support", code: "CS", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-008", name: "Research & Development", code: "R&D", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-009", name: "Legal", code: "LEG", is_active: true, created_at: new Date().toISOString() },
+  { id: "DEP-010", name: "Procurement", code: "PRC", is_active: true, created_at: new Date().toISOString() },
+];
   try { localStorage.setItem(LS_FALLBACK, JSON.stringify(seeded)); } catch {}
   return seeded;
 }

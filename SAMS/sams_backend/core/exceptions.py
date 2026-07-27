@@ -79,9 +79,10 @@ def custom_exception_handler(exc, context):
 
     if response is not None:
         # Convert to standard response format
+        message = str(exc.detail) if hasattr(exc, 'detail') else str(exc)
         custom_response_data = {
             "success": False,
-            "message": str(exc.detail),
+            "message": message,
             "data": None,
             "errors": response.data if isinstance(response.data, dict) else None
         }

@@ -30,8 +30,9 @@ import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
-import DemoLogin from "./pages/demo/DemoLogin";
-import DemoAppRouter from "./pages/demo/DemoApp";
+import ForceChangePassword from "./pages/ForceChangePassword";
+
+
 import AssetDetails from "./pages/AssetDetails";
 import Scan from "./pages/Scan";
 import Website from "./pages/Website";
@@ -39,11 +40,15 @@ import Newsletter from "./pages/Newsletter";
 import Status from "@/pages/Status";
 import LicensePage from "./pages/License";
 import Help from "./pages/Help";
+import TicketDetails from "./pages/TicketDetails";
+import ApprovalDetails from "./pages/ApprovalDetails";
+import ReportDetails from "./pages/ReportDetails";
+import QRCodeDetails from "./pages/QRCodeDetails";
 import Employees from "./pages/Employees";
-import Houses from "./pages/Houses";
 import HouseOpp from "./pages/HouseOpp";
 import HouseQueuePage from "./pages/HouseQueuePage";
 import HouseQueueReview from "./pages/HouseQueueReview";
+import ScoringConfigPage from "./pages/ScoringConfigPage";
 import HouseApplicationNew from "./pages/HouseApplicationNew";
 import HouseApplicationMy from "./pages/HouseApplicationMy";
 import HouseApplicationStatus from "./pages/HouseApplicationStatus";
@@ -65,7 +70,7 @@ import ApplicantMyApplications from "./pages/applicant/ApplicantMyApplications";
 import ApplicantApplicationStatus from "./pages/applicant/ApplicantApplicationStatus";
 import ApplicantProfile from "./pages/applicant/ApplicantProfile";
 // SingleDeviceGuard removed per user request
-import { isDemoMode } from "@/lib/demo";
+
 import RequireView from "@/components/session/RequireView";
 import { ConnectionStatus } from "@/components/common/ConnectionStatus";
 import { ThemeInitializer } from "@/components/common/ThemeInitializer";
@@ -87,20 +92,30 @@ const updateFavicon = () => {
   }
 };
 
+import { isAuthenticated } from "@/services/djangoAuth";
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  let authed = false;
-  try {
-    authed = isDemoMode()
-      ? Boolean(sessionStorage.getItem("demo_current_user_id"))
-      : Boolean(localStorage.getItem("django_access_token"));
-  } catch {}
 
-  if (!authed) {
-    if (location.pathname === "/") {
-      return <Navigate to="/site" replace />;
-    }
-    return <Navigate to={isDemoMode() ? "/demo/login" : "/login"} replace />;
+  if (!isAuthenticated()) {
+    const returnTo = location.pathname + location.search;
+    return (
+      <Navigate
+        to={`/login?returnTo=${encodeURIComponent(returnTo)}`}
+        replace
+      />
+    );
+  }
+  return <>{children}</>;
+}
+
+function PublicOnly({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+
+  if (isAuthenticated()) {
+    const params = new URLSearchParams(location.search);
+    const returnTo = params.get("returnTo");
+    return <Navigate to={returnTo || "/dashboard"} replace />;
   }
   return <>{children}</>;
 }
@@ -119,19 +134,9 @@ function RoleGate({
   } catch {}
   const r = (role || "").toLowerCase();
   if (!roles.map((s) => s.toLowerCase()).includes(r)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
-}
-
-function isAuthenticated() {
-  try {
-    return isDemoMode()
-      ? Boolean(sessionStorage.getItem("demo_current_user_id"))
-      : Boolean(localStorage.getItem("django_access_token"));
-  } catch {
-    return false;
-  }
 }
 
 function RequesterShell() {
@@ -156,16 +161,18 @@ function ApplicantShell() {
 
 function AppShell() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const handleExpired = () => {
+      const returnTo = location.pathname + location.search;
       toast.warning("Your session has expired. Please log in again.");
-      navigate(isDemoMode() ? "/demo/login" : "/login", { replace: true });
+      navigate(`/login?returnTo=${encodeURIComponent(returnTo)}`, { replace: true });
     };
     window.addEventListener("sams:session-expired", handleExpired);
     return () =>
       window.removeEventListener("sams:session-expired", handleExpired);
-  }, [navigate]);
+  }, [navigate, location]);
 
   return (
     <RequireAuth>
@@ -193,14 +200,18 @@ const App = () => (
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+          <Route path="/force-change-password" element={<ForceChangePassword />} />
           {/* Public minimal marketing website */}
-          <Route path="/site" element={<Website />} />
-          {/* Demo isolated routes */}
-          <Route path="/demo/login" element={<DemoLogin />} />
-          <Route path="/demo/*" element={<DemoAppRouter />} />
+          {/* Public landing page — always the root */}
+          <Route path="/" element={<PublicOnly><Website /></PublicOnly>} />
+          <Route path="/site" element={<Navigate to="/" replace />} />
+
           <Route element={<AppShell />}>
-            <Route path="/" element={<Index />} />
+            <Route
+              path="/dashboard"
+              element={<Index />}
+            />
             <Route
               path="/assets"
               element={
@@ -234,15 +245,7 @@ const App = () => (
               }
             />
             <Route
-              path="/houses"
-              element={
-                <RequireView page="houses">
-                  <Houses />
-                </RequireView>
-              }
-            />
-            <Route
-              path="/houses/:id"
+              path="/house-opp/:id"
               element={
                 <RequireView page="houses">
                   <HouseDetails />
@@ -270,6 +273,14 @@ const App = () => (
               element={
                 <RoleGate roles={["admin", "manager"]}>
                   <HouseQueueReview />
+                </RoleGate>
+              }
+            />
+            <Route
+              path="/house-opp/scoring"
+              element={
+                <RoleGate roles={["admin", "manager"]}>
+                  <ScoringConfigPage />
                 </RoleGate>
               }
             />
@@ -337,6 +348,14 @@ const App = () => (
                 </RequireView>
               }
             />
+            <Route
+              path="/qr-codes/:id"
+              element={
+                <RequireView page="qrcodes">
+                  <QRCodeDetails />
+                </RequireView>
+              }
+            />
             <Route path="/scan" element={<Scan />} />
             <Route
               path="/approvals"
@@ -346,7 +365,16 @@ const App = () => (
                 </RoleGate>
               }
             />
+            <Route
+              path="/approvals/:id"
+              element={
+                <RoleGate roles={["admin", "manager"]}>
+                  <ApprovalDetails />
+                </RoleGate>
+              }
+            />
             <Route path="/tickets" element={<Tickets />} />
+            <Route path="/tickets/:id" element={<TicketDetails />} />
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/help" element={<Help />} />
             <Route
@@ -370,6 +398,14 @@ const App = () => (
               element={
                 <RequireView page="reports">
                   <Reports />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/reports/:id"
+              element={
+                <RequireView page="reports">
+                  <ReportDetails />
                 </RequireView>
               }
             />

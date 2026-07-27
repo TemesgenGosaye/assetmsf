@@ -92,31 +92,93 @@ class AssetCreateSerializer(serializers.ModelSerializer):
                     data[field] = None
         return super().to_internal_value(data)
 
-    def generate_asset_code(self):
-        """Generate a unique asset code, skipping any already taken (including soft-deleted)."""
+    def generate_asset_code(self, item_type=None):
+        """Generate a unique asset code based on item type and sequence start rules."""
         import re
-        # Use all() not just active, to avoid collisions with soft-deleted codes
-        max_code = Asset.objects.all().order_by().aggregate(
-            max_code=models.Max('asset_code')
-        )['max_code']
-        next_num = 1
-        if max_code:
-            match = re.search(r'(\d+)$', max_code)
-            if match:
-                next_num = int(match.group(1)) + 1
         
-        # Ensure uniqueness — increment until we find a free slot
-        while True:
-            candidate = f"AST-{str(next_num).zfill(6)}"
-            if not Asset.objects.filter(asset_code=candidate).exists():
-                return candidate
-            next_num += 1
+        # Default rules
+        prefix_base = "AST-"
+        start_num = 1
+        is_formatted = False
+        
+        if item_type:
+            # Normalize name
+            name = item_type.name.lower().strip()
+            
+            rules = {
+                "irrigation item": {"prefix": "1", "start": 100},
+                "bridge item": {"prefix": "2", "start": 200},
+                "factory equipment": {"prefix": "3", "start": 300},
+                "heavy machinery": {"prefix": "4", "start": 400},
+                "light vehicle": {"prefix": "5", "start": 500},
+                "office furniture": {"prefix": "6", "start": 600},
+                "household furniture": {"prefix": "7", "start": 700},
+                "agricultural equipment": {"prefix": "8", "start": 800},
+                "miscellaneous": {"prefix": "10", "start": 900},
+            }
+            
+            if name in rules:
+                rule = rules[name]
+                prefix_base = f"{rule['prefix']}0-0-00-"
+                start_num = rule['start']
+                is_formatted = True
+        
+        # If the item type matches one of our formatted patterns, generate accordingly
+        if is_formatted:
+            # Find the max sequence number currently used for this prefix (including soft-deleted)
+            existing_codes = Asset.objects.all().filter(
+                asset_code__startswith=prefix_base
+            ).values_list('asset_code', flat=True)
+            
+            max_num = start_num - 1
+            for code in existing_codes:
+                # Extract sequence number at the end
+                match = re.search(r'(\d+)$', code)
+                if match:
+                    val = int(match.group(1))
+                    if val > max_num:
+                        max_num = val
+            
+            next_num = max_num + 1
+            while True:
+                candidate = f"{prefix_base}{str(next_num).zfill(3)}"
+                if not Asset.objects.filter(asset_code=candidate).exists():
+                    return candidate
+                next_num += 1
+        else:
+            # Fallback to general AST-XXXXXX pattern
+            max_code = Asset.objects.all().order_by().aggregate(
+                max_code=models.Max('asset_code')
+            )['max_code']
+            next_num = 1
+            if max_code:
+                match = re.search(r'(\d+)$', max_code)
+                if match:
+                    next_num = int(match.group(1)) + 1
+            
+            while True:
+                candidate = f"AST-{str(next_num).zfill(6)}"
+                if not Asset.objects.filter(asset_code=candidate).exists():
+                    return candidate
+                next_num += 1
     
     def validate(self, attrs):
         """Validate and prepare data."""
+        # Handle item_type by name if provided as string
+        request = self.context.get('request')
+        item_type_name = request.data.get('item_type_name') if request else None
+        if item_type_name and not attrs.get('item_type'):
+            try:
+                item_type = ItemType.objects.get(name__iexact=item_type_name, is_active=True)
+                attrs['item_type'] = item_type
+            except ItemType.DoesNotExist:
+                # Create item type if it doesn't exist
+                item_type = ItemType.objects.create(name=item_type_name)
+                attrs['item_type'] = item_type
+
         # Auto-generate asset code if not provided
         if not attrs.get('asset_code'):
-            attrs['asset_code'] = self.generate_asset_code()
+            attrs['asset_code'] = self.generate_asset_code(attrs.get('item_type'))
         
         # Normalize status to lowercase
         if 'status' in attrs and attrs['status']:
@@ -130,18 +192,6 @@ class AssetCreateSerializer(serializers.ModelSerializer):
         # Default department to empty string if missing
         if not attrs.get('department'):
             attrs['department'] = ''
-        
-        # Handle item_type by name if provided as string
-        request = self.context.get('request')
-        item_type_name = request.data.get('item_type_name') if request else None
-        if item_type_name and not attrs.get('item_type'):
-            try:
-                item_type = ItemType.objects.get(name__iexact=item_type_name, is_active=True)
-                attrs['item_type'] = item_type
-            except ItemType.DoesNotExist:
-                # Create item type if it doesn't exist
-                item_type = ItemType.objects.create(name=item_type_name)
-                attrs['item_type'] = item_type
         
         return attrs
     

@@ -8,6 +8,9 @@ export function ModeToggle() {
   useEffect(() => {
     const root = window.document.documentElement;
     setIsDark(root.classList.contains("dark"));
+    const obs = new MutationObserver(() => setIsDark(root.classList.contains("dark")));
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
   }, []);
 
   const toggleTheme = () => {
@@ -23,15 +26,6 @@ export function ModeToggle() {
       localStorage.setItem("theme", "light");
     }
     
-    // Trigger a custom event so ThemeInitializer can re-run if needed
-    // or just let ThemeInitializer handle the class change if it observes it.
-    // However, ThemeInitializer reads from localStorage on mount/update.
-    // Let's manually trigger a re-render of styles if needed.
-    // Actually, ThemeInitializer seems to run on mount. 
-    // We might need to reload or force update.
-    // But for now, simple class toggle is standard.
-    
-    // Dispatch storage event to sync across tabs or components listening
     window.dispatchEvent(new Event("storage"));
   };
 

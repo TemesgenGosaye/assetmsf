@@ -266,3 +266,215 @@ class AssetAttachment(BaseModel):
 
     def __str__(self):
         return f"{self.asset.asset_code} - {self.file_name}"
+
+
+class AssetTransfer(BaseModel):
+    """
+    Tracks asset transfers between departments, owners, and properties.
+    Provides a complete audit trail for asset movement.
+    """
+    class Status(models.TextChoices):
+        """Transfer lifecycle status."""
+        PENDING = 'pending', _('Pending')
+        APPROVED = 'approved', _('Approved')
+        REJECTED = 'rejected', _('Rejected')
+        COMPLETED = 'completed', _('Completed')
+        CANCELLED = 'cancelled', _('Cancelled')
+
+    # Transfer identifier
+    transfer_code = models.CharField(
+        _('transfer code'),
+        max_length=50,
+        unique=True,
+        db_index=True,
+    )
+
+    # The asset being transferred
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.PROTECT,
+        related_name='transfers',
+        verbose_name=_('asset'),
+    )
+
+    # Source (snapshot at time of transfer request)
+    from_department = models.CharField(_('from department'), max_length=255)
+    from_owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_from',
+        verbose_name=_('from owner'),
+    )
+    from_property = models.ForeignKey(
+        Property,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_from',
+        verbose_name=_('from property'),
+    )
+    from_location = models.CharField(_('from location'), max_length=255, null=True, blank=True)
+
+    # Destination
+    to_department = models.CharField(_('to department'), max_length=255)
+    to_owner = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_to',
+        verbose_name=_('to owner'),
+    )
+    to_property = models.ForeignKey(
+        Property,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_to',
+        verbose_name=_('to property'),
+    )
+    to_location = models.CharField(_('to location'), max_length=255, null=True, blank=True)
+
+    # Transfer details
+    reason = models.TextField(_('reason for transfer'))
+    notes = models.TextField(_('additional notes'), null=True, blank=True)
+    quantity = models.IntegerField(
+        _('quantity transferred'),
+        default=1,
+        validators=[MinValueValidator(1)],
+    )
+
+    # Status & workflow
+    status = models.CharField(
+        _('status'),
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+
+    # People involved
+    requested_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='transfers_requested',
+        verbose_name=_('requested by'),
+    )
+    approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_approved',
+        verbose_name=_('approved by'),
+    )
+    completed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfers_completed',
+        verbose_name=_('completed by'),
+    )
+
+    # Rejection info
+    rejection_reason = models.TextField(_('rejection reason'), null=True, blank=True)
+
+    # Timestamps for each stage
+    requested_at = models.DateTimeField(_('requested at'), auto_now_add=True)
+    approved_at = models.DateTimeField(_('approved at'), null=True, blank=True)
+    completed_at = models.DateTimeField(_('completed at'), null=True, blank=True)
+    cancelled_at = models.DateTimeField(_('cancelled at'), null=True, blank=True)
+
+    class Meta:
+        db_table = 'asset_transfers'
+        verbose_name = _('asset transfer')
+        verbose_name_plural = _('asset transfers')
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['transfer_code']),
+            models.Index(fields=['asset']),
+            models.Index(fields=['status']),
+            models.Index(fields=['from_department']),
+            models.Index(fields=['to_department']),
+            models.Index(fields=['requested_by']),
+            models.Index(fields=['requested_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.transfer_code}: {self.asset.asset_code} ({self.from_department} → {self.to_department})"
+
+    def generate_transfer_code(self):
+        """Generate a unique transfer code."""
+        import re
+        from django.utils import timezone
+        last = AssetTransfer.objects.filter(
+            transfer_code__startswith='TRF-'
+        ).order_by('-transfer_code').values_list('transfer_code', flat=True).first()
+        next_num = 1
+        if last:
+            match = re.search(r'(\d+)$', last)
+            if match:
+                next_num = int(match.group(1)) + 1
+        while True:
+            candidate = f"TRF-{str(next_num).zfill(6)}"
+            if not AssetTransfer.objects.filter(transfer_code=candidate).exists():
+                return candidate
+            next_num += 1
+
+    def approve(self, user):
+        """Approve the transfer."""
+        from django.utils import timezone
+        self.status = self.Status.APPROVED
+        self.approved_by = user
+        self.approved_at = timezone.now()
+        self.save(update_fields=[
+            'status', 'approved_by', 'approved_at', 'updated_at'
+        ])
+
+    def reject(self, user, reason=''):
+        """Reject the transfer."""
+        from django.utils import timezone
+        self.status = self.Status.REJECTED
+        self.approved_by = user
+        self.approved_at = timezone.now()
+        self.rejection_reason = reason
+        self.save(update_fields=[
+            'status', 'approved_by', 'approved_at', 'rejection_reason', 'updated_at'
+        ])
+
+    def complete(self, user):
+        """Complete the transfer - actually move the asset."""
+        from django.utils import timezone
+        asset = self.asset
+
+        # Update asset department, owner, property, location
+        asset.department = self.to_department
+        if self.to_owner:
+            asset.owner = self.to_owner
+        if self.to_property:
+            asset.property = self.to_property
+        if self.to_location:
+            asset.location = self.to_location
+        asset.save(update_fields=[
+            'department', 'owner', 'property', 'location', 'updated_at'
+        ])
+
+        self.status = self.Status.COMPLETED
+        self.completed_by = user
+        self.completed_at = timezone.now()
+        self.save(update_fields=[
+            'status', 'completed_by', 'completed_at', 'updated_at'
+        ])
+
+    def cancel(self, user):
+        """Cancel the transfer."""
+        from django.utils import timezone
+        self.status = self.Status.CANCELLED
+        self.cancelled_at = timezone.now()
+        self.save(update_fields=[
+            'status', 'cancelled_at', 'updated_at'
+        ])

@@ -1,8 +1,12 @@
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import DataTable, { type ColDef } from "@/components/table/DataTable";
 import { toast } from "sonner";
+import { setCachedValue } from "@/lib/data-cache";
+import { SearchLoadingSkeleton } from "@/components/ui/page-skeletons";
+import { useSearchLoading } from "@/hooks/useDebouncedValue";
+import SearchCircularLoader from "@/components/common/SearchCircularLoader";
 import {
   Home,
   Plus,
@@ -27,10 +31,31 @@ import {
   Inbox,
   Clock3,
   ArrowRight,
+  Award,
+  ChevronDown,
+  Barcode,
+  Settings,
+  Settings2,
+  MoreVertical,
+  Zap,
+  LogOut,
+  Bell,
+  FileText,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
 import { Badge } from "@/components/ui/badge";
+import { BarcodeGenerator } from "@/components/barcode/BarcodeGenerator";
+import { HouseActionsDropdown } from "@/components/houses/HouseActionsDropdown";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -79,14 +104,17 @@ import {
   deleteHouse,
   HOUSE_TYPES,
   HOUSE_STATUSES,
+  ALLOCATION_CATEGORY_OPTIONS,
   DAMAGE_OPTIONS,
   type House,
   type HouseFormData,
   type HouseType,
   type HouseStatus,
+  type AllocationCategory,
 } from "@/services/houses";
 import {
   listApplications,
+  batchAllocateAll,
   type HouseApplication,
 } from "@/services/houseApplication";
 
@@ -105,8 +133,10 @@ const EMPTY_FORM: HouseFormData = {
   damaged_switch: false,
   damaged_bulb: false,
   damaged_water: false,
+  inside_items: [],
   description: "",
   capacity: 1,
+  allocation_category: "R",
 };
 
 const TYPE_STYLES: Record<HouseType, string> = {
@@ -159,8 +189,10 @@ function HouseOppFormDialog({
               damaged_switch: editingHouse.damaged_switch,
               damaged_bulb: editingHouse.damaged_bulb,
               damaged_water: editingHouse.damaged_water,
+              inside_items: editingHouse.inside_items ?? [],
               description: editingHouse.description,
               capacity: editingHouse.capacity,
+              allocation_category: editingHouse.allocation_category,
             }
           : EMPTY_FORM,
       );
@@ -245,7 +277,7 @@ function HouseOppFormDialog({
                     onChange={(e) => set("location", e.target.value)}
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   <div className="space-y-1.5">
                     <Label>
                       Type <span className="text-destructive">*</span>
@@ -265,6 +297,24 @@ function HouseOppFormDialog({
                             >
                               {TYPE_LABELS[t]}
                             </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>R/G</Label>
+                    <Select
+                      value={form.allocation_category}
+                      onValueChange={(v) => set("allocation_category", v as AllocationCategory)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ALLOCATION_CATEGORY_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -301,29 +351,139 @@ function HouseOppFormDialog({
                     />
                   </div>
                 </div>
+
               </div>
             </div>
+            {form.status === "Inactive" && (
+              <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-5">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  Damage Assessment
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground pb-1">
+                    Select all items that are damaged in this unit.
+                  </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-between text-left font-normal h-9 text-xs border-destructive/30 hover:bg-destructive/5 hover:text-destructive"
+                      >
+                        <span className="truncate">
+                          {DAMAGE_OPTIONS.filter((opt) => form[opt.key]).length > 0
+                            ? DAMAGE_OPTIONS.filter((opt) => form[opt.key])
+                                .map((opt) => opt.label)
+                                .join(", ")
+                            : "Select damaged items..."}
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-56">
+                      <div className="p-1 space-y-0.5">
+                        <div
+                          className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-sm cursor-pointer border-b border-border/50 mb-1"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const allChecked = DAMAGE_OPTIONS.every((opt) => form[opt.key]);
+                            DAMAGE_OPTIONS.forEach((opt) => set(opt.key, !allChecked));
+                          }}
+                        >
+                          <Checkbox
+                            checked={DAMAGE_OPTIONS.every((opt) => form[opt.key])}
+                            className="pointer-events-none"
+                          />
+                          <span className="text-sm font-medium">Select All</span>
+                        </div>
+                        {DAMAGE_OPTIONS.map((opt) => (
+                          <div
+                            key={opt.key}
+                            className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-sm cursor-pointer"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              set(opt.key, !form[opt.key]);
+                            }}
+                          >
+                            <Checkbox
+                              checked={form[opt.key]}
+                              className="pointer-events-none"
+                            />
+                            <span className="text-sm capitalize">{opt.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            )}
             <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-5">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <AlertTriangle className="h-4 w-4 text-destructive" />
-                Damage Assessment
+                <Inbox className="h-4 w-4 text-primary" />
+                Features &amp; Inventory
               </div>
-              <p className="text-xs text-muted-foreground">
-                Select all items that are damaged in this unit.
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {DAMAGE_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.key}
-                    className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-background px-3 py-2.5 text-sm cursor-pointer hover:bg-accent/30 transition-colors has-[:checked]:border-destructive/40 has-[:checked]:bg-destructive/5"
-                  >
-                    <Checkbox
-                      checked={form[opt.key]}
-                      onCheckedChange={(v) => set(opt.key, !!v)}
-                    />
-                    <span className="capitalize">{opt.label}</span>
-                  </label>
-                ))}
+              <div className="space-y-1.5">
+                <Label>Inside Items</Label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-between text-left font-normal h-9 text-xs"
+                    >
+                      <span className="truncate">
+                        {form.inside_items && form.inside_items.length > 0
+                          ? form.inside_items.join(", ")
+                          : "Select items..."}
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56">
+                    <div className="p-1 space-y-0.5">
+                      <div
+                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-sm cursor-pointer border-b border-border/50 mb-1"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const availableItems = ["Bed", "Chair", "Table", "Locker"];
+                          const allChecked = availableItems.every((item) => form.inside_items?.includes(item));
+                          set("inside_items", !allChecked ? availableItems : []);
+                        }}
+                      >
+                        <Checkbox
+                          checked={["Bed", "Chair", "Table", "Locker"].every((item) => form.inside_items?.includes(item))}
+                          className="pointer-events-none"
+                        />
+                        <span className="text-sm font-medium">Select All</span>
+                      </div>
+                      {["Bed", "Chair", "Table", "Locker"].map((item) => (
+                        <div
+                          key={item}
+                          className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-sm cursor-pointer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const current = form.inside_items ?? [];
+                            const isChecked = current.includes(item);
+                            const next = !isChecked
+                              ? [...current, item]
+                              : current.filter((x) => x !== item);
+                            set("inside_items", next);
+                          }}
+                        >
+                          <Checkbox
+                            checked={form.inside_items?.includes(item) ?? false}
+                            className="pointer-events-none"
+                          />
+                          <span className="text-sm">{item}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
             <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-5">
@@ -365,20 +525,25 @@ function HouseOppFormDialog({
 
 export default function HouseOpp() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [houses, setHouses] = useState<House[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingHouse, setEditingHouse] = useState<House | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<House | null>(null);
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  const [barcodeValue, setBarcodeValue] = useState<string>("");
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
+  const [searchLoading, debouncedSearch] = useSearchLoading(search, 300);
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [applications, setApplications] = useState<HouseApplication[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
-
+  const [batchAllocating, setBatchAllocating] = useState(false);
   const [role] = useState<string>(() => {
     try {
       const r = localStorage.getItem("auth_user");
@@ -395,6 +560,7 @@ export default function HouseOpp() {
       try {
         const data = await listHouses();
         setHouses(data);
+        setCachedValue("houses:list", data);
       } catch {
         toast.error("Failed to load houses", {
           icon: <AlertCircle className="h-4 w-4" />,
@@ -405,6 +571,25 @@ export default function HouseOpp() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId || !houses.length) return;
+
+    const target = houses.find((h) => String(h.id) === String(editId));
+    if (!target) return;
+
+    setEditingHouse(target);
+    setDialogOpen(true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("edit");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, houses, setSearchParams]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -424,7 +609,7 @@ export default function HouseOpp() {
   const filtered = useMemo(
     () =>
       houses.filter((h) => {
-        const q = search.toLowerCase();
+        const q = debouncedSearch.toLowerCase();
         if (
           q &&
           !h.house_id.toLowerCase().includes(q) &&
@@ -433,9 +618,10 @@ export default function HouseOpp() {
           return false;
         if (typeFilter !== "all" && h.house_type !== typeFilter) return false;
         if (statusFilter !== "all" && h.status !== statusFilter) return false;
+        if (categoryFilter !== "all" && h.allocation_category !== categoryFilter) return false;
         return true;
       }),
-    [houses, search, typeFilter, statusFilter],
+    [houses, debouncedSearch, typeFilter, statusFilter, categoryFilter],
   );
 
   const metrics = useMemo(
@@ -453,15 +639,21 @@ export default function HouseOpp() {
   const houseQueue = useMemo<QueueRow[]>(
     () =>
       applications
-        .filter((app) => app.status === "Submitted")
+        .filter((app) =>
+          ["Submitted", "Under Review", "Verified", "Waiting for Allocation", "Allocated"].includes(app.status)
+        )
         .sort((a, b) => {
+          if (a.status === "Allocated" && b.status !== "Allocated") return 1;
+          if (b.status === "Allocated" && a.status !== "Allocated") return -1;
+          const scoreDiff = (b.priority_score || 0) - (a.priority_score || 0);
+          if (scoreDiff !== 0) return scoreDiff;
           const aTime = new Date(a.submitted_at || a.created_at).getTime();
           const bTime = new Date(b.submitted_at || b.created_at).getTime();
           return aTime - bTime;
         })
         .map((app, index) => ({
           ...app,
-          queuePosition: index + 1,
+          queuePosition: app.queue_position ?? index + 1,
           queueTimestamp: app.submitted_at || app.created_at,
         })),
     [applications],
@@ -471,7 +663,7 @@ export default function HouseOpp() {
     (): ColDef<QueueRow>[] => [
       {
         key: "queuePosition",
-        header: "Queue #",
+        header: "Rank",
         width: "w-20",
         pinned: true,
         align: "center",
@@ -482,6 +674,26 @@ export default function HouseOpp() {
             {app.queuePosition}
           </span>
         ),
+      },
+      {
+        key: "priority_score",
+        header: "Score",
+        width: "w-24",
+        sortable: true,
+        align: "center",
+        value: (app) => app.priority_score || 0,
+        cell: (app) => {
+          const score = app.priority_score || 0;
+          const color =
+            score >= 70 ? "bg-emerald-500/10 text-emerald-700 border-emerald-300"
+            : score >= 40 ? "bg-amber-500/10 text-amber-700 border-amber-300"
+            : "bg-slate-500/10 text-slate-700 border-slate-300";
+          return (
+            <Badge variant="outline" className={`text-xs font-bold tabular-nums ${color}`}>
+              {score.toFixed(1)}
+            </Badge>
+          );
+        },
       },
       {
         key: "application_no",
@@ -547,6 +759,26 @@ export default function HouseOpp() {
         cell: (app) => app.job_grade || "—",
       },
       {
+        key: "job_type",
+        header: "Job Type",
+        width: "w-28",
+        sortable: true,
+        value: (app) => app.job_type || "",
+        cell: (app) => {
+          const t = app.job_type || "";
+          const colors: Record<string, string> = {
+            Permanent: "bg-emerald-500/10 text-emerald-700 border-emerald-300",
+            "Semi Permanent": "bg-amber-500/10 text-amber-700 border-amber-300",
+            Seasonal: "bg-blue-500/10 text-blue-700 border-blue-300",
+          };
+          return t ? (
+            <Badge variant="outline" className={`text-xs font-medium ${colors[t] || ""}`}>{t}</Badge>
+          ) : (
+            <span className="text-muted-foreground/50">—</span>
+          );
+        },
+      },
+      {
         key: "years_of_service",
         header: "Years",
         width: "w-24",
@@ -596,6 +828,31 @@ export default function HouseOpp() {
         sortable: true,
         align: "center",
         value: (app) => app.number_of_children,
+      },
+      {
+        key: "eligible_house_category",
+        header: "Eligible",
+        width: "w-28",
+        sortable: true,
+        value: (app) => app.eligible_house_category || "",
+        cell: (app) => {
+          const cat = app.eligible_house_category || "";
+          const badgeStyles: Record<string, string> = {
+            Staff: "bg-violet-500/10 text-violet-700 border-violet-300",
+            A: "bg-blue-500/10 text-blue-700 border-blue-300",
+            B: "bg-emerald-500/10 text-emerald-700 border-emerald-300",
+            C: "bg-amber-500/10 text-amber-700 border-amber-300",
+            D: "bg-orange-500/10 text-orange-700 border-orange-300",
+            E: "bg-slate-500/10 text-slate-700 border-slate-300",
+          };
+          return cat ? (
+            <Badge variant="outline" className={`text-xs font-medium ${badgeStyles[cat] || ""}`}>
+              {cat === "E" ? "Barrack" : cat === "Staff" ? "Staff" : `Type ${cat}`}
+            </Badge>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          );
+        },
       },
       {
         key: "requested_house_category",
@@ -704,6 +961,25 @@ export default function HouseOpp() {
     [navigate],
   );
 
+  const handleBatchAllocate = async () => {
+    setBatchAllocating(true);
+    try {
+      const result = await batchAllocateAll();
+      const count = result.allocated.length;
+      if (count > 0) {
+        toast.success(`${count} of ${result.total_houses} houses allocated successfully`);
+        await loadHouses();
+        loadApplications();
+      } else {
+        toast.info("No eligible applicants found for any available house");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Batch allocation failed");
+    } finally {
+      setBatchAllocating(false);
+    }
+  };
+
   const openAdd = () => {
     setEditingHouse(null);
     setDialogOpen(true);
@@ -716,8 +992,10 @@ export default function HouseOpp() {
   const handleSave = async (data: HouseFormData) => {
     setSaving(true);
     try {
+      const payload = { ...data } as any;
+
       if (editingHouse) {
-        const updated = await updateHouse(editingHouse.id, data);
+        const updated = await updateHouse(editingHouse.id, payload);
         setHouses((prev) =>
           prev.map((h) => (h.id === updated.id ? updated : h)),
         );
@@ -732,7 +1010,7 @@ export default function HouseOpp() {
           entityId: updated.id,
         });
       } else {
-        const created = await createHouse(data);
+        const created = await createHouse(payload);
         setHouses((prev) => [created, ...prev]);
         toast.success(`${created.house_id} registered`, {
           icon: <CheckCircle className="h-4 w-4 text-emerald-500" />,
@@ -788,6 +1066,13 @@ export default function HouseOpp() {
     }
   };
 
+  const handlePrintHouse = (h: House) => {
+    // Placeholder print logic – you can replace with custom PDF generation or printable view
+    console.log('Print house', h.id);
+    // For now, just trigger the browser print dialog for the whole page
+    window.print();
+  };
+
   const damagedCount = (h: House) => h.damaged_items.length;
 
   const columns = useMemo(
@@ -796,11 +1081,11 @@ export default function HouseOpp() {
         key: "house_id",
         header: "HID",
         sortable: true,
-        width: "w-28",
+        width: "w-36 whitespace-nowrap",
         pinned: true,
         value: (h) => h.house_id,
         cell: (h) => (
-          <span className="font-mono text-xs font-semibold tracking-wide text-primary">
+          <span className="font-mono text-xs font-semibold tracking-wide text-primary whitespace-nowrap">
             {h.house_id}
           </span>
         ),
@@ -816,6 +1101,35 @@ export default function HouseOpp() {
             className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${TYPE_STYLES[h.house_type]}`}
           >
             {TYPE_LABELS[h.house_type]}
+          </span>
+        ),
+      },
+      {
+        key: "house_number",
+        header: "House No.",
+        sortable: true,
+        width: "w-28",
+        value: (h) => h.house_number,
+        cell: (h) => (
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${TYPE_STYLES[h.house_type]}`}>
+            {h.house_number || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "allocation_category",
+        header: "R/G",
+        sortable: true,
+        width: "w-16",
+        align: "center",
+        value: (h) => h.allocation_category,
+        cell: (h) => (
+          <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full border px-1.5 text-[10px] font-bold ${
+            h.allocation_category === "G"
+              ? "border-amber-300/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              : "border-sky-300/40 bg-sky-500/10 text-sky-700 dark:text-sky-400"
+          }`}>
+            {h.allocation_category === "G" ? "G" : "R"}
           </span>
         ),
       },
@@ -864,42 +1178,96 @@ export default function HouseOpp() {
             </span>
           ),
       })),
+      {
+        key: "inside_items",
+        header: "Inside Items",
+        sortable: false,
+        width: "min-w-[160px]",
+        value: (h) => h.inside_items?.join(", ") || "",
+        cell: (h) => (
+          <div className="flex flex-row flex-wrap items-center gap-1">
+            {h.inside_items && h.inside_items.length > 0 ? (
+              h.inside_items.map((item) => (
+                <Badge
+                  key={item}
+                  variant="outline"
+                  className="bg-primary/5 text-primary text-[10px] py-0 px-1.5 font-medium border-primary/20"
+                >
+                  {item}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-muted-foreground/45 text-xs font-normal">—</span>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: "allocation",
+        header: "Allocation",
+        sortable: true,
+        width: "min-w-[180px]",
+        value: (h) => h.allocation_status || "Unassigned",
+        cell: (h) => {
+          const isAssigned = h.allocation_status === "Assigned";
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span
+                className={`inline-flex items-center w-fit rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                  isAssigned
+                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-300"
+                    : "bg-slate-500/10 text-slate-600 border-slate-300"
+                }`}
+              >
+                {isAssigned ? "Assigned" : "Unassigned"}
+              </span>
+              {isAssigned && h.assigned_employee_name && (
+                <span className="text-[11px] text-muted-foreground truncate max-w-[180px]">
+                  {h.assigned_employee_name} {h.assigned_employee_id ? `(${h.assigned_employee_id})` : ""}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
       ...(isAdmin
         ? [
             {
               key: "actions",
-              header: "",
-              width: "w-20",
+              header: "Action",
+              width: "w-32",
               pinned: true,
               align: "right" as const,
-              cell: (h: House) => (
-                <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7"
-                    onClick={(e) => {
-                      e.stopPropagation();
+              cell: (h: House) => {
+                const isAssigned = h.allocation_status === "Assigned";
+                return (
+                  <HouseActionsDropdown
+                    onEdit={() => {
+                      if (isAssigned) {
+                        toast.error("Cannot edit an allocated/assigned house.");
+                        return;
+                      }
                       openEdit(h);
                     }}
-                    title="Edit"
-                  >
-                    <Edit className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 text-destructive hover:text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onBarcode={() => {
+                      setBarcodeValue(h.house_id);
+                      setBarcodeOpen(true);
+                    }}
+                    onPrint={() => handlePrintHouse(h)}
+                    onDelete={() => {
+                      if (isAssigned) {
+                        toast.error("Cannot delete an allocated/assigned house.");
+                        return;
+                      }
                       setDeleteTarget(h);
                     }}
-                    title="Delete"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ),
+                    canEdit={isAdmin}
+                    canDelete={isAdmin}
+                    disableEdit={isAssigned}
+                    disableDelete={isAssigned}
+                  />
+                );
+              },
             },
           ]
         : []),
@@ -927,27 +1295,74 @@ export default function HouseOpp() {
           </div>
         </div>
         {isAdmin && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              className="gap-2"
+              size="icon"
+              className="relative h-10 w-10 shrink-0 rounded-lg border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
               onClick={() => setQueueOpen(true)}
+              title="Applications"
             >
-              <Inbox className="h-4 w-4" />
-              House Queue
-              <Badge
-                variant="secondary"
-                className="ml-1 rounded-full px-2 py-0 text-[11px]"
-              >
-                {houseQueue.length}
-              </Badge>
+              <Bell className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+              {houseQueue.length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow">
+                  {houseQueue.length}
+                </span>
+              )}
             </Button>
-            <Button
-              className="gap-2 shadow-md hover:shadow-lg transition-all"
-              onClick={openAdd}
-            >
-              <Plus className="h-4 w-4" /> Register House
-            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-10 w-10 shrink-0 rounded-lg border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" title="Operation">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>House Operations</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="gap-2 cursor-pointer font-medium"
+                  onClick={openAdd}
+                >
+                  <Plus className="h-4 w-4 text-primary" /> Add House
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="gap-2 cursor-pointer font-medium"
+                  onClick={() => {
+                    const el = document.getElementById("house-table-section");
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                  }}
+                >
+                  <Home className="h-4 w-4 text-sky-600" /> Show Houses
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="gap-2 cursor-pointer font-medium"
+                  onClick={() => setQueueOpen(true)}
+                >
+                  <Inbox className="h-4 w-4 text-blue-600" /> House Queue
+                  <Badge
+                    variant="secondary"
+                    className="ml-auto rounded-full px-1.5 py-0 text-[10px]"
+                  >
+                    {houseQueue.length}
+                  </Badge>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="gap-2 text-emerald-600 dark:text-emerald-400 font-semibold cursor-pointer"
+                  onClick={() => navigate("/residential-hub")}
+                >
+                  <FileText className="h-4 w-4" /> Rent Management
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="gap-2 text-rose-600 dark:text-rose-400 font-medium cursor-pointer"
+                  onClick={() => navigate("/dashboard")}
+                >
+                  <LogOut className="h-4 w-4" /> Exit
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>
@@ -1013,8 +1428,8 @@ export default function HouseOpp() {
                       House Queue
                     </SheetTitle>
                     <SheetDescription>
-                      FIFO queue of submitted applicant requests. Oldest
-                      submitted request is first in line.
+                      Ranked by priority score. Higher score = higher priority.
+                      FIFO is the tie-breaker.
                     </SheetDescription>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1025,7 +1440,8 @@ export default function HouseOpp() {
                       {houseQueue.length} in queue
                     </Badge>
                     <Badge variant="secondary" className="gap-1 text-xs">
-                      FIFO Standard
+                      <Award className="h-3 w-3" />
+                      Priority Ranked
                     </Badge>
                     <Button
                       size="icon"
@@ -1076,6 +1492,11 @@ export default function HouseOpp() {
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-9"
           />
+          {searchLoading && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <SearchCircularLoader size={16} />
+            </div>
+          )}
         </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="h-9 w-[130px] text-xs">
@@ -1103,6 +1524,19 @@ export default function HouseOpp() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="h-9 w-[120px] text-xs">
+            <SelectValue placeholder="All R/G" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All R/G</SelectItem>
+            {ALLOCATION_CATEGORY_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {filtered.length > 0 && (
           <span className="text-xs text-muted-foreground ml-auto">
             {filtered.length} unit{filtered.length !== 1 ? "s" : ""}
@@ -1111,7 +1545,7 @@ export default function HouseOpp() {
       </div>
 
       {/* Active filter badges */}
-      {(typeFilter !== "all" || statusFilter !== "all" || search) && (
+      {(typeFilter !== "all" || statusFilter !== "all" || categoryFilter !== "all" || search) && (
         <div className="flex flex-wrap items-center gap-1.5 -mt-2">
           {search && (
             <Badge variant="secondary" className="gap-1 pr-1 text-xs">
@@ -1146,9 +1580,21 @@ export default function HouseOpp() {
               </button>
             </Badge>
           )}
+          {categoryFilter !== "all" && (
+            <Badge variant="secondary" className="gap-1 pr-1 text-xs">
+              R/G: {ALLOCATION_CATEGORY_OPTIONS.find(o => o.value === categoryFilter)?.label ?? categoryFilter}
+              <button
+                onClick={() => setCategoryFilter("all")}
+                className="ml-0.5 rounded hover:bg-muted-foreground/20 p-0.5"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
         </div>
       )}
 
+      <div id="house-table-section">
       <DataTable<House>
         tableKey="house-opp"
         columns={columns}
@@ -1160,7 +1606,7 @@ export default function HouseOpp() {
         emptyIcon={<Home className="h-8 w-8 text-muted-foreground/30" />}
         exportFileName={`house-operations-${new Date().toISOString().slice(0, 10)}`}
         pageSize={50}
-        onRowDoubleClick={(h) => navigate(`/houses/${h.id}`)}
+        onRowDoubleClick={(h) => navigate(`/house-opp/${h.id}`)}
         toolbarLeft={
           <div className="flex flex-wrap items-center gap-2">
             <Filter className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1190,6 +1636,19 @@ export default function HouseOpp() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="h-8 w-[120px] text-xs">
+                <SelectValue placeholder="All R/G" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All R/G</SelectItem>
+                {ALLOCATION_CATEGORY_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {filtered.length > 0 && (
               <span className="ml-auto text-xs text-muted-foreground">
                 {filtered.length} unit{filtered.length !== 1 ? "s" : ""}
@@ -1198,6 +1657,7 @@ export default function HouseOpp() {
           </div>
         }
       />
+      </div>
 
       <HouseOppFormDialog
         open={dialogOpen}
@@ -1205,6 +1665,11 @@ export default function HouseOpp() {
         onSave={handleSave}
         editingHouse={editingHouse}
         saving={saving}
+      />
+      <BarcodeGenerator
+        open={barcodeOpen}
+        onClose={() => setBarcodeOpen(false)}
+        value={barcodeValue}
       />
 
       <AlertDialog
@@ -1234,6 +1699,7 @@ export default function HouseOpp() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </div>
   );
 }

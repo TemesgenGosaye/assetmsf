@@ -25,7 +25,7 @@ class Property(BaseModel):
         SITE_OFFICE = 'site_office', _('Site Office')
         OTHER = 'other', _('Other')
 
-    id = models.CharField(_('property code'), max_length=50, primary_key=True)
+    # id field removed to use BaseModel's auto-generated UUID primary key
     name = models.CharField(_('name'), max_length=255, db_index=True)
     type = models.CharField(
         _('type'),

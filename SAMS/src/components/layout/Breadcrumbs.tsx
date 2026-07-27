@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { isDemoMode } from "@/lib/demo";
+
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -10,6 +10,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Home } from "lucide-react";
+import { isDemoMode } from "@/lib/demo";
 
 type Crumb = { label: string; to?: string };
 
@@ -19,7 +20,7 @@ export default function Breadcrumbs({ items }: { items: Crumb[] }) {
   const resolvePath = (path?: string) => {
     if (!isDemoMode()) return path as string;
     if (!path) return "#";
-    if (path === "/") return "/demo";
+    if (path === "/dashboard") return "/demo";
     if (path.startsWith("/demo") || path.startsWith("/scan")) return path;
     if (path.startsWith("/")) return `/demo${path}`;
     return path;
@@ -30,7 +31,7 @@ export default function Breadcrumbs({ items }: { items: Crumb[] }) {
       <BreadcrumbList className="bg-muted/40 px-4 py-2 rounded-full border border-border/50 inline-flex">
         {items.map((c, i) => {
           const isLast = i === items.length - 1;
-          const isHome = i === 0 && (c.to === "/" || c.label.toLowerCase() === "dashboard");
+          const isHome = i === 0 && (c.to === "/dashboard" || c.label.toLowerCase() === "dashboard");
 
           return (
             <React.Fragment key={i}>
