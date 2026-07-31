@@ -1,5 +1,5 @@
 import { djangoRequest } from "./djangoAuth";
-import { invalidateCache } from "@/lib/data-cache";
+import { invalidateCache, getCachedValue } from "@/lib/data-cache";
 
 export type ApplicationStatus =
   | "Draft"
@@ -361,13 +361,15 @@ export async function updateScoringConfig(id: string, data: Partial<ScoringConfi
 
 // ── Allocation Logs API ───────────────────────────────────────────────
 
-export async function listAllocationLogs(): Promise<AllocationLog[]> {
-  const res = await djangoRequest<any>("/houses/allocation-logs/?page_size=500");
-  if (res.success) {
-    const raw = Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
-    return raw;
-  }
-  throw new Error(res.message || "Failed to fetch allocation logs");
+export async function listAllocationLogs(options?: { force?: boolean }): Promise<AllocationLog[]> {
+  return getCachedValue("allocation-logs:list", async () => {
+    const res = await djangoRequest<any>("/houses/allocation-logs/?page_size=500");
+    if (res.success) {
+      const raw = Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
+      return raw;
+    }
+    throw new Error(res.message || "Failed to fetch allocation logs");
+  }, { force: options?.force });
 }
 
 export const APPLICATION_STATUSES: ApplicationStatus[] = [

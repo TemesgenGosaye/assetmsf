@@ -201,10 +201,9 @@ const App = () => (
       >
         <Routes>
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-          <Route path="/force-change-password" element={<ForceChangePassword />} />
-          {/* Public minimal marketing website */}
-          {/* Public landing page — always the root */}
-          <Route path="/" element={<PublicOnly><Website /></PublicOnly>} />
+          <Route path="/force-change-password" element={<RequireAuth><ForceChangePassword /></RequireAuth>} />
+          {/* Public landing page — always the root, never forwarded to dashboard */}
+          <Route path="/" element={<Website />} />
           <Route path="/site" element={<Navigate to="/" replace />} />
 
           <Route element={<AppShell />}>
@@ -505,7 +504,7 @@ const App = () => (
           <Route element={<ApplicantShell />}>
             <Route
               path="/applicant"
-              element={<Navigate to="/applicant/dashboard" replace />}
+              element={<Navigate to="/applicant/new" replace />}
             />
             <Route
               path="/applicant/dashboard"

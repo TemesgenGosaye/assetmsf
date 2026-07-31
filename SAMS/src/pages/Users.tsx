@@ -63,6 +63,9 @@ import {
   Save,
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
+  Dices,
 } from "lucide-react";
 import { format } from "date-fns";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -206,6 +209,25 @@ const seedLocalUsersIfEmpty = () => {
   return seeded;
 };
 
+function generateTempPassword(): string {
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghjkmnpqrstuvwxyz";
+  const digits = "23456789";
+  const special = "!@#$%&*?";
+  const pick = (set: string, n: number) =>
+    Array.from(
+      { length: n },
+      () => set[Math.floor(Math.random() * set.length)],
+    ).join("");
+  return (
+    pick(upper, 3) +
+    pick(lower, 4) +
+    pick(digits, 3) +
+    pick(special, 2) +
+    pick(upper + lower + digits + special, 2)
+  );
+}
+
 export default function Users() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -232,6 +254,7 @@ export default function Users() {
   const [role, setRole] = useState<string>("");
   const [department, setDepartment] = useState<string>("");
   const [password, setPassword] = useState("");
+  const [showAddPassword, setShowAddPassword] = useState(true);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
@@ -671,8 +694,9 @@ export default function Users() {
     setPhone("");
     setRole("");
     setDepartment("");
-    setPassword("");
-    setMustChangePassword(false);
+    setPassword(generateTempPassword());
+    setMustChangePassword(true);
+    setShowAddPassword(true);
     setSelectedPropertyIds([]);
   };
 
@@ -695,10 +719,13 @@ export default function Users() {
     const roleMap: Record<string, string> = {
       "admin": "ADMIN",
       "manager": "MANAGER",
+      "field_staff": "FIELD_STAFF",
       "field staff": "FIELD_STAFF",
       "fieldstaff": "FIELD_STAFF",
       "user": "FIELD_STAFF",
       "staff": "FIELD_STAFF",
+      "auditor": "AUDITOR",
+      "requester": "REQUESTER",
       "applicant": "APPLICANT"
     };
     const lower = v.toLowerCase().trim();
@@ -729,11 +756,9 @@ export default function Users() {
       return;
     }
     
-    // Generate a default password if not provided
-    const defaultPassword = "TempPassword123!";
-    const isAutoPassword = !password.trim();
-    const finalPassword = password.trim() || defaultPassword;
-    
+    // The system generates a temporary password when the dialog opens.
+    const finalPassword = password.trim() || generateTempPassword();
+
     const payload = {
       name,
       email: email.trim(),
@@ -741,7 +766,7 @@ export default function Users() {
       department: normalizeDeptInput(department),
       phone: phone || null,
       status: "active",
-      must_change_password: isAutoPassword || mustChangePassword,
+      must_change_password: mustChangePassword,
       ...(finalPassword ? { password: finalPassword, password_confirm: finalPassword } : {}),
     } as Omit<AppUser, "id">;
 
@@ -1218,7 +1243,9 @@ export default function Users() {
             open={isAddUserOpen}
             onOpenChange={(open) => {
               setIsAddUserOpen(open);
-              if (!open) {
+              if (open) {
+                resetForm();
+              } else {
                 setIsAddDialogMaximized(false);
               }
             }}
@@ -1400,19 +1427,57 @@ export default function Users() {
                             </Label>
                           </div>
                         </div>
-                        <Input
-                          id="password"
-                          type="password"
-                          placeholder={
-                            mustChangePassword
-                              ? "Set a temporary password"
-                              : "Set a secure password"
-                          }
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          disabled={authRole !== "admin"}
-                          className="bg-background"
-                        />
+                        <div className="relative">
+                          <Input
+                            id="password"
+                            type={showAddPassword ? "text" : "password"}
+                            placeholder={
+                              mustChangePassword
+                                ? "System-generated temporary password"
+                                : "Set a secure password"
+                            }
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            disabled={authRole !== "admin"}
+                            className="bg-background pr-16"
+                          />
+                          <div className="absolute inset-y-0 right-0 flex items-center gap-0.5 pr-1.5">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              title="Generate a new temporary password"
+                              disabled={authRole !== "admin"}
+                              onClick={() => setPassword(generateTempPassword())}
+                            >
+                              <Dices className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              title={
+                                showAddPassword
+                                  ? "Hide password"
+                                  : "Show password"
+                              }
+                              disabled={authRole !== "admin"}
+                              onClick={() => setShowAddPassword((s) => !s)}
+                            >
+                              {showAddPassword ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Auto-generated temporary password. Share it with the
+                          user — they must change it on first login.
+                        </p>
                       </div>
                     </div>
                   </section>
@@ -1444,11 +1509,14 @@ export default function Users() {
                           <SelectTrigger className="bg-background">
                             <SelectValue placeholder="Select role" />
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="user">User</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                          </SelectContent>
+                           <SelectContent>
+                             <SelectItem value="admin">Admin</SelectItem>
+                             <SelectItem value="manager">Manager</SelectItem>
+                             <SelectItem value="field_staff">Field Staff</SelectItem>
+                             <SelectItem value="auditor">Auditor</SelectItem>
+                             <SelectItem value="requester">Requester</SelectItem>
+                             <SelectItem value="applicant">Applicant</SelectItem>
+                           </SelectContent>
                         </Select>
                         {!role && (
                           <p className="text-[10px] text-destructive font-medium">
@@ -2136,12 +2204,15 @@ export default function Users() {
                       </span>
                     </div>
                   </SelectTrigger>
-                  <SelectContent align="end" className="rounded-xl">
-                    <SelectItem value="all">All Roles</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="user">User</SelectItem>
-                  </SelectContent>
+                   <SelectContent align="end" className="rounded-xl">
+                     <SelectItem value="all">All Roles</SelectItem>
+                     <SelectItem value="admin">Admin</SelectItem>
+                     <SelectItem value="manager">Manager</SelectItem>
+                     <SelectItem value="field_staff">Field Staff</SelectItem>
+                     <SelectItem value="auditor">Auditor</SelectItem>
+                     <SelectItem value="requester">Requester</SelectItem>
+                     <SelectItem value="applicant">Applicant</SelectItem>
+                   </SelectContent>
                 </Select>
 
                 {properties.length > 0 && (
@@ -2721,15 +2792,18 @@ export default function Users() {
                       <SelectTrigger className="bg-background">
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                       <SelectContent>
+                         <SelectItem value="admin">Admin</SelectItem>
+                         <SelectItem value="manager">Manager</SelectItem>
+                         <SelectItem value="field_staff">Field Staff</SelectItem>
+                         <SelectItem value="auditor">Auditor</SelectItem>
+                         <SelectItem value="requester">Requester</SelectItem>
+                         <SelectItem value="applicant">Applicant</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                  <div className="space-y-2">
+                   <div className="space-y-2">
                     <Label
                       htmlFor="edepartment"
                       className="text-xs font-medium text-muted-foreground uppercase tracking-wide"

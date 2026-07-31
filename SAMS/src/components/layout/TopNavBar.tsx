@@ -1,6 +1,6 @@
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { LayoutDashboard, Package, Building2, FileBarChart, ClipboardCheck, QrCode, Settings, Users, Ticket, ShieldCheck, ScanLine, Menu, LifeBuoy, Megaphone, LogOut, Search, Bell, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Package, Building2, FileBarChart, ClipboardCheck, QrCode, Settings, Users, Ticket, ShieldCheck, ScanLine, Menu, LifeBuoy, Megaphone, LogOut, Search, Bell, Sun, Moon, Home } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

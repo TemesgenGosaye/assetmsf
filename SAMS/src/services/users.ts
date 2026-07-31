@@ -1,6 +1,6 @@
 import { isDemoMode, getDemoUsers } from "@/lib/demo";
 import { getCachedValue, invalidateCacheByPrefix } from "@/lib/data-cache";
-import { djangoRequest } from "./djangoAuth";
+import { djangoRequest, type DjangoResponse } from "./djangoAuth";
 
 export type AppUser = {
   id: string;
@@ -53,6 +53,28 @@ function frontendUserToDjango(user: Partial<AppUser> & { password?: string; pass
   return row;
 }
 
+// Turn a Django validation response into a readable message
+function errorMessageFrom(response: DjangoResponse<any>): string {
+  const errors = response.errors;
+  if (errors) {
+    if (typeof errors === "string") return errors;
+    if (Array.isArray(errors)) return errors.join(", ");
+    if (typeof errors === "object") {
+      const parts: string[] = [];
+      for (const [field, value] of Object.entries(errors)) {
+        const msgs = Array.isArray(value) ? value : [String(value)];
+        for (const msg of msgs) {
+          parts.push(
+            field === "non_field_errors" ? String(msg) : `${field}: ${msg}`,
+          );
+        }
+      }
+      if (parts.length) return parts.join(" · ");
+    }
+  }
+  return response.message || "Request failed";
+}
+
 export async function listUsers(options?: { force?: boolean }): Promise<AppUser[]> {
   if (isDemoMode()) return getDemoUsers() as any;
   return getCachedValue(
@@ -81,7 +103,7 @@ export async function createUser(payload: Omit<AppUser, "id"> & { password?: str
     return djangoUserToFrontend(response.data);
   }
   console.error('Create user failed response:', response);
-  throw new Error(response.message || "Failed to create user");
+  throw new Error(errorMessageFrom(response));
 }
 
 
@@ -96,7 +118,7 @@ export async function updateUser(id: string, patch: Partial<AppUser>): Promise<A
     invalidateCacheByPrefix(USERS_CACHE_KEY);
     return djangoUserToFrontend(response.data);
   }
-  throw new Error(response.message || "Failed to update user");
+  throw new Error(errorMessageFrom(response));
 }
 
 export async function deleteUser(id: string): Promise<void> {

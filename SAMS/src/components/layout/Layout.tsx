@@ -256,7 +256,7 @@ export function Layout({ children }: LayoutProps) {
           )}
         </div>
         <main ref={mainRef} className={cn(
-          "flex-1 overflow-auto overscroll-contain bg-muted/30",
+          "flex-1 min-h-0 overflow-auto overscroll-contain bg-muted/30",
           "p-4 md:p-6",
           isMobile && "pb-32"
         )}>

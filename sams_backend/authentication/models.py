@@ -235,7 +235,7 @@ class User(AbstractUser):
         return self.role == self.Role.AUDITOR
 
     def is_requester(self):
-        return self.role == self.Role.REQUESTER
+        return self.role in (self.Role.REQUESTER, self.Role.APPLICANT)
 
 
 

@@ -1,10 +1,11 @@
 let audioEl: HTMLAudioElement | null = null;
 let unlocked = false;
-let pendingBeeps = 0;
+let pendingBeep = false;
+let lastPlayedAt = 0;
 let soundsEnabled = true;
 const bootStarted = Date.now();
 const BOOT_SUPPRESS_MS = 2000;
-let suppressedInitialBeep = false;
+const THROTTLE_MS = 1000; // Ensure only 1 sound plays per notification event batch
 
 // Lazy load preference once (can be refreshed manually if needed)
 function loadPref() {
@@ -26,7 +27,7 @@ export function refreshSoundPreference() { loadPref(); }
 function ensureAudio(): HTMLAudioElement | null {
   try {
     if (!audioEl) {
-      audioEl = new Audio('/audio/sound.m4a');
+      audioEl = new Audio('/audio/notification.mp3');
       audioEl.preload = 'auto';
       try { (audioEl as any).playsInline = true; } catch {}
       audioEl.setAttribute('playsinline', 'true');
@@ -41,22 +42,27 @@ function ensureAudio(): HTMLAudioElement | null {
 export function playNotificationSound(): void {
   if (!soundsEnabled) return;
   const now = Date.now();
-  if (!suppressedInitialBeep && now - bootStarted < BOOT_SUPPRESS_MS) {
-    suppressedInitialBeep = true;
+  if (now - bootStarted < BOOT_SUPPRESS_MS) {
     return;
   }
+  // Throttle to ensure sound plays only once even if triggered multiple times
+  if (now - lastPlayedAt < THROTTLE_MS) {
+    return;
+  }
+
   if (!unlocked) {
-    pendingBeeps = Math.min(pendingBeeps + 1, 3);
+    pendingBeep = true;
     return;
   }
   const el = ensureAudio();
   if (!el) return;
   try {
+    lastPlayedAt = now;
     el.currentTime = 0;
     const p = el.play();
     if (p && typeof p.then === 'function') {
       p.catch(() => {
-        pendingBeeps = Math.min(pendingBeeps + 1, 3);
+        pendingBeep = true;
       });
     }
   } catch {
@@ -77,9 +83,11 @@ function unlockOnce() {
         el.currentTime = 0;
         el.muted = false;
         unlocked = true;
-        // Flush any queued beeps
-        const n = pendingBeeps; pendingBeeps = 0;
-        for (let i = 0; i < n; i++) { try { playNotificationSound(); } catch {} }
+        // Flush single pending notification sound
+        if (pendingBeep) {
+          pendingBeep = false;
+          try { playNotificationSound(); } catch {}
+        }
       }).catch(() => {
         // Keep listeners for a later gesture
       });
@@ -88,6 +96,10 @@ function unlockOnce() {
       el.currentTime = 0;
       el.muted = false;
       unlocked = true;
+      if (pendingBeep) {
+        pendingBeep = false;
+        try { playNotificationSound(); } catch {}
+      }
     }
   } catch {
     // swallow

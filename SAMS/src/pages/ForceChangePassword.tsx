@@ -60,7 +60,12 @@ export default function ForceChangePassword() {
       if (!email) throw new Error("No user session found");
       await changeOwnPassword(email, currentPassword, newPassword);
       toast({ title: "Password updated", description: "You can now continue to the application." });
-      navigate("/dashboard", { replace: true });
+      let role = "";
+      try {
+        const raw = localStorage.getItem("auth_user");
+        role = raw ? (JSON.parse(raw).role || "") : "";
+      } catch {}
+      navigate(role === "APPLICANT" ? "/applicant/new" : "/dashboard", { replace: true });
     } catch (e: any) {
       toast({ title: "Failed to change password", description: e?.message || "Please try again.", variant: "destructive" });
     } finally {

@@ -36,6 +36,7 @@ export interface DjangoResponse<T> {
   message: string;
   data: T;
   status_code: number;
+  errors?: any;
 }
 
 // ── Session helpers ────────────────────────────────────────────────────────

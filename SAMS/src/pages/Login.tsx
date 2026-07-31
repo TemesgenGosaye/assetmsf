@@ -100,7 +100,7 @@ export default function Login() {
     if (returnTo) {
       navigate(returnTo, { replace: true });
     } else if (user.role === "APPLICANT") {
-      navigate("/applicant/dashboard", { replace: true });
+      navigate("/applicant/new", { replace: true });
     } else {
       navigate("/dashboard", { replace: true });
     }

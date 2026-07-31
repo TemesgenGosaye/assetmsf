@@ -37,10 +37,10 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutHint, setShortcutHint] = useState("");
   const [isDark, setIsDark] = useState(false);
-
   const roleLower = (authUser?.role || "").toLowerCase();
   const isAdminRole = roleLower === "admin";
   const userEmail = authUser?.email || "";
+  const firstName = (authUser?.name || "").split(" ").filter(Boolean)[0] || null;
   const userInitials = (authUser?.name || "User")
     .split(" ")
     .filter(Boolean)
@@ -48,7 +48,11 @@ export function Header({ onMenuClick }: HeaderProps) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-  const firstName = (authUser?.name || "").split(" ").filter(Boolean)[0] || null;
+  
+  // Generate greeting
+  const hour = new Date().getHours();
+  const salutation = hour < 12 ? "Good Morning" : hour >= 18 ? "Good Evening" : "Good Afternoon";
+  const greeting = `${salutation}${firstName ? `, ${firstName}` : ""}`;
 
   const handleSignOut = () => {
     try {
@@ -616,35 +620,38 @@ export function Header({ onMenuClick }: HeaderProps) {
                >
                  <Menu className="h-5 w-5 text-primary" />
                </button>
-               <div className="relative flex-1">
-                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary/70" />
-                 <Input
-                   aria-label="Search"
-                   placeholder="Search pages and actions…"
-                   className="h-10 pl-10 pr-12 rounded-full border border-border/60 bg-muted/60 text-sm placeholder:text-muted-foreground/70 shadow-sm transition-colors hover:bg-muted/70 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-                   readOnly
-                   onFocus={() => setPaletteOpen(true)}
-                   onClick={() => setPaletteOpen(true)}
-                 />
-                 {shortcutHint && (
-                   <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-border/60 bg-muted px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">
-                     {shortcutHint}
-                   </span>
-                 )}
-               </div>
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-primary/70" />
+                  <Input
+                    aria-label="Search"
+                    placeholder="ፍለጋ"
+                    className="h-8 pl-7 pr-8 rounded-full border border-border/60 bg-muted/60 text-sm placeholder:text-muted-foreground/70 shadow-sm transition-colors hover:bg-muted/70 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    readOnly
+                    onFocus={() => setPaletteOpen(true)}
+                    onClick={() => setPaletteOpen(true)}
+                  />
+                  {shortcutHint && (
+                    <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md border border-border/60 bg-muted px-1 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">
+                      {shortcutHint}
+                    </span>
+                  )}
+                </div>
              </div>
-             <div className="flex items-center gap-3 md:gap-4">
-               <Button
-                 variant="ghost"
-                 size="sm"
-                 onClick={toggleTheme}
-                 className="h-8 w-8 p-0 transition-all hover:bg-muted/70"
-               >
-                 {isDark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4 text-slate-600" />}
-               </Button>
-               {notificationsDropdown}
-               {userMenu}
-             </div>
+              <div className="flex items-center gap-3 md:gap-4">
+                <span className="text-base font-bold text-foreground hidden sm:inline">
+                  {greeting}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleTheme}
+                  className="h-8 w-8 p-0 transition-all hover:bg-muted/70"
+                >
+                  {isDark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4 text-slate-600" />}
+                </Button>
+                {notificationsDropdown}
+                {userMenu}
+              </div>
            </div>
          )}
          {/* Command Palette */}

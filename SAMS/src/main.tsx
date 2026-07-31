@@ -41,11 +41,17 @@ createRoot(rootEl).render(
 // Hide preloader once the current frame renders
 try {
 	const hide = () => {
-		const el = document.getElementById('preloader');
-		if (!el) return;
-		el.classList.add('preloader-hide');
-		// remove from DOM after transition to avoid tab order/click issues
-		setTimeout(() => { try { el.parentElement?.removeChild(el); } catch {} }, 300);
+		// Complete the progress bar before hiding
+		// @ts-ignore
+		if (window.updateLoader) window.updateLoader(100, 'Connected');
+		
+		setTimeout(() => {
+			const el = document.getElementById('preloader');
+			if (!el) return;
+			el.classList.add('preloader-hide');
+			// remove from DOM after transition to avoid tab order/click issues
+			setTimeout(() => { try { el.parentElement?.removeChild(el); } catch {} }, 400);
+		}, 150); // slight delay so the user sees the 100%
 	};
 	// Use requestAnimationFrame to ensure DOM is ready and initial paint has occurred
 	if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(() => hide());

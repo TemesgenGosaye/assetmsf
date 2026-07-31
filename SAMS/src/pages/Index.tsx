@@ -1,4 +1,5 @@
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
+import { HouseAllocationSurface } from "@/components/dashboard/HouseAllocationSurface";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { MyAudits } from "@/components/dashboard/MyAudits";
 import {
@@ -56,6 +57,7 @@ import type { Asset } from "@/services/assets";
 import { listProperties } from "@/services/properties";
 import type { Property } from "@/services/properties";
 import { listHouses } from "@/services/houses";
+import type { House } from "@/services/houses";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
 import { listUsers } from "@/services/users";
 import type { AppUser } from "@/services/users";
@@ -289,6 +291,7 @@ const Index = () => {
   const [scopedProperties, setScopedProperties] = useState<Property[]>(
     () => initialSnapshot?.scopedProperties ?? [],
   );
+  const [houses, setHouses] = useState<House[]>([]);
 
   useEffect(() => {
     return () => {
@@ -1035,6 +1038,7 @@ const Index = () => {
           ]);
         setScopedAssets(demoAssets);
         setScopedProperties(demoProperties);
+        setHouses(demoHouses);
         const { summary, trend } = hydrateTicketInsights(
           demoTickets,
           demoUsers,
@@ -1061,6 +1065,7 @@ const Index = () => {
       } catch {
         setScopedAssets([]);
         setScopedProperties([]);
+        setHouses([]);
         setTicketSummary(emptyTicketSummary);
         setTicketMonthlyTrend([]);
       } finally {
@@ -1124,6 +1129,7 @@ const Index = () => {
 
         setScopedAssets(assets);
         setScopedProperties(properties);
+        setHouses(housesRaw);
 
         const expiringSoon = assets.filter((a) => {
           if (!a.expiryDate) return false;
@@ -1291,9 +1297,20 @@ const Index = () => {
                 day: "numeric",
               })}
             </div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
-              {greeting}
-            </h1>
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary p-1 shadow-lg ring-2 ring-primary/30">
+                <img
+                  src="/msf_logo.jpg"
+                  alt="MSF Logo"
+                  className="h-full w-full rounded-full object-cover"
+                />
+              </div>
+              <div>
+                <h1 className="text-3xl font-black tracking-tight text-foreground">
+                  የመተሐራ ስኳር ፋብሪካ ቋሚ ንብረት አስተዳደር እና የቤት ምደባ ዳሽቦርድ
+                </h1>
+              </div>
+            </div>
             <p className="text-lg text-muted-foreground max-w-2xl">
               Here's what's happening with your assets today.
             </p>
@@ -1325,6 +1342,10 @@ const Index = () => {
             />
           ))}
         </div>
+      </section>
+
+      <section>
+        <HouseAllocationSurface houses={houses} />
       </section>
 
       <section className="space-y-4">

@@ -2,7 +2,7 @@
  * Houses service – talks to Django REST /api/houses/
  */
 import { djangoRequest } from "./djangoAuth.ts";
-import { invalidateCache, setCachedValue, peekCachedValue } from "../lib/data-cache.ts";
+import { invalidateCache, setCachedValue, peekCachedValue, getCachedValue } from "../lib/data-cache";
 
 export type HouseType = "Staff" | "A" | "B" | "C" | "D" | "E";
 export type HouseStatus = "Active" | "Inactive";
@@ -84,13 +84,15 @@ function fromDjango(row: any): House {
   };
 }
 
-export async function listHouses(): Promise<House[]> {
-  const res = await djangoRequest<any>("/houses/?page_size=500");
-  if (res.success) {
-    const raw = Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
-    return raw.map(fromDjango);
-  }
-  throw new Error(res.message || "Failed to fetch houses");
+export async function listHouses(options?: { force?: boolean }): Promise<House[]> {
+  return getCachedValue(CACHE_KEY, async () => {
+    const res = await djangoRequest<any>("/houses/?page_size=500");
+    if (res.success) {
+      const raw = Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
+      return raw.map(fromDjango);
+    }
+    throw new Error(res.message || "Failed to fetch houses");
+  }, { force: options?.force });
 }
 
 export async function getHouse(id: string): Promise<House> {
