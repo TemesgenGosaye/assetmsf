@@ -8,9 +8,11 @@ djangorestframework-simplejwt==5.4.0
 
 # Database
 psycopg2-binary==2.9.10
+dj-database-url==2.3.0
 
 # Security & CORS
 django-cors-headers==4.6.0
+whitenoise==6.8.2
 
 # Configuration
 python-dotenv==1.0.1

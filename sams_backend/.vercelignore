@@ -1,0 +1,27 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Database & local data
+*.sqlite3
+*.db
+logs/
+server_test.log
+server_test.err
+
+# Testing / Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/

@@ -1,1 +1,26 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.sqlite3
+logs/
+*.log
+
+# Node / Frontend
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+
+# Vercel
+.vercel/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
 .aider*

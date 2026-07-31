@@ -5,13 +5,18 @@ import os
 from pathlib import Path
 from datetime import timedelta
 
+try:
+    import dj_database_url
+except ImportError:
+    dj_database_url = None
+
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Security
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-this-in-production')
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.vercel.app').split(',') if host.strip()]
 
 # Application definition
 INSTALLED_APPS = [
@@ -57,6 +62,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -94,11 +100,19 @@ CHANNEL_LAYERS = {
 }
 
 # Database
-# Use SQLite for development (no server required)
-# Set USE_POSTGRES=True in .env to use PostgreSQL
+# Standard environment variable DATABASE_URL takes priority (used in production / Vercel / Railway / Supabase)
+DATABASE_URL = os.environ.get('DATABASE_URL')
 USE_POSTGRES = os.environ.get('USE_POSTGRES', 'False') == 'True'
 
-if USE_POSTGRES:
+if DATABASE_URL and dj_database_url:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+elif USE_POSTGRES:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -152,7 +166,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = os.environ.get('STATIC_URL', '/static/')
 STATIC_ROOT = BASE_DIR / os.environ.get('STATIC_ROOT', 'staticfiles')
-STATICFILES_DIRS = [BASE_DIR / 'static']
+STATICFILES_DIRS = [BASE_DIR / 'static'] if (BASE_DIR / 'static').exists() else []
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files
 MEDIA_URL = os.environ.get('MEDIA_URL', '/media/')
