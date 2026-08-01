@@ -1,0 +1,11 @@
+.vercel
+.env*
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Database & logs
+*.sqlite3
+logs/

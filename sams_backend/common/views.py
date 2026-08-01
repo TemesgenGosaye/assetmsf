@@ -1,6 +1,8 @@
 """
 Views for common functionality.
 """
+import os
+
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import api_view, permission_classes
@@ -15,9 +17,89 @@ from .models import QRCode, Vendor
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def root_api_view(request):
+    """Root API endpoint providing basic service status."""
+    return StandardResponse.success(
+        {
+            "service": "SAMS Backend API",
+            "version": "1.0.0",
+            "health": "/api/health/",
+            "status": "online"
+        },
+        "SAMS Backend API is online"
+    )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def health_check(request):
     """Simple health check endpoint to verify backend is running."""
     return StandardResponse.success({"status": "ok"}, "Health check passed")
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def setup_database_view(request):
+    """Endpoint to run database migrations and seed default users on Vercel.
+
+    Protected by a setup key (env `SETUP_KEY`, passed via `X-Setup-Key` header)
+    so it cannot be triggered by the public.
+    """
+    import logging
+
+    logger = logging.getLogger('django.request')
+    expected_key = os.environ.get('SETUP_KEY', '')
+    provided_key = request.headers.get('X-Setup-Key', '')
+    if not expected_key or provided_key != expected_key:
+        return StandardResponse.error("Setup key missing or invalid", status_code=403)
+
+    try:
+        from django.core.management import call_command
+        from authentication.models import User
+
+        logger.info("Running database migrations (setup endpoint)...")
+        call_command('migrate', interactive=False, verbosity=0)
+
+        users_to_create = [
+            {'email': 'superadmin@msf.org', 'password': 'SuperAdmin@2025', 'name': 'Super Admin', 'role': 'SUPER_ADMIN', 'is_staff': True, 'is_superuser': True},
+            {'email': 'admin@demo.com', 'password': 'admin123', 'name': 'Admin User', 'role': 'ADMIN', 'is_staff': True, 'is_superuser': False},
+            {'email': 'test@demo.com', 'password': 'demo123', 'name': 'Test User', 'role': 'FIELD_STAFF', 'is_staff': False, 'is_superuser': False},
+            {'email': 'tsegaye@admin.com', 'password': 'admin123', 'name': 'Tsegaye Mokonen', 'role': 'ADMIN', 'is_staff': True, 'is_superuser': False},
+        ]
+        created_count = 0
+        for udata in users_to_create:
+            user, created = User.objects.get_or_create(
+                email=udata['email'],
+                defaults={'name': udata['name'], 'role': udata['role'], 'is_staff': udata['is_staff'], 'is_superuser': udata['is_superuser'], 'status': 'active'}
+            )
+            if created:
+                user.set_password(udata['password'])
+                user.name = udata['name']
+                user.role = udata['role']
+                user.status = 'active'
+                user.save()
+            created_count += 1
+
+        # Seed Metehara Sugar Factory reference data (departments, properties,
+        # categories, item types, vendors, assets, employees, houses).
+        seed_summary = {}
+        try:
+            from seed_metehara_factory import seed_metehara_factory
+            seed_summary = seed_metehara_factory()
+        except Exception as seed_err:
+            logger.error("Metehara seed step failed", exc_info=seed_err)
+
+        return StandardResponse.success(
+            {
+                "migrations": "applied",
+                "users_prepared": created_count,
+                "metehara_seed": seed_summary,
+            },
+            "Database setup complete. Test users ready!"
+        )
+    except Exception as e:
+        logger.error("Database setup failed", exc_info=e)
+        return StandardResponse.error(f"Database setup failed: {str(e)}", status_code=500)
 
 
 class QRCodeListView(generics.ListCreateAPIView):

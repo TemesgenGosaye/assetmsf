@@ -8,7 +8,7 @@ from django.urls import path, include
 #     SpectacularRedocView,
 #     SpectacularSwaggerView,
 # )
-from common.views import health_check
+from common.views import health_check, root_api_view, setup_database_view
 from authentication.views import (
     list_permissions, set_permissions,
     user_preferences,
@@ -23,16 +23,16 @@ from dashboard.views import RecentActivityListView, log_activity, SystemSettings
 from common.views import QRCodeListView, QRCodeDetailView, delete_all_qr_codes
 
 urlpatterns = [
+    # Root & Health Check
+    path('', root_api_view, name='root_api'),
+    path('api/', root_api_view, name='api_root'),
+    path('api/health/', health_check, name='health_check'),
+
+    # Ops / one-time database setup (protected by SETUP_KEY)
+    path('api/setup-database/', setup_database_view, name='setup_database'),
+
     # Admin
     path('admin/', admin.site.urls),
-
-    # API Documentation
-    # path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    # path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    # path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-
-    # Health Check
-    path('api/health/', health_check, name='health_check'),
 
     # API endpoints
     path('api/auth/', include('authentication.urls')),

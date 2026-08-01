@@ -1,13 +1,15 @@
 """
 Production Settings for SAMS Backend.
 """
+import os
 from .base import *
 
 # Override for production
 DEBUG = False
 
-# Security
-SECURE_SSL_REDIRECT = True
+# Security — Vercel handles SSL at the edge, so don't redirect here
+# (SECURE_SSL_REDIRECT=True causes redirect loops on Vercel serverless)
+SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_BROWSER_XSS_FILTER = True
@@ -21,11 +23,33 @@ SECURE_HSTS_PRELOAD = True
 if not ALLOWED_HOSTS or ALLOWED_HOSTS == ['']:
     ALLOWED_HOSTS = ['*']
 
+# CORS — explicit whitelist in production
+_cors_origins_env = os.environ.get(
+    'CORS_ALLOWED_ORIGINS',
+    'https://sams-house-management.vercel.app'
+)
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_env.split(',') if o.strip()]
+CORS_ALLOW_ALL_ORIGINS = False  # Explicit list only in production
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 # Email backend for production
 EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 
 # Logging configuration (Console-only for serverless Vercel, File + Console for server/VM)
 IS_VERCEL = os.environ.get('VERCEL') == '1' or 'VERCEL' in os.environ
+
+_verbose_format = '{levelname} {asctime} {module} {message}{exc_info}'
 
 if IS_VERCEL:
     LOGGING = {
@@ -33,7 +57,7 @@ if IS_VERCEL:
         'disable_existing_loggers': False,
         'formatters': {
             'verbose': {
-                'format': '{levelname} {asctime} {module} {message}',
+                'format': _verbose_format,
                 'style': '{',
             },
         },
@@ -52,6 +76,13 @@ else:
     (BASE_DIR / 'logs').mkdir(exist_ok=True)
     LOGGING = {
         **LOGGING,
+        'formatters': {
+            **LOGGING.get('formatters', {}),
+            'verbose': {
+                'format': _verbose_format,
+                'style': '{',
+            },
+        },
         'handlers': {
             'console': {
                 'class': 'logging.StreamHandler',

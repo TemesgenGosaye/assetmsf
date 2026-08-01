@@ -66,14 +66,11 @@ def custom_exception_handler(exc, context):
     """
     Custom exception handler that returns standard response format.
     """
-    import traceback
+    import logging
     from django.conf import settings
-    
-    if settings.DEBUG:
-        print("=== EXCEPTION TRACEBACK ===")
-        traceback.print_exc()
-        print("==========================")
-    
+
+    logger = logging.getLogger('django.request')
+
     # Call REST framework's default exception handler first
     response = exception_handler(exc, context)
 
@@ -88,6 +85,7 @@ def custom_exception_handler(exc, context):
         response.data = custom_response_data
     else:
         # Handle non-API exceptions
+        logger.error("Unhandled exception in API request", exc_info=exc)
         custom_response_data = {
             "success": False,
             "message": "Internal server error",
