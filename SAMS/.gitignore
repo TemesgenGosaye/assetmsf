@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Logs
 logs
 *.log
@@ -36,6 +35,8 @@ __pycache__/
 
 # Environment variables
 .env
+.env.*
+sams_backend/.env
 
 # Database
 db.sqlite3
@@ -46,9 +47,9 @@ db.sqlite3
 
 # Node modules (if any)
 node_modules/
-=======
+
+# AI tooling
 .aider*
->>>>>>> e0aa62ed7c297beda3706a2057755dae2139a56a
-.env
-.env.*
-sams_backend/.env
+
+# Vercel
+.vercel
