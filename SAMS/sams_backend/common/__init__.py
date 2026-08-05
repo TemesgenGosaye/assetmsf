@@ -1,1 +1,0 @@
-"""Common App - Shared functionality."""

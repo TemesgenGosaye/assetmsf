@@ -1,1 +1,0 @@
-"""Categories App - Asset categorization."""

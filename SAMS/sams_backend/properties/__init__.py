@@ -1,1 +1,0 @@
-"""Properties App - Property management."""

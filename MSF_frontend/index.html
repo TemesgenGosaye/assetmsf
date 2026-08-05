@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https://*.supabase.co; connect-src 'self' ws: wss: https://*.supabase.co https://samsbackend.vercel.app http://127.0.0.1:8000 http://localhost:8000 http://10.3.12.29:8000 http://10.3.12.29:5173; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; base-uri 'self'; form-action 'self'" />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Metahara_Sugar_factory</title>
+    <meta name="description" content="EAMS centralizes asset lifecycle management for Metahara Sugar Factory (መተሐራ ስኳር ፋብሪካ) — QR-enabled tracking, house/property allocation, RBAC workflows, and audit-ready reporting." />
+    <meta name="keywords" content="enterprise asset management system, EAMS, Metahara Sugar Factory, QR asset tracking, property allocation, inventory management, audit reporting" />
+    <meta name="author" content="IT Department, Metahara Sugar Factory" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#1F7A34" />
+
+    <!-- Internal-facing enterprise app: no canonical/OG social links -->
+    <meta property="og:title" content="Metahara_Sugar_factory" />
+    <meta property="og:description" content="Internal asset & property management platform for Metahara Sugar Factory." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="EAMS" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Premium display serif for hero / welcome typography (Fraunces) -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500;1,9..144,600&display=swap"
+    />
+
+    <link rel="icon" type="image/png" href="/favicon.png" sizes="any" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="shortcut icon" href="/favicon.png" />
+  </head>
+
+  <body>
+    <!-- Set the loader theme as early as possible (runs synchronously, before paint)
+         so the preloader always matches the app's real background. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var mql = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+          var dark = stored ? stored === 'dark' : !!(mql && mql.matches);
+          document.documentElement.setAttribute('data-loader-theme', dark ? 'dark' : 'light');
+        } catch (e) {
+          document.documentElement.setAttribute('data-loader-theme', 'dark');
+        }
+      })();
+    </script>
+
+    <style>
+      /* ====== Launch preloader ======
+         Fully theme-aware: the background follows the app's --background
+         variable (light/dark) and the accents follow --primary. */
+      :root {
+        --loader-text: hsl(0 0% 100%);
+        --loader-muted: hsla(0 0% 100% / 0.64);
+        --loader-faint: hsla(0 0% 100% / 0.36);
+        --loader-track: hsla(0 0% 100% / 0.14);
+        --loader-card: hsla(0 0% 100% / 0.05);
+        --loader-card-border: hsla(0 0% 100% / 0.1);
+        --loader-shadow: hsla(0 0% 0% / 0.55);
+        --loader-blob-opacity: 0.16;
+        --loader-bg: hsl(var(--background, 222 47% 11%));
+      }
+      :root[data-loader-theme="light"] {
+        --loader-text: hsl(222 47% 12%);
+        --loader-muted: hsla(222 47% 12% / 0.6);
+        --loader-faint: hsla(222 47% 12% / 0.4);
+        --loader-track: hsla(222 47% 12% / 0.14);
+        --loader-card: hsla(0 0% 100% / 0.72);
+        --loader-card-border: hsla(222 47% 12% / 0.1);
+        --loader-shadow: hsla(222 47% 12% / 0.12);
+        --loader-blob-opacity: 0.1;
+        --loader-bg: hsl(var(--background, 0 0% 100%));
+      }
+
+      #preloader {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: clamp(1.5rem, 4vh, 2.5rem);
+        padding: 1.5rem;
+        background:
+          radial-gradient(120vmax 60vmax at 50% -10%, hsl(var(--primary, 142 71% 45%) / 0.16), transparent 60%),
+          radial-gradient(90vmax 60vmax at 110% 115%, hsl(215 100% 50% / 0.12), transparent 60%),
+          radial-gradient(hsl(var(--primary, 142 71% 45%) / 0.05) 1px, transparent 1.6px) 0 0 / 26px 26px,
+          var(--loader-bg);
+        z-index: 9999;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        overflow: hidden;
+        transition: opacity .6s cubic-bezier(.16, 1, .3, 1), visibility .6s linear, transform .6s cubic-bezier(.16, 1, .3, 1);
+      }
+      #preloader.preloader-hide { opacity: 0; visibility: hidden; pointer-events: none; transform: scale(1.03); }
+
+      /* Drifting aurora glows */
+      #preloader::before, #preloader::after {
+        content: ""; position: absolute; border-radius: 50%; filter: blur(100px);
+        opacity: var(--loader-blob-opacity); z-index: 0;
+        animation: preloader-pulse 8s infinite alternate ease-in-out;
+      }
+      #preloader::before { top: -12%; left: -12%; width: 55vmin; height: 55vmin; background: hsl(var(--primary, 142 71% 45%)); }
+      #preloader::after  { bottom: -12%; right: -12%; width: 45vmin; height: 45vmin; background: hsl(215 100% 50%); animation-delay: -4s; }
+      @keyframes preloader-pulse { 0% { transform: scale(1) translate(0, 0); } 100% { transform: scale(1.22) translate(5%, 5%); } }
+
+      .loader-card {
+        position: relative; z-index: 1;
+        width: min(92vw, 540px);
+        display: flex; flex-direction: column; align-items: center;
+        gap: clamp(1.1rem, 3vh, 1.8rem);
+        padding: clamp(1.9rem, 5.5vw, 3.1rem) clamp(1.5rem, 6vw, 3.5rem);
+        border-radius: clamp(1.25rem, 4vw, 2rem);
+        background: var(--loader-card);
+        border: 1px solid var(--loader-card-border);
+        backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+        box-shadow: 0 30px 60px -18px var(--loader-shadow), 0 0 80px -30px hsl(var(--primary, 142 71% 45%) / 0.45);
+      }
+
+      /* === Circular progress ring around the logo === */
+      .loader-orb { position: relative; width: clamp(148px, 42vw, 204px); height: clamp(148px, 42vw, 204px); }
+      .loader-ring { width: 100%; height: 100%; display: block; }
+      .ring-track, .ring-fill { fill: none; stroke-width: 9; }
+      .ring-track { stroke: var(--loader-track); }
+      .ring-fill {
+        stroke-linecap: round;
+        stroke-dasharray: 339.292;      /* 2 * PI * 54 */
+        stroke-dashoffset: 339.292;
+        transform: rotate(-90deg); transform-origin: 50% 50%;
+        transition: stroke-dashoffset .35s cubic-bezier(.22, 1, .36, 1);
+        filter: drop-shadow(0 0 7px hsl(var(--primary, 142 71% 45%) / 0.55));
+      }
+      .loader-logo {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 56%; height: 56%; border-radius: 50%; object-fit: cover;
+        box-shadow: 0 0 0 3px var(--loader-card-border), 0 12px 32px -12px var(--loader-shadow);
+        animation: loader-float 5s ease-in-out infinite;
+      }
+      @keyframes loader-float { 0%, 100% { transform: translate(-50%, -50%); } 50% { transform: translate(-50%, calc(-50% - 8px)); } }
+
+      .loader-brand { display: flex; flex-direction: column; align-items: center; gap: clamp(.4rem, 1.6vh, .6rem); text-align: center; }
+      .loader-title {
+        color: var(--loader-text); font-size: clamp(1.25rem, 4.4vw, 1.65rem); font-weight: 800;
+        letter-spacing: .16em; text-transform: uppercase; text-shadow: 0 2px 14px var(--loader-shadow);
+      }
+      .loader-sub {
+        color: hsl(var(--primary, 142 71% 45%));
+        font-size: clamp(.68rem, 2.5vw, .8rem); font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+      }
+      .loader-tagline { color: var(--loader-faint); font-size: clamp(.66rem, 2.3vw, .76rem); }
+
+      .loader-percent {
+        color: var(--loader-text); font-weight: 800;
+        font-size: clamp(2.4rem, 10vw, 3.4rem); line-height: 1;
+        letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+        text-shadow: 0 0 30px hsl(var(--primary, 142 71% 45%) / 0.35);
+      }
+      .loader-percent small { font-size: .5em; color: var(--loader-muted); font-weight: 700; margin-left: .12rem; }
+
+      .loader-progress { width: 100%; max-width: 340px; }
+      .loader-progress-track {
+        height: clamp(5px, 1.2vw, 7px); background: var(--loader-track);
+        border-radius: 99px; overflow: hidden;
+        box-shadow: inset 0 1px 2px var(--loader-shadow);
+      }
+      .loader-progress-bar {
+        position: relative; height: 100%; width: 0%;
+        border-radius: 99px;
+        background: linear-gradient(90deg,
+          hsl(var(--primary, 142 71% 45%) / 0.85),
+          hsl(var(--primary, 142 71% 45%)));
+        box-shadow: 0 0 14px hsl(var(--primary, 142 71% 45%) / 0.55);
+        transition: width .35s cubic-bezier(.22, 1, .36, 1);
+      }
+      .loader-progress-bar::before {
+        content: ""; position: absolute; top: 0; bottom: 0; width: 44px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+        animation: loader-shimmer 1.6s linear infinite;
+      }
+      @keyframes loader-shimmer { from { left: -46px; } to { left: calc(100% + 46px); } }
+
+      .loader-status {
+        display: inline-flex; align-items: center; gap: .5rem;
+        color: var(--loader-muted); font-size: clamp(.68rem, 2.4vw, .78rem); font-weight: 600;
+        letter-spacing: .13em; text-transform: uppercase;
+      }
+      .loader-dots { display: inline-flex; gap: 3px; }
+      .loader-dots i { width: 4px; height: 4px; border-radius: 50%; background: hsl(var(--primary, 142 71% 45%)); animation: loader-blink 1.2s infinite; }
+      .loader-dots i:nth-child(2) { animation-delay: .2s; }
+      .loader-dots i:nth-child(3) { animation-delay: .4s; }
+      @keyframes loader-blink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+
+      .loader-footer {
+        position: relative; z-index: 1;
+        color: var(--loader-faint); font-size: clamp(.56rem, 2vw, .62rem);
+        letter-spacing: .16em; text-transform: uppercase; text-align: center;
+      }
+
+      /* Very narrow screens: tighten the card */
+      @media (max-width: 360px) {
+        .loader-card { padding-inline: 1.2rem; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #preloader::before, #preloader::after, .loader-logo, .loader-progress-bar::before, .loader-dots i { animation: none; }
+      }
+    </style>
+
+    <script>
+      (function () {
+        'use strict';
+
+        // Logical boot sequence mapped to progress thresholds
+        var STAGES = [
+          [6,   'Starting Application...'],
+          [18,  'Loading Core Modules...'],
+          [32,  'Syncing Assets & Properties...'],
+          [46,  'Preparing Housing & Employees...'],
+          [60,  'Loading Approvals & Requests...'],
+          [74,  'Initializing QR Tracking & Audit...'],
+          [86,  'Fetching Reports & Notifications...'],
+          [95,  'Finalizing Secure Connection...']
+        ];
+
+        var RING_C = 339.292; // 2 * PI * 54
+
+        function stageLabel(p) {
+          var label = STAGES[0][1];
+          for (var i = 0; i < STAGES.length; i++) {
+            if (p >= STAGES[i][0]) label = STAGES[i][1];
+          }
+          return label;
+        }
+
+        function apply(p, text) {
+          var ring = document.getElementById('loader-ring');
+          var bar = document.getElementById('preloader-bar');
+          var status = document.getElementById('preloader-status');
+          var pct = document.getElementById('preloader-percent');
+          if (ring) ring.style.strokeDashoffset = String(RING_C * (1 - p / 100));
+          if (bar) bar.style.width = p + '%';
+          if (status) status.textContent = text || stageLabel(p);
+          if (pct) pct.textContent = Math.round(p);
+        }
+
+        window.loaderState = { percent: 0, text: STAGES[0][1], target: 0 };
+
+        window.updateLoader = function (percent, text) {
+          var p = Math.max(0, Math.min(percent, 100));
+          window.loaderState.target = p;
+          window.loaderState.percent = p;
+          if (text) window.loaderState.text = text;
+          apply(p, text || stageLabel(p));
+        };
+
+        var networkPct = 0;
+        var loadStart = performance.now();
+        var displayed = 0;
+
+        // Smooth eased progress that also ticks up with time so the ring/bar
+        // never appear stuck while the bundle is still downloading.
+        function tick(now) {
+          if (window.loaderState.target >= 100) {
+            displayed = 100;
+            apply(100, window.loaderState.text || 'Connected');
+            return;
+          }
+          var elapsed = now - loadStart;
+          var timePct = Math.min(95, (elapsed / 9000) * 95);
+          var target = Math.max(window.loaderState.target, networkPct, timePct);
+          displayed += (target - displayed) * 0.15;
+          if (Math.abs(target - displayed) < 0.5) displayed = target;
+          apply(displayed, null);
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+
+        // Network-based progress via PerformanceObserver (0–95%)
+        try {
+          window.loaderState.loaded = 0;
+          window.loaderState.total = 15;
+          var observer = new PerformanceObserver(function (list) {
+            window.loaderState.loaded += list.getEntries().length;
+            var domResources = document.querySelectorAll(
+              'script[src], link[rel="stylesheet"], link[rel="modulepreload"], img[src]'
+            ).length;
+            window.loaderState.total = Math.max(window.loaderState.total, domResources + window.loaderState.loaded);
+            var calc = Math.min(95, (window.loaderState.loaded / window.loaderState.total) * 95);
+            if (calc > networkPct) networkPct = calc;
+          });
+          observer.observe({ entryTypes: ['resource'] });
+          document.addEventListener('DOMContentLoaded', function () {
+            networkPct = Math.max(networkPct, 28);
+          });
+          window.addEventListener('load', function () {
+            networkPct = 95;
+            try { observer.disconnect(); } catch (e) {}
+          });
+        } catch (e) {
+          // Fallback for older browsers without PerformanceObserver
+          document.addEventListener('DOMContentLoaded', function () {
+            networkPct = Math.max(networkPct, 32);
+          });
+          window.addEventListener('load', function () { networkPct = 95; });
+        }
+      })();
+    </script>
+    <script type="module" src="/src/theme-init.ts"></script>
+
+    <div id="preloader" aria-hidden="true">
+      <div class="loader-card">
+        <div class="loader-orb">
+          <svg class="loader-ring" viewBox="0 0 120 120" aria-hidden="true">
+            <defs>
+              <linearGradient id="loader-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="hsl(var(--primary, 142 71% 45%))" />
+                <stop offset="100%" stop-color="hsl(var(--primary, 142 71% 45%))" stop-opacity="0.5" />
+              </linearGradient>
+            </defs>
+            <circle class="ring-track" cx="60" cy="60" r="54" />
+            <circle class="ring-fill" id="loader-ring" cx="60" cy="60" r="54" stroke="url(#loader-grad)" />
+          </svg>
+          <img class="loader-logo" src="/msf_logo.jpg" alt="" />
+        </div>
+
+        <div class="loader-brand">
+          <div class="loader-title">EAMS</div>
+          <div class="loader-sub">Metehara Sugar Factory S.C. &middot; መተሐራ ስኳር ፋብሪካ</div>
+          <div class="loader-tagline">Enterprise Asset &amp; Housing Management</div>
+        </div>
+
+        <div class="loader-percent"><span id="preloader-percent">0</span><small>%</small></div>
+
+        <div class="loader-progress">
+          <div class="loader-progress-track">
+            <div id="preloader-bar" class="loader-progress-bar"></div>
+          </div>
+        </div>
+
+        <div class="loader-status">
+          <span id="preloader-status">Starting Application...</span>
+          <span class="loader-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+      </div>
+      <div class="loader-footer">Secured &middot; Enterprise Internal Use</div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

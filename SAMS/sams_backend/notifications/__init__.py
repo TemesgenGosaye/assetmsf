@@ -1,1 +1,0 @@
-"""Notifications App - User notifications."""

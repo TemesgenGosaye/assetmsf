@@ -1,1 +1,0 @@
-"""Procurement App - Procurement workflows."""
