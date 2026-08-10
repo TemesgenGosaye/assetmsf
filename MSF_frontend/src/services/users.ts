@@ -111,7 +111,7 @@ export async function updateUser(id: string, patch: Partial<AppUser>): Promise<A
   if (isDemoMode()) throw new Error("DEMO_READONLY");
   const djangoPayload = frontendUserToDjango(patch);
   const response = await djangoRequest<any>(`/auth/users/${id}/`, {
-    method: 'PUT',
+    method: 'PATCH',
     body: JSON.stringify(djangoPayload),
   });
   if (response.success) {

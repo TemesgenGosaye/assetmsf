@@ -2,7 +2,7 @@
 Admin configuration for assets app.
 """
 from django.contrib import admin
-from .models import Asset, AssetAttachment
+from .models import Asset, AssetAttachment, AssetLifecycleEvent
 
 
 @admin.register(Asset)
@@ -20,3 +20,12 @@ class AssetAttachmentAdmin(admin.ModelAdmin):
     list_display = ['asset', 'file_name', 'file_type', 'uploaded_by']
     list_filter = ['file_type']
     search_fields = ['file_name', 'asset__name']
+
+
+@admin.register(AssetLifecycleEvent)
+class AssetLifecycleEventAdmin(admin.ModelAdmin):
+    """Admin interface for the asset lifecycle audit trail."""
+    list_display = ['asset', 'event_type', 'actor_name', 'message', 'occurred_at']
+    list_filter = ['event_type', 'occurred_at']
+    search_fields = ['asset__asset_code', 'asset__name', 'actor_name', 'message']
+    readonly_fields = [f.name for f in AssetLifecycleEvent._meta.fields]

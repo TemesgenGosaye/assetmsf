@@ -477,3 +477,76 @@ class AssetTransfer(BaseModel):
     @property
     def status_display(self):
         return self.get_status_display()
+
+
+class AssetLifecycleEvent(BaseModel):
+    """
+    Immutable audit trail of every meaningful change in an asset's lifecycle:
+    creation, status/condition changes, transfers, disposals, maintenance
+    activity, depreciation updates, QR generation and scans.
+
+    Events are written by signals and by the asset API itself so that the full
+    asset history can be reconstructed without relying on mutable audit data.
+    """
+    class EventType(models.TextChoices):
+        CREATED = 'created', _('Created')
+        UPDATED = 'updated', _('Updated')
+        STATUS_CHANGED = 'status_changed', _('Status Changed')
+        CONDITION_CHANGED = 'condition_changed', _('Condition Changed')
+        TRANSFERRED = 'transferred', _('Transferred')
+        OWNER_CHANGED = 'owner_changed', _('Owner Changed')
+        LOCATION_CHANGED = 'location_changed', _('Location Changed')
+        DISPOSED = 'disposed', _('Disposed')
+        RETIRED = 'retired', _('Retired')
+        MAINTENANCE_SCHEDULED = 'maintenance_scheduled', _('Maintenance Scheduled')
+        MAINTENANCE_COMPLETED = 'maintenance_completed', _('Maintenance Completed')
+        DEPRECIATION_UPDATED = 'depreciation_updated', _('Depreciation Updated')
+        VALUE_UPDATED = 'value_updated', _('Value Updated')
+        QR_GENERATED = 'qr_generated', _('QR Generated')
+        SCANNED = 'scanned', _('Scanned')
+        AMC_UPDATED = 'amc_updated', _('AMC Updated')
+
+    asset = models.ForeignKey(
+        Asset,
+        on_delete=models.CASCADE,
+        related_name='lifecycle_events',
+        verbose_name=_('asset')
+    )
+    event_type = models.CharField(
+        _('event type'),
+        max_length=30,
+        choices=EventType.choices,
+        db_index=True
+    )
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='asset_lifecycle_events',
+        verbose_name=_('actor')
+    )
+    actor_name = models.CharField(_('actor name'), max_length=255, null=True, blank=True)
+    old_value = models.JSONField(_('old value'), default=dict, null=True, blank=True)
+    new_value = models.JSONField(_('new value'), default=dict, null=True, blank=True)
+    message = models.TextField(_('message'), null=True, blank=True)
+    metadata = models.JSONField(_('metadata'), default=dict, null=True, blank=True)
+    occurred_at = models.DateTimeField(_('occurred at'), auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'asset_lifecycle_events'
+        verbose_name = _('asset lifecycle event')
+        verbose_name_plural = _('asset lifecycle events')
+        ordering = ['-occurred_at', '-created_at']
+        indexes = [
+            models.Index(fields=['asset', 'event_type']),
+            models.Index(fields=['occurred_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.asset.asset_code} - {self.get_event_type_display()}"
+
+    def save(self, *args, **kwargs):
+        if not self.actor_name and self.actor:
+            self.actor_name = self.actor.name
+        super().save(*args, **kwargs)

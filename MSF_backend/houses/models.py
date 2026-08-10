@@ -143,11 +143,25 @@ class House(BaseModel):
 
     @property
     def current_occupancy(self):
-        return self.allocations.filter(status="Active").count()
+        # A house is occupied by live "Allocated" applications only.
+        # (Deallocated applications have allocated_house=None and never count.)
+        return self.allocations.filter(status="Allocated", is_active=True).count()
 
     @property
     def vacant(self):
-        return self.capacity - self.current_occupancy
+        return max(self.capacity - self.current_occupancy, 0)
+
+    @property
+    def damaged_items(self):
+        """Human-readable list of damaged fixtures (used by analytics/insights)."""
+        return [
+            label for field, label in [
+                ("damaged_door", "door"), ("damaged_windows", "windows"),
+                ("damaged_walls", "walls"), ("damaged_switch", "switch"),
+                ("damaged_bulb", "bulb"), ("damaged_water", "water"),
+            ]
+            if getattr(self, field, False)
+        ]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

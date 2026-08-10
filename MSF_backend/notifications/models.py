@@ -19,7 +19,6 @@ class Notification(BaseModel):
         HOUSE = 'house', _('House')
         NEWSLETTER = 'newsletter', _('Newsletter')
         ALLOCATION = 'allocation', _('Allocation')
-        LICENSE = 'license', _('License')
         DEPARTMENT = 'department', _('Department')
         SCAN = 'scan', _('Scan')
         USER = 'user', _('User')

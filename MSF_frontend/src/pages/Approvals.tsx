@@ -233,7 +233,7 @@ export default function Approvals() {
   const runBulkAction = async (stage: 'manager' | 'final', action: 'approve' | 'reject') => {
     const targets = (stage === 'manager' ? pendingManagerItems : pendingAdminItems).map((item) => item.id);
     if (!targets.length) {
-      toast('No pending approvals to update');
+      toast.info('No pending approvals to update');
       setConfirmDialog(null);
       return;
     }

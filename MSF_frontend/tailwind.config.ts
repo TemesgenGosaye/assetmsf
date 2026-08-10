@@ -44,6 +44,10 @@ export default {
 					DEFAULT: 'hsl(var(--warning))',
 					foreground: 'hsl(var(--warning-foreground))'
 				},
+				info: {
+					DEFAULT: 'hsl(var(--info))',
+					foreground: 'hsl(var(--info-foreground))'
+				},
 				muted: {
 					DEFAULT: 'hsl(var(--muted))',
 					foreground: 'hsl(var(--muted-foreground))'
@@ -118,6 +122,16 @@ export default {
 					'15%': { opacity: '1' },
 					'85%': { opacity: '1' },
 					'100%': { top: '100%', opacity: '0' }
+				},
+				'wave': {
+					'0%':   { transform: 'rotate(0deg)' },
+					'10%':  { transform: 'rotate(14deg)' },
+					'20%':  { transform: 'rotate(-8deg)' },
+					'30%':  { transform: 'rotate(14deg)' },
+					'40%':  { transform: 'rotate(-4deg)' },
+					'50%':  { transform: 'rotate(10deg)' },
+					'60%':  { transform: 'rotate(0deg)' },
+					'100%': { transform: 'rotate(0deg)' }
 				}
 			},
 			animation: {
@@ -125,7 +139,8 @@ export default {
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				'fade-in': 'fade-in 0.3s ease-out',
 				'slide-in': 'slide-in 0.3s ease-out',
-				'scan-down': 'scan-down 2s linear infinite'
+				'scan-down': 'scan-down 2s linear infinite',
+				'wave': 'wave 2s ease-in-out 1'
 			},
 			backgroundImage: {
 				'gradient-primary': 'var(--gradient-primary)',

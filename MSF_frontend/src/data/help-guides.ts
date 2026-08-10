@@ -173,7 +173,7 @@ export const helpGuides: HelpGuide[] = [
   {
     id: "raise-ticket",
     title: "Raise a support ticket",
-    summary: "Create a ticket for maintenance, access, or license requests and monitor responses.",
+    summary: "Create a ticket for maintenance or access requests and monitor responses.",
     audience: "All users",
     icon: Ticket,
     steps: [

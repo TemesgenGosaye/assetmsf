@@ -28,7 +28,6 @@ import {
   Users,
   Hash,
   User,
-  ChevronRight,
   ChevronLeft,
   Plus,
   Settings,
@@ -38,13 +37,15 @@ import {
 } from "lucide-react";
 import { useSearchLoading } from "@/hooks/useDebouncedValue";
 import SearchCircularLoader from "@/components/common/SearchCircularLoader";
-import { toast } from "sonner";
+import { crudToast } from "@/lib/enterprise-feedback";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { isDemoMode } from "@/lib/demo";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { FormField } from "@/components/ui/form-field";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -70,7 +71,6 @@ import {
   type Property,
 } from "@/services/properties";
 import { listAssets, type Asset } from "@/services/assets";
-import { listPropertyLicenses } from "@/services/license";
 import { logActivity } from "@/services/activity";
 import { trackActivity } from "@/services/notifications";
 import { getCurrentUserId, canUserEdit } from "@/services/permissions";
@@ -135,14 +135,6 @@ function PropertyDetailSheet({
     </div>
   );
 
-  const limit = Number(property.licenseLimit) || 0;
-  const effectiveLimited = limit > 0;
-  const pct = effectiveLimited
-    ? Math.min(
-        100,
-        Math.round(((Number(property.assetCount) || 0) / limit) * 100),
-      )
-    : 0;
   const statusColor =
     (property.status || "").toLowerCase() === "active"
       ? "bg-emerald-500/10 text-emerald-700 border-emerald-400/30 dark:text-emerald-400"
@@ -211,28 +203,12 @@ function PropertyDetailSheet({
                 icon={Package}
                 label="Assets"
                 value={
-                  <div className="space-y-1.5">
-                    <span>
-                      {property.assetCount}
-                      {effectiveLimited ? (
-                        <span className="text-muted-foreground text-xs ml-1">
-                          / {limit}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground text-xs ml-1">
-                          unlimited
-                        </span>
-                      )}
+                  <span>
+                    {property.assetCount}
+                    <span className="text-muted-foreground text-xs ml-1">
+                      total
                     </span>
-                    {effectiveLimited && (
-                      <div className="h-1.5 w-full rounded-full bg-muted/60">
-                        <div
-                          className={`h-full rounded-full transition-all ${pct >= 90 ? "bg-destructive" : pct >= 70 ? "bg-amber-500" : "bg-primary"}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    )}
-                  </div>
+                  </span>
                 }
               />
               <Field
@@ -242,27 +218,6 @@ function PropertyDetailSheet({
               />
             </div>
           </div>
-          {property._plan && (
-            <>
-              <Separator />
-              <div>
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  License
-                </p>
-                <div className="space-y-3">
-                  <Field
-                    icon={ChevronRight}
-                    label="Plan"
-                    value={
-                      <span className="capitalize font-mono">
-                        {property._plan}
-                      </span>
-                    }
-                  />
-                </div>
-              </div>
-            </>
-          )}
         </div>
 
         {/* Footer */}
@@ -302,6 +257,7 @@ function PropertyDetailSheet({
 
 export default function Properties() {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [properties, setProperties] = useState<any[]>([]);
   const [role, setRole] = useState<string>("");
   const [accessibleProps, setAccessibleProps] = useState<Set<string>>(
@@ -315,7 +271,9 @@ export default function Properties() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
+    id: "",
     name: "",
     address: "",
     type: "Office",
@@ -342,10 +300,9 @@ export default function Properties() {
 
   const loadPropertiesData = useCallback(async () => {
     try {
-      const [props, assets, licenses] = await Promise.all([
+      const [props, assets] = await Promise.all([
         listProperties(),
         listAssets().catch(() => [] as Asset[]),
-        listPropertyLicenses().catch(() => []),
       ]);
 
       const assetCounts: Record<string, number> = {};
@@ -355,34 +312,7 @@ export default function Properties() {
         assetCounts[key] = (assetCounts[key] || 0) + 1;
       }
 
-      const licMap: Record<string, { limit: number; plan?: string | null }> =
-        {};
-      for (const l of licenses as any[]) {
-        if (l?.property_id)
-          licMap[l.property_id] = { limit: l.asset_limit || 0, plan: l.plan };
-      }
-
-      function derivedFromPlan(plan?: string | null): number | null {
-        switch (plan) {
-          case "free":
-            return 100;
-          case "standard":
-            return 500;
-          case "pro":
-            return 2500;
-          case "business":
-            return null;
-          default:
-            return null;
-        }
-      }
-
       const merged = props.map((p: Property) => {
-        const entry = licMap[p.id];
-        const plan = entry?.plan;
-        const rawLimit = entry?.limit ?? 0;
-        const derived = rawLimit === 0 ? derivedFromPlan(plan) : null;
-        const effective = rawLimit > 0 ? rawLimit : (derived ?? 0);
         return {
           id: p.id,
           name: p.name,
@@ -392,10 +322,6 @@ export default function Properties() {
           manager: p.manager ?? "",
           assetCount: assetCounts[p.id] ?? 0,
           userCount: 0,
-          licenseLimit: effective,
-          _rawLimit: rawLimit,
-          _plan: plan,
-          _derived: derived,
         } as any;
       });
       setProperties(merged);
@@ -436,12 +362,13 @@ export default function Properties() {
 
   const handleEditProperty = (propertyId: string) => {
     if ((role || "").toLowerCase() !== "admin") {
-      toast.error("Only admins can edit properties");
+      crudToast.error("Permission denied", "Only admins can edit properties");
       return;
     }
     setEditingId(propertyId);
     const p = properties.find((x: any) => x.id === propertyId);
     if (p) {
+      setErrors({});
       setForm({
         id: p.id,
         name: p.name,
@@ -456,16 +383,20 @@ export default function Properties() {
 
   const handleDeleteProperty = async (propertyId: string) => {
     if ((role || "").toLowerCase() !== "admin") {
-      toast.error("Only admins can delete properties");
+      crudToast.error("Permission denied", "Only admins can delete properties");
       return;
     }
-    const ok = window.confirm(
-      `Are you sure you want to delete property ${propertyId}?`,
-    );
+    const ok = await confirm({
+      title: "Delete Property",
+      description: `Are you sure you want to delete property ${propertyId}? This will permanently remove the property record.`,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      variant: "danger",
+    });
     if (!ok) return;
     try {
       await deleteProperty(propertyId);
-      toast.success(`Property ${propertyId} deleted`);
+      crudToast.deleted("Property", propertyId);
       await logActivity("property_deleted", `Property ${propertyId} deleted`);
       await trackActivity("property", "delete", {
         entityName: propertyId,
@@ -474,7 +405,7 @@ export default function Properties() {
       loadPropertiesData();
     } catch (e: any) {
       console.error(e);
-      toast.error(e.message || "Failed to delete property");
+      crudToast.failed("delete property", e.message || "Failed to delete property");
     }
   };
 
@@ -487,19 +418,28 @@ export default function Properties() {
 
   const handleSubmit = async () => {
     try {
-      if (!form.name || !form.type || !form.status) {
-        toast.error("Please fill required fields");
+      const newErrors: Record<string, string> = {};
+      if (!form.id) newErrors.id = "Property ID is required";
+      if (!form.name) newErrors.name = "Property Name is required";
+      if (!form.type) newErrors.type = "Property Type is required";
+      if (!form.status) newErrors.status = "Property Status is required";
+
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        crudToast.error("Validation failed", "Please fill required fields (Property ID, Name, Type, Status)");
         return;
       }
+      setErrors({});
 
       if (editingId) {
         await updateProperty(editingId, {
+          id: form.id,
           name: form.name,
           address: form.address,
           type: form.type,
           status: form.status,
         });
-        toast.success("Property updated");
+        crudToast.updated("Property", editingId);
         await logActivity("property_updated", `Property ${editingId} updated`);
         await trackActivity("property", "update", {
           entityName: form.name,
@@ -508,12 +448,13 @@ export default function Properties() {
         });
       } else {
         const created = await createProperty({
+          id: form.id,
           name: form.name,
           address: form.address,
           type: form.type,
           status: form.status,
         } as Property);
-        toast.success("Property created");
+        crudToast.created("Property", created.id);
         await logActivity("property_created", `Property ${created.id} created`);
         await trackActivity("property", "create", {
           entityName: form.name,
@@ -523,6 +464,7 @@ export default function Properties() {
       setIsDialogOpen(false);
       setEditingId(null);
       setForm({
+        id: "",
         name: "",
         address: "",
         type: "Office",
@@ -532,7 +474,7 @@ export default function Properties() {
       loadPropertiesData();
     } catch (e: any) {
       console.error(e);
-      toast.error(e.message || "Failed to save property");
+      crudToast.failed("save property", e.message || "Failed to save property");
     }
   };
 
@@ -618,7 +560,7 @@ export default function Properties() {
         icon: Building2,
         value: totalProperties.toLocaleString(),
         caption: "Properties in current view",
-        iconClassName: "text-primary h-4 w-4",
+        variant: "blue" as const,
       },
       {
         key: "active",
@@ -626,8 +568,7 @@ export default function Properties() {
         icon: MapPin,
         value: activeProperties.toLocaleString(),
         caption: "Open and operating",
-        iconClassName: "text-primary h-4 w-4",
-        valueClassName: activeProperties ? "text-foreground" : undefined,
+        variant: "emerald" as const,
       },
       {
         key: "assets",
@@ -635,7 +576,7 @@ export default function Properties() {
         icon: Package,
         value: totalAssetsCount.toLocaleString(),
         caption: "Assets across properties",
-        iconClassName: "text-primary h-4 w-4",
+        variant: "violet" as const,
       },
       {
         key: "inactive",
@@ -643,8 +584,7 @@ export default function Properties() {
         icon: AlertTriangle,
         value: inactiveProperties.toLocaleString(),
         caption: "Temporarily offline",
-        iconClassName: "text-primary h-4 w-4",
-        valueClassName: inactiveProperties ? "text-foreground" : undefined,
+        variant: "rose" as const,
       },
     ];
   }, [filtered]);
@@ -779,6 +719,7 @@ export default function Properties() {
                 <Button
                   onClick={() => {
                     setEditingId(null);
+                    setErrors({});
                     setForm({
                       id: "",
                       name: "",
@@ -831,25 +772,31 @@ export default function Properties() {
               title={item.title}
               value={item.value}
               caption={item.caption}
-              iconClassName={item.iconClassName}
-              valueClassName={item.valueClassName}
+              variant={item.variant}
             />
           ))}
         </div>
 
         {/* Properties Table */}
         <Card className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-300 bg-slate-50 px-4 py-2 dark:border-border dark:bg-muted">
-            <div className="flex items-center gap-2 text-sm">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">Properties</span>
-              <span className="text-muted-foreground">({filtered.length})</span>
+          <CardHeader className="flex flex-col gap-1 border-b border-border/60 bg-muted/30 px-6 py-5">
+            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-lg font-semibold">
+                  Properties
+                </CardTitle>
+              </div>
+              <div className="bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 border border-slate-300 md:text-right dark:bg-muted dark:border-border dark:text-slate-300">
+                Showing {filtered.length} propert
+                {filtered.length === 1 ? "y" : "ies"}
+              </div>
             </div>
-          </div>
+          </CardHeader>
           <div className="overflow-x-auto">
-            <Table dense stickyHeader className="text-sm">
+            <Table dense stickyHeader className="text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
               <TableHeader className="bg-transparent">
-                <TableRow className="border-b border-border/60 shadow-[inset_0_-1px_0_theme(colors.border/0.45)] hover:bg-transparent">
+                <TableRow className="border-b border-slate-300 bg-white shadow-[inset_0_-1px_0_rgba(148,163,184,0.18)] transition-colors hover:bg-slate-50 dark:border-border dark:bg-card dark:shadow-[inset_0_-1px_0_rgba(51,65,85,0.55)] dark:hover:bg-slate-900">
                   <TableHead className="min-w-[200px] whitespace-nowrap">
                     Property
                   </TableHead>
@@ -879,26 +826,16 @@ export default function Properties() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData.map((property, idx) => {
-                    const limit = (property as any).licenseLimit;
-                    const effectiveLimited = limit > 0;
-                    const pct = effectiveLimited
-                      ? Math.min(
-                          100,
-                          Math.round(
-                            ((Number(property.assetCount) || 0) / limit) * 100,
-                          ),
-                        )
-                      : 0;
+                  paginatedData.map((property) => {
                     return (
                       <TableRow
                         key={property.id}
-                        className={`group cursor-pointer select-none border-b border-slate-200 bg-white transition-colors hover:bg-slate-50 dark:border-border dark:bg-card dark:hover:bg-slate-900 ${idx % 2 === 1 ? "bg-slate-50/60 dark:bg-muted/40" : ""}`}
+                        className="group cursor-pointer select-none border-b border-slate-300 bg-white shadow-[inset_0_-1px_0_rgba(148,163,184,0.18)] transition-colors hover:bg-slate-50 dark:border-border dark:bg-card dark:shadow-[inset_0_-1px_0_rgba(51,65,85,0.55)] dark:hover:bg-slate-900"
                         onDoubleClick={() =>
                           navigate(`/properties/${property.id}`)
                         }
                       >
-                        <TableCell className="py-2 align-middle">
+                        <TableCell className="align-middle">
                           <div className="flex items-center gap-3">
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                               <Building2 className="h-4 w-4" />
@@ -921,7 +858,7 @@ export default function Properties() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="py-2 align-middle">
+                        <TableCell className="align-middle">
                           <div className="flex max-w-[220px] items-start gap-1.5 text-xs text-muted-foreground">
                             <MapPin className="mt-px h-3 w-3 shrink-0 text-muted-foreground/50" />
                             <span className="leading-snug">
@@ -929,43 +866,29 @@ export default function Properties() {
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="py-2 align-middle">
+                        <TableCell className="align-middle">
                           {getStatusBadge(property.status)}
                         </TableCell>
-                        <TableCell className="py-2 align-middle">
+                        <TableCell className="align-middle">
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 text-sm">
                               <Package className="h-3.5 w-3.5 text-muted-foreground/60" />
                               <span className="font-medium text-foreground">
                                 {property.assetCount}
                               </span>
-                              {effectiveLimited ? (
-                                <span className="text-[10px] text-muted-foreground">
-                                  / {limit}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-muted-foreground/50">
-                                  unlimited
-                                </span>
-                              )}
+                              <span className="text-[10px] text-muted-foreground/50">
+                                total
+                              </span>
                             </div>
-                            {effectiveLimited && (
-                              <div className="h-1 w-20 rounded-full bg-muted/50">
-                                <div
-                                  className="h-full rounded-full bg-gradient-to-r from-primary via-primary/80 to-primary/60"
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                            )}
                           </div>
                         </TableCell>
-                        <TableCell className="py-2 align-middle">
+                        <TableCell className="align-middle">
                           <span className="text-sm text-foreground/80">
                             {property.manager || "—"}
                           </span>
                         </TableCell>
                         {role === "admin" && (
-                          <TableCell className="py-2 align-middle text-right">
+                          <TableCell className="align-middle text-right">
                             <PropertyActionsDropdown
                               onEdit={() => handleEditProperty(property.id)}
                               onPrint={() => handlePrintProperty(property)}
@@ -1192,39 +1115,50 @@ export default function Properties() {
                     Property Details
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="prop-name"
-                        className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
-                      >
-                        Name <span className="text-destructive">*</span>
-                      </Label>
+                    <FormField
+                      id="prop-id"
+                      label="Property ID"
+                      required
+                      error={errors.id}
+                    >
                       <Input
-                        id="prop-name"
+                        value={form.id}
+                        onChange={(e) => {
+                          setForm({ ...form, id: e.target.value });
+                          if (errors.id) setErrors({ ...errors, id: "" });
+                        }}
+                        placeholder="e.g. PR001"
+                        disabled={Boolean(editingId)}
+                      />
+                    </FormField>
+                    <FormField
+                      id="prop-name"
+                      label="Property Name"
+                      required
+                      error={errors.name}
+                    >
+                      <Input
                         value={form.name}
-                        onChange={(e) =>
-                          setForm({ ...form, name: e.target.value })
-                        }
+                        onChange={(e) => {
+                          setForm({ ...form, name: e.target.value });
+                          if (errors.name) setErrors({ ...errors, name: "" });
+                        }}
                         placeholder="Main Office"
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="prop-address"
-                        className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
-                      >
-                        Address
-                      </Label>
-                      <Input
-                        id="prop-address"
-                        value={form.address}
-                        onChange={(e) =>
-                          setForm({ ...form, address: e.target.value })
-                        }
-                        placeholder="Full address"
-                      />
-                    </div>
+                    </FormField>
                   </div>
+                  <FormField
+                    id="prop-address"
+                    label="Address"
+                  >
+                    <Input
+                      value={form.address}
+                      onChange={(e) =>
+                        setForm({ ...form, address: e.target.value })
+                      }
+                      placeholder="Full address"
+                    />
+                  </FormField>
                 </div>
                 <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-5">
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1232,13 +1166,17 @@ export default function Properties() {
                     Configuration
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Type
-                      </Label>
+                    <FormField
+                      label="Type"
+                      required
+                      error={errors.type}
+                    >
                       <Select
                         value={form.type}
-                        onValueChange={(v) => setForm({ ...form, type: v })}
+                        onValueChange={(v) => {
+                          setForm({ ...form, type: v });
+                          if (errors.type) setErrors({ ...errors, type: "" });
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -1254,14 +1192,18 @@ export default function Properties() {
                           </SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Status
-                      </Label>
+                    </FormField>
+                    <FormField
+                      label="Status"
+                      required
+                      error={errors.status}
+                    >
                       <Select
                         value={form.status}
-                        onValueChange={(v) => setForm({ ...form, status: v })}
+                        onValueChange={(v) => {
+                          setForm({ ...form, status: v });
+                          if (errors.status) setErrors({ ...errors, status: "" });
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -1271,23 +1213,19 @@ export default function Properties() {
                           <SelectItem value="Inactive">Inactive</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="prop-manager"
-                        className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
-                      >
-                        Manager
-                      </Label>
+                    </FormField>
+                    <FormField
+                      id="prop-manager"
+                      label="Manager"
+                    >
                       <Input
-                        id="prop-manager"
                         value={form.manager}
                         onChange={(e) =>
                           setForm({ ...form, manager: e.target.value })
                         }
                         placeholder="Manager name"
                       />
-                    </div>
+                    </FormField>
                   </div>
                 </div>
               </div>

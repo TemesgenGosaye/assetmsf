@@ -163,7 +163,7 @@ const knowledgeCategories: KnowledgeCategory[] = [
       },
       {
         title: "Automation & notifications",
-        description: "Stay ahead of expiry, license thresholds, and ticket responses via tailored alerts.",
+        description: "Stay ahead of expiry and ticket responses via tailored alerts.",
       },
     ],
   },
@@ -177,12 +177,6 @@ const knowledgeCategories: KnowledgeCategory[] = [
         title: "Create a support ticket",
         description: "Log maintenance, access, or improvement requests and monitor replies in real time.",
         guideId: "raise-ticket",
-      },
-      {
-        title: "License and compliance questions",
-        description: "Track usage versus entitlements and request upgrades directly from the license card.",
-        to: "/license",
-        roles: ["admin"],
       },
       {
         title: "Share release notes",

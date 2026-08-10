@@ -2,7 +2,7 @@
 Serializers for dashboard management.
 """
 from rest_framework import serializers
-from .models import RecentActivity, SystemSettings, PropertyLicense, LicenseMeta
+from .models import RecentActivity, SystemSettings
 
 
 class RecentActivitySerializer(serializers.ModelSerializer):
@@ -24,20 +24,3 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
             'auto_backup', 'appearance', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
-
-
-class PropertyLicenseSerializer(serializers.ModelSerializer):
-    """Serializer for PropertyLicense model."""
-    
-    class Meta:
-        model = PropertyLicense
-        fields = ['property_id', 'asset_limit', 'plan', 'updated_at']
-        read_only_fields = ['updated_at']
-
-
-class LicenseMetaSerializer(serializers.ModelSerializer):
-    """Serializer for LicenseMeta model."""
-    
-    class Meta:
-        model = LicenseMeta
-        fields = ['key', 'value']

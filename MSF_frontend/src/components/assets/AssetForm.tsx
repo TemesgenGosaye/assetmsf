@@ -27,12 +27,13 @@ import {
   Info,
   AlertTriangle,
   DollarSign,
+  Loader2,
 } from "lucide-react";
 import { isDemoMode } from "@/lib/demo";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { listProperties, type Property } from "@/services/properties";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
-import { getLicenseSnapshot, type LicenseSnapshot } from "@/services/license";
 import { ITEM_TYPE_PREFIXES } from "@/services/itemTypes";
 import { listDepartments, type Department } from "@/services/departments";
 import { listUserDepartmentAccess } from "@/services/userDeptAccess";
@@ -91,8 +92,8 @@ export function AssetForm({
     null,
   );
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [licenseSnap, setLicenseSnap] = useState<LicenseSnapshot | null>(null);
-  const [licenseLoading, setLicenseLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setFormData({
@@ -252,26 +253,6 @@ export function AssetForm({
     }
   }, [currentUser, allowedDeptNames]);
 
-  // Fetch license snapshot when property changes
-  useEffect(() => {
-    (async () => {
-      const pid = formData.property;
-      if (!pid) {
-        setLicenseSnap(null);
-        return;
-      }
-      try {
-        setLicenseLoading(true);
-        const snap = await getLicenseSnapshot(pid);
-        setLicenseSnap(snap);
-      } catch {
-        setLicenseSnap(null);
-      } finally {
-        setLicenseLoading(false);
-      }
-    })();
-  }, [formData.property]);
-
   const toNumber = (v: any): number => {
     const n = parseFloat(v);
     return Number.isFinite(n) ? n : 0;
@@ -400,34 +381,16 @@ export function AssetForm({
     const locVal = (toSubmit as any).location?.toString().trim();
     const condVal = (toSubmit as any).condition?.toString().trim();
 
-    if (!toSubmit.itemName) {
-      toast.error("Item Name is required");
-      return;
-    }
-    if (!toSubmit.quantity) {
-      toast.error("Quantity is required");
-      return;
-    }
-    if (role === "admin" && !toSubmit.itemType) {
-      toast.error("Item Type is required");
-      return;
-    }
-    if (!toSubmit.property) {
-      toast.error("Property is required");
-      return;
-    }
-    if (!deptVal) {
-      toast.error("Department is required");
-      return;
-    }
-    if (!locVal) {
-      toast.error("Location is required");
-      return;
-    }
-    if (!condVal) {
-      toast.error("Condition is required");
-      return;
-    }
+    // Collect all field errors at once so the user sees every problem inline
+    const errors: Record<string, string> = {};
+    if (!toSubmit.itemName) errors.itemName = "Item Name is required";
+    if (!toSubmit.quantity) errors.quantity = "Quantity is required";
+    if (role === "admin" && !toSubmit.itemType)
+      errors.itemType = "Item Type is required";
+    if (!toSubmit.property) errors.property = "Property is required";
+    if (!deptVal) errors.department = "Department is required";
+    if (!locVal) errors.location = "Location is required";
+    if (!condVal) errors.condition = "Condition is required";
 
     // Ensure the resolved department is carried into toSubmit
     if (!toSubmit.department && deptVal) {
@@ -448,53 +411,74 @@ export function AssetForm({
     );
     if (role !== "admin" && allowed.size > 0) {
       if (!selectedDept || !allowed.has(String(selectedDept).toLowerCase())) {
-        toast.error("You are not allowed to create assets for this department");
-        return;
+        errors.department =
+          "You are not allowed to create assets for this department";
       }
     }
 
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      // Scroll to the first invalid field immediately so the user sees the error
+      requestAnimationFrame(() => {
+        const firstKey = Object.keys(errors)[0];
+        const el = document.getElementById(firstKey) ??
+          document.querySelector(`[aria-invalid="true"]`);
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        (el as HTMLElement | null)?.focus?.();
+      });
+      return;
+    }
+    setFieldErrors({});
+    if (submitting) return;
+    setSubmitting(true);
+
     try {
       const result = await onSubmit?.(toSubmit);
-      if (result === true) {
-        toast.success("Asset saved successfully!");
-        if (!initialData) {
-          setFormData({
-            itemName: "",
-            description: "",
-            purchaseDate: undefined,
-            quantity: "",
-            itemType: "",
-            expiryDate: undefined,
-            poNumber: "",
-            property: "",
-            condition: "",
-            serialNumber: "",
-            location: "",
-            department: "",
-            amcEnabled: false,
-            amcStartDate: undefined,
-            amcEndDate: undefined,
-            purchaseCost: "",
-            currentValue: "",
-            depreciationMethod: "straight_line",
-            depreciationRate: "",
-            accumulatedDepreciation: "",
-            usefulLifeYears: "",
-            salvageValue: "",
-            vendor: "",
-            invoiceNumber: "",
-            warrantyStartDate: undefined,
-            warrantyEndDate: undefined,
-          });
-        }
+      if (result === true && !initialData) {
+        setFormData({
+          itemName: "",
+          description: "",
+          purchaseDate: undefined,
+          quantity: "",
+          itemType: "",
+          expiryDate: undefined,
+          poNumber: "",
+          property: "",
+          condition: "",
+          serialNumber: "",
+          location: "",
+          department: "",
+          amcEnabled: false,
+          amcStartDate: undefined,
+          amcEndDate: undefined,
+          purchaseCost: "",
+          currentValue: "",
+          depreciationMethod: "straight_line",
+          depreciationRate: "",
+          accumulatedDepreciation: "",
+          usefulLifeYears: "",
+          salvageValue: "",
+          vendor: "",
+          invoiceNumber: "",
+          warrantyStartDate: undefined,
+          warrantyEndDate: undefined,
+        });
       }
     } catch (err: any) {
       // Parent already surfaced error (e.g., modal). Do nothing here.
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleInputChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    setFieldErrors((prev) => {
+      if (!(field in prev)) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   };
 
   const handleToggleAmc = (enabled: boolean) => {
@@ -521,8 +505,18 @@ export function AssetForm({
               value={formData.itemName}
               onChange={(e) => handleInputChange("itemName", e.target.value)}
               placeholder="e.g., Dell Laptop, Office Chair"
+              aria-invalid={Boolean(fieldErrors.itemName)}
+              className={cn(
+                fieldErrors.itemName &&
+                  "border-destructive focus-visible:ring-destructive/40"
+              )}
               required
             />
+            {fieldErrors.itemName && (
+              <p className="text-xs font-medium text-destructive">
+                {fieldErrors.itemName}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -543,20 +537,17 @@ export function AssetForm({
               }}
               placeholder="Enter quantity"
               min="1"
+              aria-invalid={Boolean(fieldErrors.quantity)}
+              className={cn(
+                fieldErrors.quantity &&
+                  "border-destructive focus-visible:ring-destructive/40"
+              )}
               required
             />
-            {licenseSnap && (
-              <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                {licenseSnap.propertyLimit && licenseSnap.propertyLimit > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-2 py-0.5">
-                    Property Remaining:{" "}
-                    {licenseSnap.propertyRemaining != null
-                      ? licenseSnap.propertyRemaining
-                      : "—"}
-                  </span>
-                )}
-                {licenseLoading && <span>Updating…</span>}
-              </div>
+            {fieldErrors.quantity && (
+              <p className="text-xs font-medium text-destructive">
+                {fieldErrors.quantity}
+              </p>
             )}
           </div>
 
@@ -566,7 +557,12 @@ export function AssetForm({
               value={formData.itemType}
               onValueChange={(value) => handleInputChange("itemType", value)}
             >
-              <SelectTrigger>
+              <SelectTrigger
+                className={cn(
+                  fieldErrors.itemType &&
+                    "border-destructive focus-visible:ring-destructive/40"
+                )}
+              >
                 <SelectValue placeholder="Select item type" />
               </SelectTrigger>
               <SelectContent>
@@ -577,6 +573,11 @@ export function AssetForm({
                 ))}
               </SelectContent>
             </Select>
+            {fieldErrors.itemType && (
+              <p className="text-xs font-medium text-destructive">
+                {fieldErrors.itemType}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -585,7 +586,12 @@ export function AssetForm({
               value={formData.condition}
               onValueChange={(value) => handleInputChange("condition", value)}
             >
-              <SelectTrigger>
+              <SelectTrigger
+                className={cn(
+                  fieldErrors.condition &&
+                    "border-destructive focus-visible:ring-destructive/40"
+                )}
+              >
                 <SelectValue placeholder="Select condition" />
               </SelectTrigger>
               <SelectContent>
@@ -596,6 +602,11 @@ export function AssetForm({
                 <SelectItem value="damaged">Damaged</SelectItem>
               </SelectContent>
             </Select>
+            {fieldErrors.condition && (
+              <p className="text-xs font-medium text-destructive">
+                {fieldErrors.condition}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -612,7 +623,12 @@ export function AssetForm({
               value={String(formData.property || "")}
               onValueChange={(value) => handleInputChange("property", value)}
             >
-              <SelectTrigger>
+              <SelectTrigger
+                className={cn(
+                  fieldErrors.property &&
+                    "border-destructive focus-visible:ring-destructive/40"
+                )}
+              >
                 <SelectValue placeholder="Select property" />
               </SelectTrigger>
               <SelectContent>
@@ -626,17 +642,10 @@ export function AssetForm({
                   ))}
               </SelectContent>
             </Select>
-            {licenseSnap && (
-              <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                {licenseSnap.propertyLimit &&
-                  licenseSnap.propertyLimit > 0 &&
-                  licenseSnap.propertyUsage != null && (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-2 py-0.5">
-                      Property Usage: {licenseSnap.propertyUsage}/
-                      {licenseSnap.propertyLimit}
-                    </span>
-                  )}
-              </div>
+            {fieldErrors.property && (
+              <p className="text-xs font-medium text-destructive">
+                {fieldErrors.property}
+              </p>
             )}
           </div>
 
@@ -654,7 +663,12 @@ export function AssetForm({
                     : 0) === 1
               }
             >
-              <SelectTrigger>
+              <SelectTrigger
+                className={cn(
+                  fieldErrors.department &&
+                    "border-destructive focus-visible:ring-destructive/40"
+                )}
+              >
                 <SelectValue placeholder="Select department" />
               </SelectTrigger>
               <SelectContent>
@@ -697,6 +711,11 @@ export function AssetForm({
                 })()}
               </SelectContent>
             </Select>
+            {fieldErrors.department && (
+              <p className="text-xs font-medium text-destructive">
+                {fieldErrors.department}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -706,8 +725,18 @@ export function AssetForm({
               value={formData.location}
               onChange={(e) => handleInputChange("location", e.target.value)}
               placeholder="e.g., Floor 2, Room 203"
+              aria-invalid={Boolean(fieldErrors.location)}
+              className={cn(
+                fieldErrors.location &&
+                  "border-destructive focus-visible:ring-destructive/40"
+              )}
               required
             />
+            {fieldErrors.location && (
+              <p className="text-xs font-medium text-destructive">
+                {fieldErrors.location}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -1038,9 +1067,17 @@ export function AssetForm({
           >
             Cancel
           </Button>
-          <Button type="submit" className="gap-2">
-            <Save className="h-4 w-4" />
-            {initialData ? "Update Asset" : "Save Asset"}
+          <Button type="submit" className="gap-2 min-w-[140px]" disabled={submitting}>
+            {submitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {submitting
+              ? "Saving..."
+              : initialData
+                ? "Update Asset"
+                : "Save Asset"}
           </Button>
         </div>
       </div>

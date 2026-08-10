@@ -1,6 +1,11 @@
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, toast } from "sonner"
 
+// The real `sonner` toast object is globally patched in `@/lib/toast-global`,
+// so every `toast.success/error/warning/info/...` call in the app is routed
+// through the unified centered SAMS toast system. This renderer is kept as a
+// silent fallback for any unpatched custom renderings (e.g. `toast.custom`).
+
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
 const Toaster = ({ ...props }: ToasterProps) => {

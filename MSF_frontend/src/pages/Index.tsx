@@ -1285,40 +1285,67 @@ const Index = () => {
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/5 via-primary/10 to-background p-6 md:p-10 shadow-sm border border-primary/10">
+      <section className="relative overflow-hidden rounded-3xl border border-primary/15 bg-gradient-to-br from-primary/8 via-background to-primary/5 p-6 shadow-lg md:p-10">
+        {/* Decorative background blobs */}
+        <div aria-hidden="true" className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div aria-hidden="true" className="pointer-events-none absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-primary/8 blur-2xl" />
+
         <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
+          <div className="space-y-4">
+
+            {/* ── DATE LINE ─────────────────────────────────── */}
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Calendar className="h-4 w-4" />
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
+              <Calendar className="h-4 w-4 text-primary/70" />
+              <span>
+                {new Date().toLocaleDateString("en-US", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </span>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary p-1 shadow-lg ring-2 ring-primary/30">
-                <img
-                  src="/msf_logo.jpg"
-                  alt="MSF Logo"
-                  className="h-full w-full rounded-full object-cover"
-                />
+
+            {/* ── MAIN GREETING BLOCK ───────────────────────── */}
+            <div className="flex items-center gap-5">
+              {/* Logo avatar */}
+              <div className="relative flex-shrink-0">
+                <div className="size-16 rounded-full overflow-hidden border-2 border-primary/70 bg-background p-1 shadow-xl ring-4 ring-primary/15 flex items-center justify-center">
+                  <img
+                    src="/msf_logo.jpg"
+                    alt="MSF Logo"
+                    className="h-full w-full object-cover rounded-full"
+                  />
+                </div>
+                {/* Online indicator */}
+                <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-background ring-2 ring-background">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_6px_2px_rgba(16,185,129,0.5)]" />
+                </span>
               </div>
-              <div>
-                <h1 className="text-3xl font-black tracking-tight text-foreground">
-                  የመተሐራ ስኳር ፋብሪካ ቋሚ ንብረት አስተዳደር እና የቤት ምደባ ዳሽቦርድ
+
+              <div className="space-y-1">
+                {/* Bold name headline */}
+                <h1 className="text-2xl font-black tracking-tight text-foreground md:text-3xl">
+                  <span>የመተሐራ ስኳር ፋብሪካ ቋሚ ንብረት አስተዳደር እና የቤት ምደባ ዳሽቦርድ</span>
                 </h1>
               </div>
             </div>
-            <p className="text-lg text-muted-foreground max-w-2xl">
-              Here's what's happening with your assets today.
-            </p>
+
+            {/* ── SUBTITLE ──────────────────────────────────── */}
+            <div className="flex items-center gap-2">
+              <div className="h-px flex-1 max-w-[3rem] bg-gradient-to-r from-primary/40 to-transparent" />
+              <p className="text-base font-medium text-muted-foreground">
+                Here's what's happening with your assets today.
+              </p>
+            </div>
+
           </div>
+
+          {/* ── ACTION BUTTON ─────────────────────────────── */}
           <div className="flex flex-wrap gap-3">
             <Button
               onClick={() => handleQuickAction("Add Asset")}
-              className="group flex h-12 w-12 items-center justify-center gap-0 rounded-full bg-primary text-primary-foreground transition-all duration-300 hover:w-36 overflow-hidden p-0"
+              className="group flex h-12 w-12 items-center justify-center gap-0 rounded-full bg-primary text-primary-foreground transition-all duration-300 hover:w-36 overflow-hidden p-0 shadow-lg hover:shadow-primary/30"
             >
               <Plus className="h-8 w-8 transition-transform duration-300 group-hover:scale-110" />
               <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-300 group-hover:max-w-[100px] group-hover:opacity-100 group-hover:ml-2 font-medium">

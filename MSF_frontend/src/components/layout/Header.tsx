@@ -1,4 +1,4 @@
-import { Bell, Search, Menu, Settings as SettingsIcon, Users as UsersIcon, LogOut, ShieldCheck, Sun, Moon, Sparkles, BarChart3, Activity, AlertCircle, CheckCircle, XCircle, Clock, Calendar, MessageSquare, Heart, Star, Zap, TrendingUp, Database, LayoutDashboard, QrCode, Package, AlertTriangle, Building2, User, Home, Megaphone, ClipboardCheck, Sunrise } from "lucide-react";
+import { Bell, Search, Menu, Settings as SettingsIcon, Users as UsersIcon, LogOut, ShieldCheck, Sun, Moon, BarChart3, Activity, AlertCircle, CheckCircle, XCircle, Clock, Calendar, MessageSquare, Heart, Star, Zap, TrendingUp, Database, LayoutDashboard, QrCode, Package, AlertTriangle, Building2, User, Home, Megaphone, ClipboardCheck, Sunrise, ArrowRightLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { listNotifications, addNotification, markAllRead, clearAllNotifications, type Notification } from "@/services/notifications";
+import { listTransfers } from "@/services/transfers";
 import CommandPalette from "@/components/layout/CommandPalette";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -32,7 +33,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
-  const [globalResults, setGlobalResults] = useState<{ nav: any[]; assets: any[]; properties: any[]; users: any[]; qrcodes: any[]; tickets: any[]; approvals: any[] }>({ nav: [], assets: [], properties: [], users: [], qrcodes: [], tickets: [], approvals: [] });
+  const [globalResults, setGlobalResults] = useState<{ nav: any[]; assets: any[]; properties: any[]; users: any[]; qrcodes: any[]; tickets: any[]; approvals: any[]; transfers: any[] }>({ nav: [], assets: [], properties: [], users: [], qrcodes: [], tickets: [], approvals: [], transfers: [] });
   const [searching, setSearching] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutHint, setShortcutHint] = useState("");
@@ -40,8 +41,9 @@ export function Header({ onMenuClick }: HeaderProps) {
   const roleLower = (authUser?.role || "").toLowerCase();
   const isAdminRole = roleLower === "admin";
   const userEmail = authUser?.email || "";
-  const firstName = (authUser?.name || "").split(" ").filter(Boolean)[0] || null;
-  const userInitials = (authUser?.name || "User")
+  const fullName = (authUser?.name || "").trim();
+  const firstName = fullName.split(" ").filter(Boolean)[0] || null;
+  const userInitials = (fullName || "User")
     .split(" ")
     .filter(Boolean)
     .map((n) => n[0])
@@ -51,9 +53,6 @@ export function Header({ onMenuClick }: HeaderProps) {
   
   // Generate greeting
   const hour = new Date().getHours();
-  const salutation = hour < 12 ? "Good Morning" : hour >= 18 ? "Good Evening" : "Good Afternoon";
-  const greeting = `${salutation}${firstName ? `, ${firstName}` : ""}`;
-  const GreetingIcon = hour < 12 ? Sunrise : hour >= 18 ? Moon : Sun;
 
   const handleSignOut = () => {
     try {
@@ -188,6 +187,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const navItems = [
     { label: 'Dashboard', path: `${prefix}/` === '/demo/' ? '/demo' : '/', roles: ['admin','manager','user'] },
     { label: 'Assets', path: `${prefix}/assets`, roles: ['admin','manager','user'] },
+    { label: 'Transfers', path: `${prefix}/transfers`, roles: ['admin','manager','user'] },
     { label: 'Properties', path: `${prefix}/properties`, roles: ['admin','manager','user'] },
     { label: 'House Opp', path: `${prefix}/house-opp`, roles: ['admin','manager','user'] },
     { label: 'QR Codes', path: `${prefix}/qr-codes`, roles: ['admin','manager','user'] },
@@ -223,7 +223,6 @@ export function Header({ onMenuClick }: HeaderProps) {
     if (type === 'house') { return false ? '/demo/house-opp' : '/house-opp'; }
     if (type === 'newsletter') { return false ? '/demo/newsletter' : '/newsletter'; }
     if (type === 'allocation') { return false ? '/demo/residential-hub' : '/residential-hub'; }
-    if (type === 'license') { return false ? '/demo/license' : '/license'; }
     if (type === 'audit') { return false ? '/demo/audit' : '/audit'; }
     if (type === 'scan') { return false ? '/demo/audit' : '/audit'; }
     if (type === 'department') { return false ? '/demo/users' : '/users'; }
@@ -240,6 +239,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     const synonyms: Array<{ terms: string[]; label: string; path: string }> = [
       { terms: ['dashboard','home','main'], label: 'Dashboard', path: navItems.find(i=>i.label==='Dashboard')?.path || '/' },
       { terms: ['assets','asset','inventory'], label: 'Assets', path: navItems.find(i=>i.label==='Assets')?.path || '/assets' },
+      { terms: ['transfers','transfer','movement','relocation'], label: 'Transfers', path: navItems.find(i=>i.label==='Transfers')?.path || '/transfers' },
       { terms: ['properties','property','location','site'], label: 'Properties', path: navItems.find(i=>i.label==='Properties')?.path || '/properties' },
       { terms: ['qr','qrcodes','qr codes','scan'], label: 'QR Codes', path: navItems.find(i=>i.label==='QR Codes')?.path || '/qr-codes' },
       { terms: ['reports','report','export'], label: 'Reports', path: navItems.find(i=>i.label==='Reports')?.path || '/reports' },
@@ -278,7 +278,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   add(globalResults.users, 'Users', (u:any) => ({ label: u.name || u.email, sub: `${u.email} · ${u.role}${u.department ? ' · ' + u.department : ''}`, path: `${prefix}/users` }));
   add(globalResults.qrcodes, 'QR Codes', (q:any) => ({ label: q.id, sub: `${q.asset_id || q.assetId || ''} · ${q.property || ''}`, path: `${prefix}/qr-codes` }));
   add(globalResults.tickets, 'Tickets', (t:any) => ({ label: `${t.id} — ${t.title || ''}`.trim(), sub: `${t.status || ''}${t.assignee?` · ${t.assignee}`:''}${t.created_by?` · ${t.created_by}`:''}`, path: `${prefix}/tickets` }));
-  add(globalResults.approvals, 'Approvals', (a:any) => ({ label: `${a.id} — ${a.asset_id || ''}`.trim(), sub: `${a.status || ''}${a.department?` · ${a.department}`:''}`, path: `${prefix}/approvals` }));
+   add(globalResults.approvals, 'Approvals', (a:any) => ({ label: `${a.id} — ${a.asset_id || ''}`.trim(), sub: `${a.status || ''}${a.department?` · ${a.department}`:''}`, path: `${prefix}/approvals` }));
+   add(globalResults.transfers, 'Transfers', (t:any) => ({ label: `${t.transfer_code || t.id} — ${t.asset_code || ''}`.trim(), sub: `${t.status || ''} · ${t.reason || ''}`.trim(), path: `${prefix}/transfers` }));
     return out;
   }, [search, navItems, globalResults, prefix]);
 
@@ -317,28 +318,42 @@ export function Header({ onMenuClick }: HeaderProps) {
       }}
     >
        <DropdownMenuTrigger asChild>
-         <Button
-           aria-label="Open notifications"
-           variant="ghost"
-           size="sm"
+         <button
+           aria-label={`Notifications${unreadCount > 0 ? ` — ${unreadCount} unread` : ""}`}
            className={cn(
-             "relative flex items-center justify-center p-0 transition-all hover:scale-105",
-             isMobile 
-               ? "h-9 w-9 rounded-full bg-gradient-to-br from-primary/10 to-muted/70 shadow-sm hover:shadow-md" 
-               : "h-8 w-8 rounded-full bg-gradient-to-br from-primary/10 to-muted/70"
+             "relative flex items-center justify-center rounded-xl transition-all duration-200 outline-none",
+             "border border-transparent bg-transparent",
+             "hover:border-border/60 hover:bg-muted/60 hover:shadow-sm",
+             "focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1",
+             isMobile ? "h-9 w-9" : "h-8 w-8"
            )}
          >
-           {unreadCount > 0 ? (
-              <Sparkles className="h-4 w-4 text-primary" />
-           ) : (
-             <Bell className="h-4 w-4 text-muted-foreground" />
-           )}
+           {/* Bell icon — always consistent */}
+           <Bell
+             className={cn(
+               "h-[18px] w-[18px] transition-colors duration-200",
+               unreadCount > 0 ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+             )}
+             strokeWidth={1.8}
+           />
+
+           {/* Red notification badge */}
            {unreadCount > 0 && (
-             <span className="absolute -top-1 -right-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-1 text-[9px] leading-[14px] text-white shadow-lg ring-2 ring-background">
+             <span
+               aria-hidden="true"
+               className={cn(
+                 "absolute -top-1 -right-1 z-10",
+                 "flex min-w-[18px] h-[18px] items-center justify-center",
+                 "rounded-full bg-red-500 px-1",
+                 "text-[10px] font-bold leading-none text-white",
+                 "ring-2 ring-background shadow-sm",
+                 "animate-in zoom-in-75 duration-200"
+               )}
+             >
                {badgeLabel}
              </span>
            )}
-         </Button>
+         </button>
        </DropdownMenuTrigger>
        <DropdownMenuContent
          align="end"
@@ -397,7 +412,6 @@ export function Header({ onMenuClick }: HeaderProps) {
                   if (t === 'house') return <Home className="h-4 w-4 text-orange-500" />;
                   if (t === 'newsletter') return <Megaphone className="h-4 w-4 text-pink-500" />;
                   if (t === 'allocation') return <Users className="h-4 w-4 text-teal-500" />;
-                  if (t === 'license') return <SettingsIcon className="h-4 w-4 text-violet-500" />;
                   if (t === 'audit') return <ClipboardCheck className="h-4 w-4 text-red-500" />;
                   if (t === 'scan') return <QrCode className="h-4 w-4 text-lime-500" />;
                   if (t === 'department') return <Building2 className="h-4 w-4 text-fuchsia-500" />;
@@ -638,22 +652,47 @@ export function Header({ onMenuClick }: HeaderProps) {
                   )}
                 </div>
              </div>
-              <div className="flex items-center gap-3 md:gap-4">
-                <span className="hidden items-center gap-2 sm:inline-flex">
-                  <span className="greeting-icon flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary/15 to-sky-500/15 text-primary ring-1 ring-inset ring-primary/20 shadow-sm">
-                    <GreetingIcon className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="greeting-text bg-gradient-to-r from-primary via-sky-500 to-emerald-500 bg-clip-text text-sm font-bold tracking-tight text-transparent">
-                    {greeting}
-                  </span>
-                </span>
+              <div className="flex items-center gap-2 md:gap-3">
+
+                {/* ── Greeting ── */}
+                {fullName && (
+                  <div className={cn(
+                    "hidden sm:flex items-center gap-3 rounded-full px-3 py-1.5 transition-all duration-300",
+                    "border border-border/60 bg-background/80 backdrop-blur-sm shadow-sm",
+                    "hover:border-border hover:shadow-md hover:bg-card"
+                  )}>
+                    {/* Live status dot */}
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className={cn(
+                        "absolute inline-flex h-full w-full animate-ping rounded-full opacity-60",
+                        hour < 12 ? "bg-amber-400" : hour < 18 ? "bg-emerald-400" : "bg-violet-400"
+                      )} />
+                      <span className={cn(
+                        "relative inline-flex h-2 w-2 rounded-full",
+                        hour < 12 ? "bg-amber-400" : hour < 18 ? "bg-emerald-400" : "bg-violet-400"
+                      )} />
+                    </span>
+
+                    {/* Greeting text */}
+                    <span className="flex items-baseline gap-1.5 leading-none">
+                      <span className="text-xs text-muted-foreground font-normal whitespace-nowrap">
+                        {hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,"}
+                      </span>
+                      <span className="text-sm font-semibold text-foreground tracking-tight whitespace-nowrap">
+                        Tsegaye Alemu
+                      </span>
+                      <span className="inline-block origin-[70%_70%] animate-wave text-sm select-none">👋</span>
+                    </span>
+                  </div>
+                )}
+
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={toggleTheme}
-                  className="h-8 w-8 p-0 transition-all hover:bg-muted/70"
+                  className="h-8 w-8 p-0 rounded-full transition-all hover:bg-muted/70"
                 >
-                  {isDark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4 text-slate-600" />}
+                  {isDark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4 text-slate-500" />}
                 </Button>
                 {notificationsDropdown}
                 {userMenu}

@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { crudToast } from "@/lib/enterprise-feedback";
 import { isDemoMode } from "@/lib/demo";
 import {
   Calendar,
@@ -18,8 +19,19 @@ import {
   AlertTriangle,
   Edit,
   Trash2,
+  History,
+  PlusCircle,
+  Activity,
+  ArrowRightLeft,
+  UserCheck,
+  Wrench,
+  TrendingDown,
+  QrCode,
+  RefreshCw,
+  User,
 } from "lucide-react";
 import { getAssetById, deleteAsset, type Asset } from "@/services/assets";
+import { fetchLifecycleEvents, type LifecycleEvent } from "@/services/assetLifecycle";
 import { listProperties, type Property } from "@/services/properties";
 import { listFinalApproverPropsForUser } from "@/services/finalApprover";
 
@@ -45,6 +57,125 @@ function formatMoney(v: any) {
 
 function toDateString(v: any) {
   return v ? new Date(v).toLocaleDateString() : "—";
+}
+
+const EVENT_META: Record<string, { label: string; icon: any }> = {
+  created: { label: "Asset Created", icon: PlusCircle },
+  updated: { label: "Details Updated", icon: Edit },
+  status_changed: { label: "Status Changed", icon: RefreshCw },
+  condition_changed: { label: "Condition Changed", icon: Activity },
+  transferred: { label: "Transferred", icon: ArrowRightLeft },
+  owner_changed: { label: "Owner Changed", icon: UserCheck },
+  location_changed: { label: "Location Changed", icon: MapPin },
+  disposed: { label: "Disposed", icon: Trash2 },
+  retired: { label: "Retired", icon: RefreshCw },
+  maintenance_scheduled: { label: "Maintenance Scheduled", icon: Wrench },
+  maintenance_completed: { label: "Maintenance Completed", icon: Wrench },
+  depreciation_updated: { label: "Depreciation Updated", icon: TrendingDown },
+  value_updated: { label: "Value Updated", icon: TrendingDown },
+  qr_generated: { label: "QR Generated", icon: QrCode },
+  scanned: { label: "Scanned", icon: QrCode },
+  amc_updated: { label: "AMC Updated", icon: ShieldCheck },
+};
+
+function LifecycleTimeline({ assetId }: { assetId: string }) {
+  const [events, setEvents] = useState<LifecycleEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      if (!assetId) return;
+      try {
+        if (!isDemoMode()) {
+          const list = await fetchLifecycleEvents({ asset: assetId });
+          setEvents(list || []);
+        }
+      } catch (e: any) {
+        console.error("Failed to load lifecycle events", e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [assetId]);
+
+  if (loading) {
+    return (
+      <Card className="border border-border/60 shadow-sm rounded-2xl bg-card">
+        <CardHeader className="py-4 border-b border-border/60">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" /> Lifecycle Timeline
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 text-sm text-muted-foreground">
+          Loading events...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border border-border/60 shadow-sm rounded-2xl bg-card">
+      <CardHeader className="py-4 border-b border-border/60">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <History className="h-4 w-4 text-primary" /> Lifecycle Timeline
+          <span className="ml-auto text-xs font-normal text-muted-foreground">
+            {events.length} event{events.length === 1 ? "" : "s"}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4">
+        {events.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No lifecycle events recorded yet.
+          </p>
+        ) : (
+          <ol className="relative border-l border-border/60 pl-5 space-y-4">
+            {events.map((ev) => {
+              const meta = EVENT_META[ev.event_type] || {
+                label: (ev.event_type || "event").replace(/_/g, " "),
+                icon: History,
+              };
+              const Icon = meta.icon;
+              const oldVal = ev.old_value || null;
+              const newVal = ev.new_value || null;
+              return (
+                <li key={ev.id} className="relative">
+                  <span className="absolute -left-[27px] top-0.5 flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-background">
+                    <Icon className="h-3 w-3 text-primary" />
+                  </span>
+                  <div className="flex flex-wrap items-center justify-between gap-1">
+                    <span className="text-sm font-medium capitalize">
+                      {meta.label}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(ev.occurred_at || ev.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {ev.actor_name && (
+                      <span className="inline-flex items-center gap-1">
+                        <User className="h-3 w-3" /> {ev.actor_name}
+                      </span>
+                    )}
+                    {oldVal !== null && newVal !== null && (
+                      <span className="font-mono">
+                        {String(oldVal)} → {String(newVal)}
+                      </span>
+                    )}
+                  </div>
+                  {ev.message && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {ev.message}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function AssetDetails() {
@@ -147,7 +278,7 @@ export default function AssetDetails() {
         }
       } catch (e: any) {
         console.error(e);
-        toast.error(e.message || "Failed to load asset");
+        crudToast.error(e.message || "Failed to load asset");
       } finally {
         setLoading(false);
       }
@@ -202,22 +333,22 @@ export default function AssetDetails() {
     try {
       if (!isDemoMode()) {
         await deleteAsset(asset.id);
-        toast.success(`Asset ${asset.id} deleted`);
+        crudToast.deleted("Asset", asset.id);
       } else {
-        toast.info("Demo mode; deleted locally only");
+        crudToast.info("Demo mode; deleted locally only");
       }
       navigate("/assets");
     } catch (e: any) {
-      toast.error(e?.message || "Failed to delete asset");
+      crudToast.error(e?.message || "Failed to delete asset");
     }
   };
 
   const handleCopyId = async () => {
     try {
       await navigator.clipboard.writeText(asset!.id!);
-      toast.success("Asset ID copied");
+      crudToast.info("Asset ID copied");
     } catch {
-      toast.error("Copy failed");
+      crudToast.error("Copy failed");
     }
   };
 
@@ -515,6 +646,9 @@ export default function AssetDetails() {
           </CardContent>
         </Card>
       )}
+
+      {/* Lifecycle Timeline */}
+      <LifecycleTimeline assetId={asset.id} />
     </DetailPage>
   );
 }

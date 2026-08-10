@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getUser, type AppUser, deleteUser } from "@/services/users";
@@ -26,6 +27,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function UserDetails() {
+  const confirm = useConfirm();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [user, setUser] = useState<AppUser | null>(null);
@@ -54,13 +56,19 @@ export default function UserDetails() {
 
   const handleDelete = async () => {
     if (!user) return;
-    if (window.confirm(`Are you sure you want to delete user "${user.name}"?`)) {
+    const ok = await confirm({
+      title: "Delete User Account",
+      description: `Are you sure you want to delete user account "${user.name}"? This action cannot be undone.`,
+      variant: "danger",
+      confirmLabel: "Delete User",
+    });
+    if (ok) {
       try {
         await deleteUser(user.id);
-        toast.success("User deleted successfully");
+        crudToast.deleted("User", `User "${user.name}" deleted.`);
         navigate("/users");
       } catch (error: any) {
-        toast.error(error.message || "Failed to delete user");
+        crudToast.failed("delete user", error.message);
       }
     }
   };

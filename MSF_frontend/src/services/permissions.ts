@@ -148,10 +148,18 @@ export async function canUserEdit(
 
 // ── Role-based defaults ────────────────────────────────────────────────────
 
+// Normalize a raw role string into the lowercase role keys used by defaults
+// and gates. SUPER_ADMIN (Django superusers) is treated as admin.
+export function normalizeRole(roleRaw?: string): string {
+  const r = (roleRaw || "").toLowerCase().replace(/[\s-]+/g, "_").trim();
+  if (r === "super_admin" || r === "superadmin") return "admin";
+  return r;
+}
+
 export function roleDefaults(
   roleRaw?: string
 ): Record<PageKey, { v: boolean; e: boolean }> {
-  const role = (roleRaw || "").toLowerCase();
+  const role = normalizeRole(roleRaw);
   const base: Record<PageKey, { v: boolean; e: boolean }> = {
     assets: { v: false, e: false },
     properties: { v: false, e: false },
@@ -201,6 +209,9 @@ export function mergeDefaultsWithOverrides(
   overrides: Record<PageKey, { v: boolean; e: boolean }>
 ): Record<PageKey, { v: boolean; e: boolean }> {
   const d = roleDefaults(roleRaw);
+  // Admins always have full page access; explicit per-page rows (including
+  // stale can_view=false) can never downgrade them.
+  if (normalizeRole(roleRaw) === "admin") return d;
   const out: Record<PageKey, { v: boolean; e: boolean }> = { ...d };
   (Object.keys(overrides) as PageKey[]).forEach((k) => {
     out[k] = {

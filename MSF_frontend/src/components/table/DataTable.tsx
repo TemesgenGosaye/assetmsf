@@ -1,111 +1,37 @@
 /**
  * DataTable — Advanced reusable table component
  * Features: sorting, column visibility, density toggle, row selection,
- * sticky header, zebra rows, loading/empty states, pagination controls,
- * global search highlight, export to CSV.
+ * sticky header, skeleton loading, rich empty states, declarative column
+ * filters, global search highlight, status badges, centralized row actions,
+ * totals footer, export to CSV.
  */
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import type * as React from "react";
 import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  Settings2,
-  Download,
-  Rows3,
-  AlignJustify,
-  Search,
-  X,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   Loader2,
+  Search,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { RecordDetailSheet } from "./RecordDetailSheet";
+import { DataTableToolbar } from "./DataTableToolbar";
+import { DataTablePagination } from "./DataTablePagination";
+import { RowActionsMenu } from "./RowActionsMenu";
+import { StatusChip } from "@/components/ui/status-chip";
+import type {
+  CellCtx,
+  ColDef,
+  DataTableProps,
+  EmptyState,
+  SortDir,
+} from "./types";
 
-// ── Types ──────────────────────────────────────────────────────────────────
-export type SortDir = "asc" | "desc" | null;
-
-export type ColDef<T = any> = {
-  key: string;
-  header: string;
-  /** Width hint e.g. "w-32", "min-w-[180px]" */
-  width?: string;
-  /** Can this column be sorted? Default false */
-  sortable?: boolean;
-  /** Can this column be hidden? Default true */
-  hideable?: boolean;
-  /** Hidden by default? */
-  defaultHidden?: boolean;
-  /** Always show (cannot be hidden) */
-  pinned?: boolean;
-  /** Right-align cell content */
-  align?: "left" | "center" | "right";
-  /** Render function; receives row data */
-  cell?: (row: T, ctx: CellCtx) => React.ReactNode;
-  /** Value accessor for CSV export / search */
-  value?: (row: T) => string | number | null | undefined;
-};
-
-type CellCtx = {
-  dense: boolean;
-};
-
-export type DataTableProps<T = any> = {
-  /** Unique key for persisting preferences */
-  tableKey: string;
-  columns: ColDef<T>[];
-  data: T[];
-  /** Row unique key accessor */
-  rowKey: (row: T) => string;
-  loading?: boolean;
-  emptyMessage?: string;
-  emptyIcon?: React.ReactNode;
-  /** Show checkbox column for row selection */
-  selectable?: boolean;
-  onSelectionChange?: (selected: T[]) => void;
-  /** Show global search bar inside the table toolbar */
-  searchable?: boolean;
-  searchPlaceholder?: string;
-  /** Extra toolbar content (buttons etc.) placed left of column/density controls */
-  toolbarLeft?: React.ReactNode;
-  toolbarRight?: React.ReactNode;
-  /** CSV export file name (no extension) */
-  exportFileName?: string;
-  /** Client-side page size (0 = no pagination) */
-  pageSize?: number;
-  /** Class applied to the outer wrapper */
-  className?: string;
-  /** Controlled sort */
-  sortKey?: string;
-  sortDir?: SortDir;
-  onSort?: (key: string, dir: SortDir) => void;
-  /** Called when a data row is double-clicked */
-  onRowDoubleClick?: (row: T) => void;
-  /**
-   * Auto-wire double-click to open a RecordDetailSheet.
-   * When provided, the detail sheet is managed internally.
-   * `onRowDoubleClick` still fires alongside if also set.
-   */
-  recordDetail?: {
-    title?: string | ((row: T) => string);
-    subtitle?: string | ((row: T) => string);
-    icon?: React.ElementType;
-    badge?: ((row: T) => React.ReactNode) | React.ReactNode;
-  };
-};
+// ── Re-exports for backward compatibility ──────────────────────────────────
+export type { ColDef, DataTableProps, SortDir, CellCtx };
+export type { RowAction, FilterDef } from "./types";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function highlight(text: string, term: string) {
@@ -115,7 +41,7 @@ function highlight(text: string, term: string) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-yellow-200 dark:bg-yellow-700/60 rounded-sm px-0.5">
+      <mark className="rounded-sm bg-yellow-200/80 px-0.5 dark:bg-yellow-700/60">
         {text.slice(idx, idx + term.length)}
       </mark>
       {text.slice(idx + term.length)}
@@ -155,7 +81,9 @@ function downloadCsv(content: string, filename: string) {
 
 const LS_PREFIX = "dt:";
 
-function loadPrefs(key: string): { hidden: string[]; dense: boolean } {
+type Prefs = { hidden: string[]; dense: boolean };
+
+function loadPrefs(key: string): Prefs {
   try {
     const raw = localStorage.getItem(`${LS_PREFIX}${key}`);
     if (raw) return JSON.parse(raw);
@@ -163,10 +91,33 @@ function loadPrefs(key: string): { hidden: string[]; dense: boolean } {
   return { hidden: [], dense: false };
 }
 
-function savePrefs(key: string, prefs: { hidden: string[]; dense: boolean }) {
+function savePrefs(key: string, prefs: Prefs) {
   try {
     localStorage.setItem(`${LS_PREFIX}${key}`, JSON.stringify(prefs));
   } catch {}
+}
+
+function getFilterValue<T>(row: T, columns: ColDef<T>[], key: string): string {
+  const col = columns.find((c) => c.key === key);
+  const val = col?.value ? col.value(row) : (row as Record<string, any>)[key];
+  return val == null ? "" : String(val);
+}
+
+function BadgeCell<T>({ col, row }: { col: ColDef<T>; row: T }) {
+  let status: string | null | undefined;
+  if (typeof col.badge === "function") {
+    status = col.badge(row);
+  } else if (typeof col.badge === "string") {
+    status = col.badge;
+  } else if (col.badge === true) {
+    status = col.value
+      ? col.value(row)
+      : (row as Record<string, any>)[col.key];
+  }
+  if (status == null || status === "") {
+    return <span className="text-muted-foreground/50">—</span>;
+  }
+  return <StatusChip status={String(status)} size="sm" />;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -176,27 +127,36 @@ export function DataTable<T>({
   data,
   rowKey,
   loading = false,
+  title,
   emptyMessage = "No records found",
   emptyIcon,
+  emptyState,
+  loadingVariant = "skeleton",
   selectable = false,
   onSelectionChange,
   searchable = true,
   searchPlaceholder = "Search…",
+  filters = [],
+  rowActions,
+  rowActionsHeader = "Actions",
   toolbarLeft,
   toolbarRight,
   exportFileName,
   pageSize = 50,
+  hideToolbar = false,
   className,
   sortKey: controlledSortKey,
   sortDir: controlledSortDir,
   onSort,
+  onRowClick,
   onRowDoubleClick,
   recordDetail,
+  expandable,
 }: DataTableProps<T>) {
   // ── Prefs (dense, hidden cols) ─────────────────────────────────────────
-  const [prefs, setPrefsState] = useState(() => loadPrefs(tableKey));
+  const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs(tableKey));
   const updatePrefs = useCallback(
-    (patch: Partial<{ hidden: string[]; dense: boolean }>) => {
+    (patch: Partial<Prefs>) => {
       setPrefsState((prev) => {
         const next = { ...prev, ...patch };
         savePrefs(tableKey, next);
@@ -230,16 +190,16 @@ export function DataTable<T>({
             : "asc";
         onSort(key, next);
       } else {
-        setIntSortKey((prev) => {
-          if (prev !== key) {
-            setIntSortDir("asc");
-            return key;
-          }
-          return key;
-        });
         setIntSortDir((prev) =>
-          prev === "asc" ? "desc" : prev === "desc" ? null : "asc",
+          activeSortKey !== key
+            ? "asc"
+            : prev === "asc"
+              ? "desc"
+              : prev === "desc"
+                ? null
+                : "asc",
         );
+        setIntSortKey(key);
       }
     },
     [activeSortKey, activeSortDir, onSort],
@@ -247,7 +207,32 @@ export function DataTable<T>({
 
   // ── Search ────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
+
+  // ── Declarative column filters ────────────────────────────────────────
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>(
+    {},
+  );
+  const filterOptions = useMemo(() => {
+    const options: Record<string, { label: string; value: string }[]> = {};
+    for (const filter of filters) {
+      if (filter.options) {
+        options[filter.key] = filter.options;
+        continue;
+      }
+      const seen = new Set<string>();
+      const values: { label: string; value: string }[] = [];
+      for (const row of data) {
+        const value = getFilterValue(row, columns, filter.key);
+        if (value && !seen.has(value)) {
+          seen.add(value);
+          values.push({ label: value, value });
+        }
+      }
+      values.sort((a, b) => a.label.localeCompare(b.label));
+      options[filter.key] = values;
+    }
+    return options;
+  }, [filters, data, columns]);
 
   // ── Selection ─────────────────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -259,12 +244,6 @@ export function DataTable<T>({
       return next;
     });
   }, []);
-  const toggleAll = useCallback(() => {
-    const ids = data.map((r) => rowKey(r));
-    setSelected((prev) =>
-      prev.size === ids.length ? new Set() : new Set(ids),
-    );
-  }, [data, rowKey]);
 
   // Notify parent — must be useEffect, never useMemo, to avoid setState-during-render
   const prevSelectedRef = useRef<Set<string>>(new Set());
@@ -281,15 +260,35 @@ export function DataTable<T>({
     [columns, hidden],
   );
 
-  const hideableCols = useMemo(
-    () => columns.filter((c) => !c.pinned),
-    [columns],
+  const resetColumns = useCallback(() => {
+    updatePrefs({ hidden: [] });
+  }, [updatePrefs]);
+
+  const toggleColumn = useCallback(
+    (key: string) => {
+      updatePrefs({
+        hidden: hidden.includes(key)
+          ? hidden.filter((h) => h !== key)
+          : [...hidden, key],
+      });
+    },
+    [hidden, updatePrefs],
   );
 
   // ── Filtered + sorted data ────────────────────────────────────────────
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     let rows = data;
+    const active = Object.entries(activeFilters).filter(
+      ([, value]) => value !== "",
+    );
+    if (active.length > 0) {
+      rows = rows.filter((row) =>
+        active.every(
+          ([key, value]) => getFilterValue(row, columns, key) === value,
+        ),
+      );
+    }
     if (term) {
       rows = rows.filter((row) =>
         columns.some((c) => {
@@ -310,370 +309,459 @@ export function DataTable<T>({
       });
     }
     return rows;
-  }, [data, search, activeSortKey, activeSortDir, columns]);
+  }, [data, search, activeFilters, activeSortKey, activeSortDir, columns]);
+
+  const toggleAll = useCallback(() => {
+    const ids = filtered.map((r) => rowKey(r));
+    setSelected((prev) =>
+      prev.size === ids.length && ids.length > 0
+        ? new Set()
+        : new Set(ids),
+    );
+  }, [filtered, rowKey]);
 
   // ── Pagination ────────────────────────────────────────────────────────
   const [page, setPage] = useState(1);
   const [pageSizeState, setPageSizeState] = useState(pageSize);
   const effectivePageSize = pageSizeState > 0 ? pageSizeState : pageSize;
   const totalPages =
-    effectivePageSize > 0 ? Math.max(1, Math.ceil(filtered.length / effectivePageSize)) : 1;
+    effectivePageSize > 0
+      ? Math.max(1, Math.ceil(filtered.length / effectivePageSize))
+      : 1;
   const paged =
     effectivePageSize > 0
       ? filtered.slice((page - 1) * effectivePageSize, page * effectivePageSize)
       : filtered;
 
-  // reset page when filter changes or page size changes
-  useEffect(() => setPage(1), [filtered.length, search, effectivePageSize]);
+  // reset page when filter/search/page-size changes
+  useEffect(() => {
+    setPage(1);
+  }, [search, activeFilters, effectivePageSize, data]);
+
+  const safePage = Math.min(page, Math.max(totalPages, 1));
+  const start = filtered.length === 0 ? 0 : (safePage - 1) * effectivePageSize + 1;
+  const end = Math.min(safePage * effectivePageSize, filtered.length);
 
   const cellCtx: CellCtx = { dense };
-  const rowHeight = dense ? "h-8" : "h-10";
-  const textSize = dense ? "text-xs" : "text-sm";
-  const px = dense ? "px-3" : "px-4";
+  const rowHeight = dense ? "h-8" : "h-9";
+  const textSize = dense ? "text-xs" : "text-[13px]";
+  const px = dense ? "px-2.5" : "px-3";
+
+  const hasRowActions = !!rowActions;
+  const hasExpandable = !!expandable;
+  const cellCount =
+    visibleColumns.length + (selectable ? 1 : 0) + (hasRowActions ? 1 : 0) + (hasExpandable ? 1 : 0);
+
+  const resolvedEmptyState: EmptyState = emptyState ?? {
+    icon: emptyIcon ?? <Search className="h-10 w-10 opacity-20" />,
+    title: emptyMessage,
+    description: search
+      ? "Try a different search term or clear the filters."
+      : undefined,
+  };
+
+  const interactiveRow = !!(onRowClick || recordDetail || onRowDoubleClick);
+  
+  // ── Expandable rows state ─────────────────────────────────────────────────
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set(expandable?.defaultExpanded ?? []));
+  
+  const toggleRowExpansion = useCallback((id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleRowClick = (row: T, e: React.MouseEvent<HTMLTableRowElement>) => {
+    if (!onRowClick) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, a, input, select, label, [role='checkbox']")) {
+      return;
+    }
+    onRowClick(row);
+  };
+
+  const hasTotals = columns.some((c) => c.footer);
 
   return (
     <div
       className={cn(
-        "group/table flex flex-col overflow-hidden border border-border bg-card dark:border-border dark:bg-card shadow-sm",
+        "group/table flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm",
         className,
       )}
     >
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-2 border-b border-border dark:border-border bg-muted dark:bg-muted px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 items-center gap-2">
-          {searchable && (
-            <div className="relative max-w-sm flex-1">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                ref={searchRef}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={searchPlaceholder}
-                 className="h-8 rounded-sm border-border dark:border-border bg-card dark:bg-card pl-8 pr-7 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-blue-500"
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          )}
-          {toolbarLeft}
-        </div>
-        <div className="flex items-center gap-1.5">
-          {toolbarRight}
-          {/* Density toggle */}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 w-8 rounded-sm p-0 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800"
-            title={dense ? "Comfortable view" : "Compact view"}
-            onClick={() => updatePrefs({ dense: !dense })}
-          >
-            {dense ? (
-              <AlignJustify className="h-4 w-4" />
-            ) : (
-              <Rows3 className="h-4 w-4" />
-            )}
-          </Button>
-          {/* Column chooser */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 w-8 rounded-sm p-0 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800"
-                title="Toggle columns"
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-52 rounded-sm border-slate-300 dark:border-border"
-            >
-              <DropdownMenuLabel className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                Columns
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {hideableCols.map((c) => (
-                <DropdownMenuCheckboxItem
-                  key={c.key}
-                  checked={!hidden.includes(c.key)}
-                  onCheckedChange={(v) => {
-                    const next = v
-                      ? hidden.filter((h) => h !== c.key)
-                      : [...hidden, c.key];
-                    updatePrefs({ hidden: next });
-                  }}
-                >
-                  {c.header}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {/* Export CSV */}
-          {exportFileName && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 rounded-sm p-0 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800"
-              title="Export CSV"
-              onClick={() =>
-                downloadCsv(toCsv(columns, filtered), exportFileName)
-              }
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </div>
+      {!hideToolbar && (
+        <DataTableToolbar
+          title={title}
+          searchable={searchable}
+          search={search}
+          onSearch={setSearch}
+          searchPlaceholder={searchPlaceholder}
+          filters={filters}
+          activeFilters={activeFilters}
+          onFilterChange={(key, value) =>
+            setActiveFilters((prev) => ({ ...prev, [key]: value }))
+          }
+          filterOptions={filterOptions}
+          toolbarLeft={toolbarLeft}
+          toolbarRight={toolbarRight}
+          dense={dense}
+          onToggleDense={() => updatePrefs({ dense: !dense })}
+          columns={columns}
+          hidden={hidden}
+          onToggleColumn={toggleColumn}
+          onResetColumns={resetColumns}
+          exportFileName={exportFileName}
+          onExport={() => downloadCsv(toCsv(columns, filtered), exportFileName!)}
+        />
+      )}
 
       {/* ── Table ───────────────────────────────────────────────────── */}
       <div className="overflow-auto [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80 [&::-webkit-scrollbar-track]:bg-transparent">
         <table className="w-full caption-bottom border-separate border-spacing-0">
-          <thead className="sticky top-0 z-10 border-b border-border bg-muted dark:border-border dark:bg-muted">
+          <thead className="sticky top-0 z-10 bg-muted">
             <tr>
               {selectable && (
-                <th className={cn("w-10 pl-4", rowHeight)}>
+                <th
+                  scope="col"
+                  className={cn(
+                    "w-10 border-b-2 border-r border-border bg-muted pl-4 pr-2",
+                    rowHeight,
+                  )}
+                >
                   <Checkbox
-                    checked={selected.size > 0 && selected.size === data.length}
+                    checked={
+                      filtered.length > 0 &&
+                      selected.size > 0 &&
+                      filtered.every((r) => selected.has(rowKey(r)))
+                    }
                     onCheckedChange={toggleAll}
-                    aria-label="Select all"
+                    aria-label="Select all rows"
                     className="translate-y-px"
                   />
                 </th>
               )}
-              {visibleColumns.map((col, i) => (
-                <th
-                  key={col.key}
-                  className={cn(
-                     "select-none whitespace-nowrap border-b border-r border-border bg-muted text-[11px] font-medium text-slate-700 dark:border-border dark:bg-muted dark:text-slate-200 last:border-r-0",
-                    "align-middle",
-                    rowHeight,
-                    px,
-                    col.align === "right"
-                      ? "text-right"
-                      : col.align === "center"
-                        ? "text-center"
-                        : "text-left",
-                    col.sortable &&
-                      "cursor-pointer hover:text-foreground transition-colors",
-                    col.width,
-                    i === 0 && !selectable && "pl-5",
-                    i === visibleColumns.length - 1 && "pr-5",
-                  )}
-                  onClick={() => col.sortable && handleSort(col.key)}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    {col.header}
-                    {col.sortable &&
-                      (activeSortKey === col.key ? (
-                        activeSortDir === "asc" ? (
-                          <ChevronUp className="h-3 w-3 shrink-0 text-primary" />
-                        ) : activeSortDir === "desc" ? (
-                          <ChevronDown className="h-3 w-3 shrink-0 text-primary" />
-                        ) : (
-                          <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40" />
-                        )
-                      ) : (
-                        <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40" />
-                      ))}
-                  </span>
-                </th>
-              ))}
+               {hasExpandable && (
+                 <th
+                   scope="col"
+                   className={cn(
+                     "w-10 border-b-2 border-r border-border bg-muted",
+                     rowHeight,
+                   )}
+                 />
+               )}
+               {visibleColumns.map((col, i) => (
+                 <th
+                   key={col.key}
+                   scope="col"
+                   aria-sort={
+                     activeSortKey === col.key
+                       ? activeSortDir === "asc"
+                         ? "ascending"
+                         : activeSortDir === "desc"
+                           ? "descending"
+                           : "none"
+                       : undefined
+                   }
+                   className={cn(
+                     "select-none whitespace-nowrap border-b-2 border-r border-border bg-muted align-middle text-[11px] font-bold uppercase tracking-wider text-muted-foreground last:border-r-0",
+                     rowHeight,
+                     px,
+                     col.align === "right"
+                       ? "text-right"
+                       : col.align === "center"
+                         ? "text-center"
+                         : "text-left",
+                     col.sortable &&
+                       "cursor-pointer transition-colors hover:bg-blue-50 dark:hover:bg-blue-500/10 hover:text-foreground",
+                     col.width,
+                     i === 0 && !selectable && !hasExpandable && "pl-4",
+                     i === visibleColumns.length - 1 && "pr-4",
+                   )}
+                   onClick={() => col.sortable && handleSort(col.key)}
+                 >
+                   {col.sortable ? (
+                     <button
+                       type="button"
+                       className="inline-flex items-center gap-1.5 uppercase tracking-wider outline-none"
+                     >
+                       {col.header}
+                       {activeSortKey === col.key ? (
+                         activeSortDir === "asc" ? (
+                           <ChevronUp className="h-3 w-3 shrink-0 text-primary" />
+                         ) : activeSortDir === "desc" ? (
+                           <ChevronDown className="h-3 w-3 shrink-0 text-primary" />
+                         ) : (
+                           <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40" />
+                         )
+                       ) : (
+                         <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40" />
+                       )}
+                     </button>
+                   ) : (
+                     <span className="inline-flex items-center gap-1.5 uppercase tracking-wider">
+                       {col.header}
+                     </span>
+                   )}
+                 </th>
+               ))}
+               {hasRowActions && (
+                 <th
+                   scope="col"
+                   className={cn(
+                     "border-b-2 border-l border-border bg-muted pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground",
+                     rowHeight,
+                   )}
+                 >
+                   {rowActionsHeader}
+                 </th>
+               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border/40">
-            {loading ? (
+
+          <tbody className="divide-y divide-border">
+            {loading && loadingVariant === "spinner" ? (
               <tr>
                 <td
-                  colSpan={visibleColumns.length + (selectable ? 1 : 0)}
+                  colSpan={cellCount}
                   className="py-20 text-center"
                 >
                   <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                    <Loader2 className="h-7 w-7 animate-spin" />
-                    <p className={textSize}>Loading…</p>
+                    <Loader2 className="h-7 w-7 animate-spin text-primary/70" />
+                    <p className="text-sm">Loading…</p>
                   </div>
                 </td>
               </tr>
+            ) : loading ? (
+              Array.from({ length: 6 }).map((_, ri) => (
+                <tr key={`skeleton-${ri}`} className="bg-background">
+                  {selectable && (
+                    <td className={cn("w-10 border-r border-border pl-4 pr-2", rowHeight)}>
+                      <div className="h-4 w-4 animate-pulse rounded bg-muted" />
+                    </td>
+                  )}
+                  {visibleColumns.map((col, ci) => (
+                    <td key={col.key} className={cn(textSize, rowHeight, px, col.align === "right" ? "text-right" : "text-left", col.width, "border-r border-border last:border-r-0")}>
+                      <div
+                        className={cn(
+                          "h-3.5 animate-pulse rounded-full bg-muted",
+                          ci % 3 === 0 ? "w-3/4" : ci % 3 === 1 ? "w-1/2" : "w-2/3",
+                        )}
+                      />
+                    </td>
+                  ))}
+                  {hasRowActions && (
+                    <td className={cn("border-l border-border pr-3 text-right", rowHeight)}>
+                      <div className="ml-auto h-8 w-8 animate-pulse rounded-full bg-muted" />
+                    </td>
+                  )}
+                </tr>
+              ))
             ) : paged.length === 0 ? (
               <tr>
-                <td
-                  colSpan={visibleColumns.length + (selectable ? 1 : 0)}
-                  className="py-20 text-center"
-                >
-                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                    {emptyIcon ?? <Search className="h-10 w-10 opacity-20" />}
-                    <p className="text-sm font-medium">{emptyMessage}</p>
-                    {search && (
-                      <p className="text-xs">
-                        Try a different search term or clear the filter.
+                <td colSpan={cellCount} className="px-4 py-16 text-center">
+                  <div className="mx-auto flex max-w-sm flex-col items-center gap-3 text-muted-foreground">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/70">
+                      {resolvedEmptyState.icon}
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {resolvedEmptyState.title}
+                    </p>
+                    {resolvedEmptyState.description && (
+                      <p className="text-xs text-muted-foreground/80">
+                        {resolvedEmptyState.description}
                       </p>
                     )}
+                    {resolvedEmptyState.action}
                   </div>
                 </td>
               </tr>
-            ) : (
-              paged.map((row, ri) => {
-                const id = rowKey(row);
-                const isSelected = selected.has(id);
-                return (
-                  <tr
-                    key={id}
-                    onDoubleClick={() => {
-                      if (recordDetail) {
-                        setDetailRecord(row);
-                        setDetailOpen(true);
-                      }
-                      onRowDoubleClick?.(row);
-                    }}
+             ) : (
+               paged.map((row) => {
+                 const id = rowKey(row);
+                 const isSelected = selected.has(id);
+                 const actions = rowActions?.(row);
+                 const isExpanded = expandedRows.has(id);
+                 
+                 return (
+                   <>
+                     <tr
+                       key={id}
+                       onClick={(e) => handleRowClick(row, e)}
+                       onDoubleClick={() => {
+                         if (recordDetail) {
+                           setDetailRecord(row);
+                           setDetailOpen(true);
+                         }
+                         onRowDoubleClick?.(row);
+                       }}
+                       tabIndex={interactiveRow ? 0 : undefined}
+                       onKeyDown={
+                         interactiveRow
+                           ? (e) => {
+                               if (e.key === "Enter") {
+                                 if (recordDetail) {
+                                   setDetailRecord(row);
+                                   setDetailOpen(true);
+                                 }
+                                 onRowClick?.(row);
+                               }
+                             }
+                           : undefined
+                       }
+                       data-state={isSelected ? "selected" : undefined}
+                       className={cn(
+                         "group transition-colors duration-100",
+                         "bg-background",
+                         isSelected
+                           ? "bg-blue-100/70 dark:bg-blue-500/20 hover:bg-blue-100/80 dark:hover:bg-blue-500/25"
+                           : "hover:bg-blue-50 dark:hover:bg-blue-500/15",
+                         interactiveRow && "cursor-pointer",
+                       )}
+                     >
+                       {hasExpandable && (
+                         <td className={cn("w-10 border-r border-border", rowHeight)}>
+                           <button
+                             type="button"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               toggleRowExpansion(id);
+                             }}
+                             className="flex h-full w-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                             aria-label={isExpanded ? "Collapse row" : "Expand row"}
+                           >
+                             {isExpanded ? (
+                               <ChevronUp className="h-4 w-4 shrink-0" />
+                             ) : (
+                               <ChevronDown className="h-4 w-4 shrink-0" />
+                             )}
+                           </button>
+                         </td>
+                       )}
+                       {selectable && (
+                         <td className={cn("w-10 border-r border-border pl-4 pr-2", rowHeight)}>
+                           <Checkbox
+                             checked={isSelected}
+                             onCheckedChange={() => toggleRow(id, row)}
+                             aria-label="Select row"
+                             className="translate-y-px"
+                           />
+                         </td>
+                       )}
+                       {visibleColumns.map((col, ci) => (
+                         <td
+                           key={col.key}
+                           className={cn(
+                             textSize,
+                             rowHeight,
+                             px,
+                             "border-r border-border align-middle text-foreground/90 last:border-r-0",
+                             col.align === "right"
+                               ? "text-right"
+                               : col.align === "center"
+                                 ? "text-center"
+                                 : "text-left",
+                             col.width,
+                             ci === 0 && !selectable && !hasExpandable && "pl-4",
+                             ci === visibleColumns.length - 1 && "pr-4",
+                           )}
+                         >
+                           {col.cell ? (
+                             col.cell(row, cellCtx)
+                           ) : col.badge !== undefined ? (
+                             <BadgeCell col={col} row={row} />
+                           ) : col.value ? (
+                             (() => {
+                               const val = col.value(row);
+                               return val == null ? (
+                                 <span className="text-muted-foreground/50">—</span>
+                               ) : search ? (
+                                 <span className="font-medium leading-5 text-foreground">
+                                   {highlight(String(val), search)}
+                                 </span>
+                               ) : (
+                                 <span className="font-medium leading-5 text-foreground">
+                                   {String(val)}
+                                 </span>
+                               );
+                             })()
+                           ) : null}
+                         </td>
+                       ))}
+                       {hasRowActions && (
+                         <td className={cn("border-l border-border pr-3 text-right", rowHeight)}>
+                           {actions && actions.length > 0 && (
+                             <RowActionsMenu row={row} actions={actions} />
+                           )}
+                         </td>
+                       )}
+                     </tr>
+                     {hasExpandable && isExpanded && (
+                       <tr key={`${id}-expanded`} className="bg-muted/50">
+                         <td colSpan={cellCount} className="p-4">
+                           {expandable.expandableContent(row)}
+                         </td>
+                       </tr>
+                     )}
+                   </>
+                 );
+               })
+             )}
+          </tbody>
+
+          {hasTotals && !loading && filtered.length > 0 && (
+            <tfoot className="bg-muted/40">
+              <tr>
+                {selectable && (
+                  <td className={cn("w-10 border-r border-border pl-4 pr-2", rowHeight)} />
+                )}
+                {visibleColumns.map((col, i) => (
+                  <td
+                    key={col.key}
                     className={cn(
-                      "group transition-colors duration-100",
-                      "bg-card dark:bg-card",
-                      isSelected && "bg-muted dark:bg-muted",
-                      "hover:bg-muted dark:hover:bg-muted",
-                      onRowDoubleClick && "cursor-pointer select-none",
+                      "border-t-2 border-r border-border font-semibold text-foreground last:border-r-0",
+                      textSize,
+                      rowHeight,
+                      px,
+                      col.align === "right"
+                        ? "text-right"
+                        : col.align === "center"
+                          ? "text-center"
+                          : "text-left",
+                      i === 0 && !selectable && "pl-4",
                     )}
                   >
-                    {selectable && (
-                      <td className={cn("w-10 pl-4", rowHeight)}>
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleRow(id, row)}
-                          aria-label="Select row"
-                          className="translate-y-px"
-                        />
-                      </td>
-                    )}
-                    {visibleColumns.map((col, ci) => (
-                      <td
-                        key={col.key}
-                        className={cn(
-                          textSize,
-                          rowHeight,
-                          px,
-                          "border-b border-r border-slate-200 dark:border-border last:border-r-0",
-                          "text-slate-700 dark:text-slate-200",
-                          "align-middle",
-                          col.align === "right"
-                            ? "text-right"
-                            : col.align === "center"
-                              ? "text-center"
-                              : "text-left",
-                          col.width,
-                          ci === 0 && !selectable && "pl-5",
-                          ci === visibleColumns.length - 1 && "pr-5",
-                        )}
-                      >
-                        {col.cell
-                          ? col.cell(row, cellCtx)
-                          : col.value
-                            ? (() => {
-                                const val = col.value(row);
-                                return val == null ? (
-                                  <span className="text-muted-foreground/50">
-                                    —
-                                  </span>
-                                ) : search ? (
-                                  <span className="font-medium text-slate-800 dark:text-slate-100 leading-5">
-                                    {highlight(String(val), search)}
-                                  </span>
-                                ) : (
-                                  <span className="font-medium text-slate-800 dark:text-slate-100 leading-5">
-                                    {String(val)}
-                                  </span>
-                                );
-                              })()
-                            : null}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
+                    {col.footer ? col.footer(filtered) : ""}
+                  </td>
+                ))}
+                {hasRowActions && (
+                  <td className={cn("border-l border-border pr-3", rowHeight)} />
+                )}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
       {/* ── Footer: count + pagination ─────────────────────────────── */}
-      {!loading && filtered.length > 0 && (
-        <div className="flex items-center justify-between border-t border-border dark:border-border bg-muted dark:bg-muted px-4 py-2 text-xs text-slate-600 dark:text-slate-300">
-          <span>
-            {selected.size > 0 && (
-              <span className="font-semibold text-foreground mr-2">
-                {selected.size} selected ·
-              </span>
-            )}
-            {filtered.length} record{filtered.length !== 1 ? "s" : ""}
-            {search && ` (filtered from ${data.length})`}
-          </span>
-          {effectivePageSize > 0 && totalPages > 0 && (
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground">Rows per page:</span>
-                <select
-                  value={effectivePageSize}
-                  onChange={(e) => {
-                    setPageSizeState(Number(e.target.value));
-                  }}
-                  className="h-7 rounded-sm border border-border bg-card px-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  {[10, 25, 50, 100].map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                  {pageSize > 0 && ![10, 25, 50, 100].includes(pageSize) && (
-                    <option value={pageSize}>{pageSize}</option>
-                  )}
-                </select>
-              </div>
-              <div className="flex items-center gap-1 rounded-sm border border-border dark:border-border bg-card dark:bg-card p-1">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 rounded-sm"
-                  disabled={page === 1}
-                  onClick={() => setPage(1)}
-                >
-                  <ChevronsLeft className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 rounded-sm"
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </Button>
-                <span className="px-2 text-slate-700 dark:text-slate-200 tabular-nums text-xs whitespace-nowrap">
-                  Page {page} of {totalPages}
-                </span>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 rounded-sm"
-                  disabled={page === totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 rounded-sm"
-                  disabled={page === totalPages}
-                  onClick={() => setPage(totalPages)}
-                >
-                  <ChevronsRight className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+      {!loading && filtered.length > 0 && effectivePageSize > 0 && (
+        <DataTablePagination
+          currentPage={safePage}
+          totalPages={totalPages}
+          start={start}
+          end={end}
+          total={filtered.length}
+          pageSize={effectivePageSize}
+          onPageChange={(p) => setPage(p)}
+          onPageSizeChange={(size) => {
+            setPageSizeState(size);
+            setPage(1);
+          }}
+          selectedCount={selected.size}
+        />
       )}
 
       {/* ── Record Detail Sheet ──────────────────────────────────────── */}
@@ -697,4 +785,3 @@ export function DataTable<T>({
 }
 
 export default DataTable;
-

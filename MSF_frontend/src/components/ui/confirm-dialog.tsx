@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, Info, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ConfirmOptions = {
@@ -25,7 +25,7 @@ export type ConfirmOptions = {
   description?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
-  variant?: "danger" | "default";
+  variant?: "success" | "danger" | "warning" | "info" | "default";
   /** When set, the user must type this exact string to enable the confirm button. */
   requireText?: string;
   /** Optional icon override. */
@@ -81,7 +81,48 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     }
   }, [options, typed, close]);
 
-  const isDanger = options?.variant !== "default";
+  const variant = options?.variant || "default";
+
+  const config = useMemo(() => {
+    switch (variant) {
+      case "success":
+        return {
+          icon: <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />,
+          colorClass: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20 dark:bg-emerald-950/30",
+          buttonVariant: "default" as const,
+          btnClass: "bg-emerald-600 hover:bg-emerald-700 text-white"
+        };
+      case "danger":
+        return {
+          icon: <XCircle className="h-5 w-5 text-rose-600 dark:text-rose-400" />,
+          colorClass: "bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:bg-rose-950/30",
+          buttonVariant: "destructive" as const,
+          btnClass: ""
+        };
+      case "warning":
+        return {
+          icon: <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />,
+          colorClass: "bg-amber-500/10 text-amber-600 ring-amber-500/20 dark:bg-amber-950/30",
+          buttonVariant: "default" as const,
+          btnClass: "bg-amber-600 hover:bg-amber-700 text-white"
+        };
+      case "info":
+        return {
+          icon: <Info className="h-5 w-5 text-sky-600 dark:text-sky-400" />,
+          colorClass: "bg-sky-500/10 text-sky-600 ring-sky-500/20 dark:bg-sky-950/30",
+          buttonVariant: "default" as const,
+          btnClass: "bg-sky-600 hover:bg-sky-700 text-white"
+        };
+      default:
+        return {
+          icon: <AlertTriangle className="h-5 w-5 text-primary" />,
+          colorClass: "bg-primary/10 text-primary ring-primary/20",
+          buttonVariant: "default" as const,
+          btnClass: ""
+        };
+    }
+  }, [variant]);
+
   const requireMatch =
     options?.requireText != null && typed === options.requireText;
   const confirmDisabled =
@@ -103,12 +144,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <span
               className={cn(
                 "flex h-11 w-11 items-center justify-center rounded-2xl ring-1 ring-inset",
-                isDanger
-                  ? "bg-destructive/10 text-destructive ring-destructive/20"
-                  : "bg-primary/10 text-primary ring-primary/20",
+                config.colorClass
               )}
             >
-              {options?.icon ?? <AlertTriangle className="h-5 w-5" />}
+              {options?.icon ?? config.icon}
             </span>
             <div className="space-y-1">
               <DialogTitle className="text-base font-semibold text-foreground">
@@ -159,13 +198,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             </Button>
             <Button
               type="button"
-              variant={isDanger ? "destructive" : "default"}
+              variant={config.buttonVariant}
               onClick={handleConfirm}
               disabled={confirmDisabled}
-              className="w-full sm:w-auto"
+              className={cn("w-full sm:w-auto", config.btnClass)}
             >
               {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {options?.confirmLabel ?? (isDanger ? "Delete" : "Confirm")}
+              {options?.confirmLabel ?? (variant === "danger" ? "Delete" : "Confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

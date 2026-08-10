@@ -21,12 +21,13 @@ import {
   getRankedQueue, listAllocationLogs, updateApplicationStatus,
   batchAllocateAll, type BatchAllocateResult,
   type HouseApplication, type ApplicationStatus,
+  type ScoreBreakdown, type CriterionContribution,
 } from "@/services/houseApplication";
 import {
   ArrowLeft, ArrowRight, Award, BarChart3, CheckCircle2, Clock3,
   FileText, Home, Inbox, Loader2, Paperclip, RefreshCw, Search, Send,
   ShieldCheck, Sparkles, Target, TrendingUp, Trophy, UserRound, Users,
-  Zap, Eye, XCircle, AlertTriangle,
+  Zap, Eye, XCircle, AlertTriangle, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 type QueueRow = HouseApplication & {
@@ -44,12 +45,11 @@ const CATEGORY_BADGE: Record<string, string> = {
 };
 
 const STATUS_TABS = [
-  { value: "all", label: "All Queued", icon: Inbox },
+  { value: "all", label: "All Active", icon: Inbox },
   { value: "Submitted", label: "Submitted", icon: Send },
   { value: "Under Review", label: "Under Review", icon: Clock3 },
   { value: "Verified", label: "Verified", icon: ShieldCheck },
   { value: "Waiting for Allocation", label: "Waiting", icon: Target },
-  { value: "Allocated", label: "Allocated", icon: Home },
 ];
 
 
@@ -98,6 +98,133 @@ function ApplicantAvatar({ name, id }: { name: string; id?: string }) {
   );
 }
 
+// ─── Score breakdown dialog ───────────────────────────────────────────────
+const CRITERION_LABELS: Record<string, string> = {
+  job_grade: "Job Grade",
+  years_of_service: "Years of Service",
+  family_size: "Family Size",
+  disability: "Disability",
+  fifo: "Waiting Time (FIFO)",
+  marital_status: "Marital Status",
+  employment_type: "Employment Type",
+  medical_priority: "Medical Priority",
+};
+
+function formatRawValue(raw: unknown): string {
+  if (typeof raw === "boolean") return raw ? "Yes" : "No";
+  if (raw === null || raw === undefined || raw === "") return "—";
+  return String(raw);
+}
+
+function BreakdownDialog({ app, onClose }: { app: HouseApplication | null; onClose: () => void }) {
+  const bd = app?.score_breakdown;
+
+  const rows = useMemo(() => {
+    if (!bd) return [];
+    return (Object.keys(CRITERION_LABELS) as (keyof typeof CRITERION_LABELS)[])
+      .map((key) => {
+        const c = bd[key] as CriterionContribution | undefined;
+        if (!c || typeof c !== "object" || c.normalised === undefined) return null;
+        return {
+          key,
+          label: CRITERION_LABELS[key],
+          raw: formatRawValue(c.raw),
+          weight: Number(c.weight) || 0,
+          normalised: Number(c.normalised) || 0,
+          contribution: Number(c.contribution) || 0,
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [bd]);
+
+  const reasons = bd?.recommendation_reasons ?? [];
+  const topsis = bd?.topsis_closeness ?? null;
+
+  return (
+    <Dialog open={app !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg border-slate-200 dark:border-white/10 bg-white/95 dark:bg-slate-950/95 backdrop-blur-2xl text-slate-800 dark:text-slate-200">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-3 text-xl font-black text-slate-900 dark:text-white">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 text-primary border border-primary/30 shadow-[0_0_15px_rgba(var(--primary),0.3)]">
+              <BarChart3 className="h-5 w-5" />
+            </div>
+            Score Breakdown
+          </DialogTitle>
+          <DialogDescription className="text-slate-500 dark:text-slate-400 font-semibold text-sm pt-1">
+            {app?.employee_name} · {app?.employee_id} · {app?.application_no}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[440px] space-y-4 overflow-y-auto pr-2 custom-scrollbar mt-2">
+          <div className="flex items-center justify-between rounded-2xl border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-white/5 p-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Priority Score</p>
+              <p className="text-3xl font-black tabular-nums text-slate-900 dark:text-white">
+                {Number(app?.priority_score || 0).toFixed(2)}
+              </p>
+            </div>
+            {topsis != null && (
+              <div className="text-right">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">TOPSIS Confidence</p>
+                <p className="text-xl font-black text-emerald-500">{Math.round(topsis * 100)}%</p>
+              </div>
+            )}
+          </div>
+
+          {rows.length > 0 ? (
+            <div className="space-y-3">
+              {rows.map((r) => {
+                const pct = Math.min(100, Math.max(0, r.normalised * 100));
+                const color = r.contribution >= 0 ? "#10b981" : "#f43f5e";
+                return (
+                  <div key={r.key} className="rounded-xl border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3.5">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="truncate text-xs font-bold text-slate-900 dark:text-white">{r.label}</span>
+                      <span className="shrink-0 text-xs font-black tabular-nums text-slate-900 dark:text-white">
+                        +{r.contribution.toFixed(2)}
+                        <span className="text-slate-500 font-medium"> / {r.weight}</span>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                        <div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${pct}%`, backgroundColor: color }} />
+                      </div>
+                      <span className="w-10 shrink-0 text-right text-[10px] text-slate-500 font-bold tabular-nums">
+                        {Math.round(r.normalised * 100)}%
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                      Raw: <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{r.raw}</span>
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="py-6 text-center text-xs text-slate-500 dark:text-slate-400 font-semibold">
+              No score breakdown computed yet. Open the application and run <strong>Recalculate</strong>.
+            </p>
+          )}
+
+          {reasons.length > 0 && (
+            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4">
+              <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-300 mb-2">
+                <Sparkles className="h-3.5 w-3.5" /> Engine Recommendation
+              </p>
+              <ul className="space-y-1">
+                {reasons.map((r) => (
+                  <li key={r} className="flex items-start gap-1.5 text-[11px] leading-relaxed text-emerald-800 dark:text-emerald-100/80">
+                    <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" />{r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function HouseQueuePage() {
   const navigate = useNavigate();
   const [applications, setApplications] = useState<HouseApplication[]>([]);
@@ -107,6 +234,7 @@ export default function HouseQueuePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<HouseApplication | null>(null);
+  const [breakdownApp, setBreakdownApp] = useState<HouseApplication | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchResult, setBatchResult] = useState<{ allocated: BatchAllocateResult[]; skipped: BatchAllocateResult[] } | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
@@ -161,10 +289,7 @@ export default function HouseQueuePage() {
         ...app,
         queuePosition: app.queue_position ?? index + 1,
         queueTimestamp: app.submitted_at || app.created_at,
-      }))
-      .filter((app) =>
-        ["Submitted", "Under Review", "Verified", "Waiting for Allocation", "Allocated"].includes(app.status)
-      );
+      }));
 
     if (statusTab !== "all") {
       list = list.filter((app) => app.status === statusTab);
@@ -299,6 +424,21 @@ export default function HouseQueuePage() {
         cell: (app) => app.requested_house_category ? <CategoryBadge category={app.requested_house_category} /> : <Badge variant="outline" className="text-xs border-slate-200 dark:border-white/10 text-slate-600">\u2014</Badge>,
       },
       {
+        key: "allocated_house",
+        header: "Allocated To",
+        width: "min-w-[140px]",
+        sortable: true,
+        value: (app) => app.allocated_house || "",
+        cell: (app) => app.allocated_house ? (
+          <div className="flex items-center gap-1.5">
+            <Home className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+            <span className="truncate text-xs font-bold text-emerald-600 dark:text-emerald-300">{app.allocated_house}</span>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-600 dark:text-slate-400">\u2014</span>
+        ),
+      },
+      {
         key: "status",
         header: "Status",
         width: "w-32",
@@ -322,13 +462,26 @@ export default function HouseQueuePage() {
       {
         key: "actions",
         header: "Actions",
-        width: "w-52",
+        width: "w-64",
         align: "right",
         pinned: true,
         cell: (app) => {
           const isLoading = actionLoading === app.id;
           return (
             <div className="flex items-center justify-end gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 gap-1.5 text-xs font-bold text-violet-400 hover:bg-violet-500/20 border-violet-500/30 border shadow-sm"
+                disabled={isLoading}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setBreakdownApp(app);
+                }}
+              >
+                <BarChart3 className="h-3 w-3" />
+                Score
+              </Button>
               {app.status === "Submitted" && (
                 <Button
                   size="sm"
@@ -387,6 +540,70 @@ export default function HouseQueuePage() {
     return counts;
   }, [applications]);
 
+  // ── Expandable row content ─────────────────────────────────────────────────
+  const renderExpandedContent = useCallback((app: QueueRow) => (
+    <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-white/10">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+        {/* Applicant Info */}
+        <div className="space-y-2">
+          <h4 className="font-bold text-slate-900 dark:text-white">Applicant Details</h4>
+          <div className="space-y-1 text-slate-600 dark:text-slate-400">
+            <p><span className="font-medium text-slate-500">Name:</span> {app.employee_name}</p>
+            <p><span className="font-medium text-slate-500">Employee ID:</span> {app.employee_id}</p>
+            <p><span className="font-medium text-slate-500">National ID:</span> {app.national_id}</p>
+            <p><span className="font-medium text-slate-500">Gender:</span> {app.gender}</p>
+          </div>
+        </div>
+        
+        {/* Employment Info */}
+        <div className="space-y-2">
+          <h4 className="font-bold text-slate-900 dark:text-white">Employment</h4>
+          <div className="space-y-1 text-slate-600 dark:text-slate-400">
+            <p><span className="font-medium text-slate-500">Position:</span> {app.job_position}</p>
+            <p><span className="font-medium text-slate-500">Grade:</span> {app.job_grade}</p>
+            <p><span className="font-medium text-slate-500">Years of Service:</span> {app.years_of_service}</p>
+            <p><span className="font-medium text-slate-500">Marital Status:</span> {app.marital_status}</p>
+          </div>
+        </div>
+        
+        {/* Request Info */}
+        <div className="space-y-2">
+          <h4 className="font-bold text-slate-900 dark:text-white">Request Details</h4>
+          <div className="space-y-1 text-slate-600 dark:text-slate-400">
+            <p><span className="font-medium text-slate-500">Application No:</span> {app.application_no}</p>
+            <p><span className="font-medium text-slate-500">Requested Category:</span> {app.requested_house_category}</p>
+            <p><span className="font-medium text-slate-500">Eligible Category:</span> {app.eligible_house_category || "N/A"}</p>
+            <p><span className="font-medium text-slate-500">Preferred Location:</span> {app.preferred_location}</p>
+          </div>
+        </div>
+        
+        {/* Family & Reason */}
+        <div className="space-y-2 md:col-span-2">
+          <h4 className="font-bold text-slate-900 dark:text-white">Family & Reason</h4>
+          <div className="space-y-1 text-slate-600 dark:text-slate-400">
+            <p><span className="font-medium text-slate-500">Family Size:</span> {app.family_size}</p>
+            <p><span className="font-medium text-slate-500">Number of Children:</span> {app.number_of_children}</p>
+            <p><span className="font-medium text-slate-500">Has Disability:</span> {app.has_disability ? "Yes" : "No"}</p>
+            <p><span className="font-medium text-slate-500">Reason for Request:</span> {app.reason_for_request}</p>
+          </div>
+        </div>
+        
+        {/* Allocation & Status */}
+        <div className="space-y-2">
+          <h4 className="font-bold text-slate-900 dark:text-white">Allocation</h4>
+          <div className="space-y-1 text-slate-600 dark:text-slate-400">
+            <p><span className="font-medium text-slate-500">Status:</span> <StatusChip status={app.status} size="sm" /></p>
+            <p><span className="font-medium text-slate-500">Priority Score:</span> {app.priority_score?.toFixed(2) || "N/A"}</p>
+            <p><span className="font-medium text-slate-500">Queue Position:</span> #{app.queuePosition}</p>
+            {app.allocated_house && (
+              <p><span className="font-medium text-slate-500">Allocated House:</span> {app.allocated_house}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  ), []);
+
   if (loading) return <PageSkeleton />;
 
   return (
@@ -413,7 +630,7 @@ export default function HouseQueuePage() {
                 <h1 className="text-xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white leading-tight drop-shadow-md">
                   House Priority Queue
                 </h1>
-                <Breadcrumbs className="opacity-80 text-slate-600 dark:text-slate-300" items={[{ label: "House Allocation", to: "/house-opp" }, { label: "Queue" }]} />
+                <Breadcrumbs items={[{ label: "House Allocation", to: "/house-opp" }, { label: "Queue" }]} />
               </div>
             </div>
 
@@ -557,6 +774,9 @@ export default function HouseQueuePage() {
                 pageSize={25}
                 onRowDoubleClick={(app) => navigate(`/house-opp/queue/${app.id}`)}
                 columns={queueColumns}
+                expandable={{
+                  expandableContent: renderExpandedContent,
+                }}
                 className="border-0 !bg-transparent dark:!bg-transparent [&_th]:bg-slate-200 dark:bg-black/40 [&_th]:border-slate-200 dark:border-white/5 [&_td]:border-slate-200 dark:border-white/5 [&_tr]:hover:bg-white/60 dark:bg-white/5 [&_tr.bg-muted]:bg-white/10"
               />
             </div>
@@ -626,7 +846,16 @@ export default function HouseQueuePage() {
                            )}
                          </div>
 
-                         <div className="flex gap-2 pt-4 border-t border-slate-200 dark:border-white/5 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 mt-2">
+                           <div className="flex gap-2 pt-4 border-t border-slate-200 dark:border-white/5 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 mt-2">
+                             <Button
+                               size="sm"
+                               variant="ghost"
+                               className="h-9 flex-1 text-xs font-bold text-violet-400 hover:bg-violet-500/20 hover:text-violet-300 border border-violet-500/30 bg-violet-500/10 rounded-xl"
+                               disabled={isLoading}
+                               onClick={(e) => { e.stopPropagation(); setBreakdownApp(app); }}
+                             >
+                               <BarChart3 className="h-3.5 w-3.5 mr-1" /> Score
+                             </Button>
                            {app.status === "Submitted" && (
                              <Button
                                size="sm"
@@ -761,8 +990,10 @@ export default function HouseQueuePage() {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* ═══════════════════ SCORE BREAKDOWN DIALOG ═══════════════════ */}
+        <BreakdownDialog app={breakdownApp} onClose={() => setBreakdownApp(null)} />
       </div>
     </div>
   );
 }
-

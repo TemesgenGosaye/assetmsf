@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   Plus,
   Search,
@@ -230,6 +231,7 @@ function generateTempPassword(): string {
 
 export default function Users() {
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const { toast } = useToast();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -634,12 +636,16 @@ export default function Users() {
     const activeUsers = users.filter(
       (u) => (u.status || "").toLowerCase() === "active",
     ).length;
-    const adminCount = users.filter(
-      (u) => (u.role || "").toLowerCase() === "admin",
+    const adminCount = users.filter((u) => {
+      const r = (u.role || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[\s-]+/g, "_");
+      return r === "admin" || r === "super_admin" || r === "superadmin";
+    }).length;
+    const departmentCount = departmentsAll.filter(
+      (d) => d.is_active !== false,
     ).length;
-    const departmentCount = new Set(
-      users.map((u) => (u.department || "").trim()).filter(Boolean),
-    ).size;
 
     return [
       {
@@ -648,7 +654,7 @@ export default function Users() {
         icon: User,
         value: totalUsers.toLocaleString(),
         caption: "Accounts in the system",
-        iconClassName: "text-primary h-4 w-4",
+        variant: "blue",
       },
       {
         key: "active",
@@ -656,7 +662,7 @@ export default function Users() {
         icon: UserPlus,
         value: activeUsers.toLocaleString(),
         caption: "Currently enabled",
-        iconClassName: "text-primary h-4 w-4",
+        variant: "emerald",
       },
       {
         key: "admins",
@@ -664,7 +670,7 @@ export default function Users() {
         icon: Shield,
         value: adminCount.toLocaleString(),
         caption: "Users with full access",
-        iconClassName: "text-primary h-4 w-4",
+        variant: "violet",
       },
       {
         key: "departments",
@@ -672,10 +678,10 @@ export default function Users() {
         icon: UsersIcon,
         value: departmentCount.toLocaleString(),
         caption: "Active department records",
-        iconClassName: "text-primary h-4 w-4",
+        variant: "cyan",
       },
     ];
-  }, [users]);
+  }, [users, departmentsAll]);
 
   // Inline validation helpers
   const emailInvalid = useMemo(
@@ -1125,9 +1131,13 @@ export default function Users() {
   };
 
   const handleDeleteUser = async (userId: string, name: string) => {
-    const ok = window.confirm(
-      `Are you sure you want to delete ${name}? This action cannot be undone.`,
-    );
+    const ok = await confirm({
+      title: "Delete User",
+      description: `Are you sure you want to delete ${name}? This action cannot be undone.`,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      variant: "danger",
+    });
     if (!ok) return;
     try {
       await deleteUser(userId);
@@ -1628,7 +1638,11 @@ export default function Users() {
                                       setNewDeptModalOpen(false);
                                     } catch (e) {
                                       console.error(e);
-                                      alert("Failed to create department.");
+                                      toast({
+                                        title: "Error",
+                                        description: "Failed to create department.",
+                                        variant: "destructive",
+                                      });
                                     }
                                   }}
                                 >
@@ -2146,13 +2160,14 @@ export default function Users() {
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {userHighlights.map(({ key, title, icon: Icon, value, caption }) => (
+        {userHighlights.map(({ key, title, icon: Icon, value, caption, variant }) => (
           <MetricCard
             key={key}
             icon={Icon}
             title={title}
             value={value}
             caption={caption}
+            variant={variant}
           />
         ))}
       </div>
@@ -2537,9 +2552,13 @@ export default function Users() {
                                       });
                                       return;
                                     }
-                                    const ok = window.confirm(
-                                      `Delete department "${d.name}"? This cannot be undone.`,
-                                    );
+                                    const ok = await confirm({
+                                      title: "Delete Department",
+                                      description: `Delete department "${d.name}"? This cannot be undone.`,
+                                      confirmLabel: "Delete",
+                                      cancelLabel: "Cancel",
+                                      variant: "danger",
+                                    });
                                     if (!ok) return;
                                     try {
                                       await deleteDepartment(d.id);

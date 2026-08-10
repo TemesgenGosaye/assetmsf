@@ -1,4 +1,4 @@
-import { Toaster } from "@/components/ui/toaster";
+import { CenteredCrudModalToastContainer } from "@/components/ui/centered-crud-toast";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -23,6 +23,7 @@ import ResidentialSeasonal from "./pages/ResidentialSeasonal";
 import ResidentialGuest from "./pages/ResidentialGuest";
 import QRCodes from "./pages/QRCodes";
 import Approvals from "./pages/Approvals";
+import Transfers from "./pages/Transfers";
 import Tickets from "./pages/Tickets";
 import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
@@ -35,11 +36,12 @@ import ForceChangePassword from "./pages/ForceChangePassword";
 
 
 import AssetDetails from "./pages/AssetDetails";
+import AssetAnalytics from "./pages/AssetAnalytics";
+import Compliance from "./pages/Compliance";
+import Maintenance from "./pages/Maintenance";
 import Scan from "./pages/Scan";
-import Website from "./pages/Website";
 import Newsletter from "./pages/Newsletter";
 import Status from "@/pages/Status";
-import LicensePage from "./pages/License";
 import Help from "./pages/Help";
 import TicketDetails from "./pages/TicketDetails";
 import ApprovalDetails from "./pages/ApprovalDetails";
@@ -47,6 +49,8 @@ import ReportDetails from "./pages/ReportDetails";
 import QRCodeDetails from "./pages/QRCodeDetails";
 import Employees from "./pages/Employees";
 import HouseOpp from "./pages/HouseOpp";
+import HouseCommandCenter from "./pages/HouseCommandCenter";
+import HouseOperations from "./pages/HouseOperations";
 import HouseQueuePage from "./pages/HouseQueuePage";
 import HouseQueueReview from "./pages/HouseQueueReview";
 import ScoringConfigPage from "./pages/ScoringConfigPage";
@@ -96,6 +100,7 @@ const updateFavicon = () => {
 };
 
 import { isAuthenticated, getCurrentUser } from "@/services/djangoAuth";
+import { normalizeRole } from "@/services/permissions";
 
 function SessionLoading() {
   return (
@@ -143,6 +148,18 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
         if (!cancelled) setState("invalid");
         return;
       }
+      // Normalize a stored SUPER_ADMIN role to ADMIN so every role check in
+      // the app treats Django superusers as full admins.
+      try {
+        const raw = localStorage.getItem("auth_user");
+        if (raw) {
+          const au = JSON.parse(raw);
+          if (normalizeRole(au?.role) === "admin" && au.role !== "admin") {
+            au.role = "admin";
+            localStorage.setItem("auth_user", JSON.stringify(au));
+          }
+        }
+      } catch {}
       if (!cancelled) setState("valid");
     })();
     return () => {
@@ -161,6 +178,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }
   if (state === "checking") return <SessionLoading />;
   return <>{children}</>;
+}
+
+function RootRedirect() {
+  return isAuthenticated() ? (
+    <Navigate to="/dashboard" replace />
+  ) : (
+    <Navigate to="/login" replace />
+  );
 }
 
 function PublicOnly({ children }: { children: React.ReactNode }) {
@@ -191,7 +216,7 @@ function RoleGate({
     const raw = localStorage.getItem("auth_user");
     role = raw ? JSON.parse(raw).role || "" : "";
   } catch {}
-  const r = (role || "").toLowerCase();
+  const r = normalizeRole(role);
   if (!roles.map((s) => s.toLowerCase()).includes(r)) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -250,8 +275,8 @@ updateFavicon();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
       <Sonner />
+      <CenteredCrudModalToastContainer />
       <ConnectionStatus />
       <ThemeInitializer />
       <WelcomeDialog />
@@ -262,9 +287,9 @@ const App = () => (
         <Routes>
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="/force-change-password" element={<RequireAuth><ForceChangePassword /></RequireAuth>} />
-          {/* Landing page — auth-guarded like every other path; unauthenticated
-              visitors are sent to /login and cannot reach it without a valid session */}
-          <Route path="/" element={<RequireAuth><Website /></RequireAuth>} />
+          {/* Root — authenticated users go straight to the dashboard,
+              unauthenticated visitors are sent to /login */}
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/site" element={<Navigate to="/" replace />} />
 
           <Route element={<AppShell />}>
@@ -281,10 +306,42 @@ const App = () => (
               }
             />
             <Route
+              path="/assets/analytics"
+              element={
+                <RequireView page="assets">
+                  <AssetAnalytics />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/assets/compliance"
+              element={
+                <RequireView page="assets">
+                  <Compliance />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/maintenance"
+              element={
+                <RequireView page="assets">
+                  <Maintenance />
+                </RequireView>
+              }
+            />
+            <Route
               path="/assets/:id"
               element={
                 <RequireView page="assets">
                   <AssetDetails />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/transfers"
+              element={
+                <RequireView page="assets">
+                  <Transfers />
                 </RequireView>
               }
             />
@@ -317,6 +374,22 @@ const App = () => (
               element={
                 <RequireView page="houses">
                   <HouseOpp />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/houses/command-center"
+              element={
+                <RequireView page="houses">
+                  <HouseCommandCenter />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/houses/operations"
+              element={
+                <RequireView page="houses">
+                  <HouseOperations />
                 </RequireView>
               }
             />
@@ -511,14 +584,6 @@ const App = () => (
               }
             />
             <Route path="/status" element={<Status />} />
-            <Route
-              path="/license"
-              element={
-                <RoleGate roles={["admin"]}>
-                  <LicensePage />
-                </RoleGate>
-              }
-            />
           </Route>
 
           {/* Requester-specific routes */}

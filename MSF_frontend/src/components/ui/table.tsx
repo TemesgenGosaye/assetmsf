@@ -13,12 +13,12 @@ const Table = React.forwardRef<HTMLTableElement, TableProps>(
   ({ className, dense, stickyHeader, stickyFirstCol, ...props }, ref) => (
     <div
       className={cn(
-        "relative w-full overflow-auto border border-border bg-background dark:border-border dark:bg-background shadow-sm",
+        "relative w-full overflow-auto rounded-xl border border-border bg-background shadow-sm",
         "[&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80 [&::-webkit-scrollbar-track]:bg-transparent",
         stickyHeader &&
           "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10",
         stickyFirstCol &&
-          "[&_*:is(th,td):first-child]:sticky [&_*:is(th,td):first-child]:left-0 [&_*:is(th,td):first-child]:z-[1] [&_thead_th:first-child]:bg-muted dark:[&_thead_th:first-child]:bg-muted [&_tbody_td:first-child]:bg-background dark:[&_tbody_td:first-child]:bg-background",
+          "[&_*:is(th,td):first-child]:sticky [&_*:is(th,td):first-child]:left-0 [&_*:is(th,td):first-child]:z-[1] [&_thead_th:first-child]:bg-muted [&_tbody_td:first-child]:bg-background [&_tbody_tr:hover_td:first-child]:bg-blue-50 dark:[&_tbody_tr:hover_td:first-child]:bg-blue-500/15",
       )}
     >
       <table
@@ -43,8 +43,8 @@ const TableHeader = React.forwardRef<
   <thead
     ref={ref}
     className={cn(
-      "bg-muted dark:bg-muted border-b border-border dark:border-border",
-      "[&_tr]:border-0",
+      "bg-muted/60 border-b border-border",
+      "[&_tr]:border-0 [&_tr]:hover:bg-transparent",
       className,
     )}
     {...props}
@@ -60,7 +60,7 @@ const TableBody = React.forwardRef<
   <tbody
     ref={ref}
     className={cn(
-      "divide-y divide-border dark:divide-border",
+      "divide-y divide-border",
       "[&_tr:last-child]:border-0",
       className,
     )}
@@ -78,9 +78,9 @@ const TableRow = React.forwardRef<
     ref={ref}
     className={cn(
       "group transition-colors duration-100",
-      "border-b border-border dark:border-border bg-background dark:bg-background",
-      "hover:bg-muted dark:hover:bg-muted",
-      "data-[state=selected]:bg-muted dark:data-[state=selected]:bg-muted",
+      "bg-background",
+      "hover:bg-blue-50 dark:hover:bg-blue-500/15",
+      "data-[state=selected]:bg-blue-100/70 dark:data-[state=selected]:bg-blue-500/20",
       className,
     )}
     {...props}
@@ -97,9 +97,9 @@ const TableHead = React.forwardRef<
     ref={ref}
     className={cn(
       "h-8 px-3 text-left align-middle",
-      "text-[11px] font-medium text-slate-700 dark:text-slate-200",
-      "whitespace-nowrap tracking-normal",
-      "border-b border-r border-border dark:border-border bg-muted dark:bg-muted last:border-r-0",
+      "text-[11px] font-bold text-muted-foreground",
+      "whitespace-nowrap tracking-wider uppercase",
+      "border-b-2 border-r border-border bg-muted last:border-r-0",
       "[&:has([role=checkbox])]:pr-0 [&:has([role=checkbox])]:pl-3",
       "first:pl-4 last:pr-4",
       className,
@@ -117,10 +117,10 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      "px-3 py-1.5 align-middle text-[13px] text-slate-700 dark:text-slate-200",
+      "px-3 py-1.5 align-middle text-[13px] text-foreground/90",
       "[&:has([role=checkbox])]:pr-0 [&:has([role=checkbox])]:pl-3",
       "first:pl-4 last:pr-4",
-      "border-r border-slate-200 dark:border-border bg-transparent last:border-r-0",
+      "border-r border-border bg-transparent last:border-r-0",
       className,
     )}
     {...props}
@@ -136,7 +136,7 @@ const TableFooter = React.forwardRef<
   <tfoot
     ref={ref}
     className={cn(
-      "border-t border-border dark:border-border bg-muted dark:bg-muted font-medium",
+      "border-t-2 border-border bg-muted/40 font-medium",
       className,
     )}
     {...props}

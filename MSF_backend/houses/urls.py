@@ -4,11 +4,21 @@ from .views import (
     HouseApplicationListCreateView, HouseApplicationDetailView,
     HouseApplicationSubmitView, HouseApplicationStatusUpdateView,
     HouseApplicationDashboardView,
-    HouseQueueView,
+    HouseQueueView, HouseApplicationRecalcScoreView,
     AutoAllocateView, BatchAllocateView, ManualAllocateView, DeallocateView,
     ScoringConfigListCreateView, ScoringConfigDetailView,
     EligibilityRuleListCreateView, EligibilityRuleDetailView,
     AllocationLogListView,
+)
+from .operations_views import (
+    HousingAnalyticsView, AvailableHousesView, ConflictDetectionView,
+    RecommendationsView, OccupancyView,
+    InspectionListCreateView, InspectionDetailView, InspectionCompleteView,
+    MaintenanceListCreateView, MaintenanceDetailView, MaintenanceStatusView,
+    TransferListCreateView, TransferDetailView, TransferDecideView, TransferCompleteView,
+    ContractListCreateView, ContractDetailView, ContractTerminateView,
+    InvoiceListCreateView, InvoiceDetailView,
+    PaymentListCreateView, InvoicePaymentsView, RentalSummaryView,
 )
 
 urlpatterns = [
@@ -22,6 +32,7 @@ urlpatterns = [
     path("applications/<uuid:id>/",    HouseApplicationDetailView.as_view(),         name="application_detail"),
     path("applications/<uuid:id>/submit/",  HouseApplicationSubmitView.as_view(),     name="application_submit"),
     path("applications/<uuid:id>/status/",  HouseApplicationStatusUpdateView.as_view(), name="application_status"),
+    path("applications/<uuid:id>/recalculate-score/", HouseApplicationRecalcScoreView.as_view(), name="application_recalc_score"),
 
     # ── Queue & Allocation engine ──────────────────────────────────────
     path("queue/",                     HouseQueueView.as_view(),                     name="house_queue"),
@@ -40,4 +51,37 @@ urlpatterns = [
 
     # ── Allocation logs ────────────────────────────────────────────────
     path("allocation-logs/",           AllocationLogListView.as_view(),              name="allocation_log_list"),
+
+    # ── Analytics / Command center ─────────────────────────────────────
+    path("analytics/",                 HousingAnalyticsView.as_view(),               name="housing_analytics"),
+    path("analytics/available/",       AvailableHousesView.as_view(),                name="housing_available"),
+    path("analytics/conflicts/",       ConflictDetectionView.as_view(),              name="housing_conflicts"),
+    path("analytics/recommendations/", RecommendationsView.as_view(),                name="housing_recommendations"),
+    path("occupancy/",                 OccupancyView.as_view(),                      name="housing_occupancy"),
+
+    # ── House operations: inspections ──────────────────────────────────
+    path("inspections/",               InspectionListCreateView.as_view(),           name="inspection_list_create"),
+    path("inspections/<uuid:id>/",     InspectionDetailView.as_view(),               name="inspection_detail"),
+    path("inspections/<uuid:id>/complete/", InspectionCompleteView.as_view(),        name="inspection_complete"),
+
+    # ── House operations: maintenance ──────────────────────────────────
+    path("maintenance-requests/",      MaintenanceListCreateView.as_view(),          name="maintenance_list_create"),
+    path("maintenance-requests/<uuid:id>/", MaintenanceDetailView.as_view(),         name="maintenance_detail"),
+    path("maintenance-requests/<uuid:id>/status/", MaintenanceStatusView.as_view(),  name="maintenance_status"),
+
+    # ── House operations: transfers ────────────────────────────────────
+    path("transfers/",                 TransferListCreateView.as_view(),             name="transfer_list_create"),
+    path("transfers/<uuid:id>/",       TransferDetailView.as_view(),                 name="transfer_detail"),
+    path("transfers/<uuid:id>/decide/", TransferDecideView.as_view(),                name="transfer_decide"),
+    path("transfers/<uuid:id>/complete/", TransferCompleteView.as_view(),            name="transfer_complete"),
+
+    # ── House operations: rentals ──────────────────────────────────────
+    path("contracts/",                 ContractListCreateView.as_view(),             name="contract_list_create"),
+    path("contracts/<uuid:id>/",       ContractDetailView.as_view(),                 name="contract_detail"),
+    path("contracts/<uuid:id>/terminate/", ContractTerminateView.as_view(),          name="contract_terminate"),
+    path("invoices/",                  InvoiceListCreateView.as_view(),              name="invoice_list_create"),
+    path("invoices/<uuid:id>/",        InvoiceDetailView.as_view(),                  name="invoice_detail"),
+    path("invoices/<uuid:id>/payments/", InvoicePaymentsView.as_view(),              name="invoice_payments"),
+    path("payments/",                  PaymentListCreateView.as_view(),              name="payment_list_create"),
+    path("rentals/summary/",           RentalSummaryView.as_view(),                  name="rental_summary"),
 ]

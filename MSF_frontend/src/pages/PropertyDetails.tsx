@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProperty, type Property, deleteProperty } from "@/services/properties";
@@ -12,6 +13,7 @@ import StatusChip from "@/components/ui/status-chip";
 import DetailPage from "@/components/detail/DetailPage";
 
 export default function PropertyDetails() {
+  const confirm = useConfirm();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [property, setProperty] = useState<Property | null>(null);
@@ -44,13 +46,19 @@ export default function PropertyDetails() {
 
   const handleDelete = async () => {
     if (!property) return;
-    if (window.confirm(`Are you sure you want to delete property "${property.name}"?`)) {
+    const ok = await confirm({
+      title: "Delete Property Record",
+      description: `Are you sure you want to delete property "${property.name}"? This action cannot be undone.`,
+      variant: "danger",
+      confirmLabel: "Delete Property",
+    });
+    if (ok) {
       try {
         await deleteProperty(property.id);
-        toast.success("Property deleted successfully");
+        crudToast.deleted("Property", `Property "${property.name}" deleted.`);
         navigate("/properties");
       } catch (error: any) {
-        toast.error(error.message || "Failed to delete property");
+        crudToast.failed("delete property", error.message);
       }
     }
   };
@@ -139,27 +147,27 @@ breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Properties", to: "/
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/40">
+              <thead className="bg-muted text-xs font-bold uppercase tracking-wider text-muted-foreground border-b-2 border-border">
                 <tr>
-                  <th className="px-6 py-3">Asset Code</th>
-                  <th className="px-6 py-3">Name</th>
-                  <th className="px-6 py-3">Category</th>
-                  <th className="px-6 py-3">Condition</th>
-                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-2.5 border-r border-border">Asset Code</th>
+                  <th className="px-6 py-2.5 border-r border-border">Name</th>
+                  <th className="px-6 py-2.5 border-r border-border">Category</th>
+                  <th className="px-6 py-2.5 border-r border-border">Condition</th>
+                  <th className="px-6 py-2.5">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/40">
+              <tbody className="divide-y divide-border/70">
                 {assets.map((asset) => (
                   <tr
                     key={asset.id}
                     onClick={() => navigate(`/assets/${asset.id}`)}
-                    className="hover:bg-muted/20 cursor-pointer transition-colors select-none"
+                    className="hover:bg-blue-50 dark:hover:bg-blue-500/15 cursor-pointer transition-colors select-none"
                   >
-                    <td className="px-6 py-4 font-mono text-xs font-semibold text-primary">{asset.asset_code || asset.id}</td>
-                    <td className="px-6 py-4 font-medium text-foreground">{asset.name}</td>
-                    <td className="px-6 py-4 text-muted-foreground">{asset.type}</td>
-                    <td className="px-6 py-4 capitalize text-muted-foreground">{asset.condition || "—"}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-2.5 border-r border-border font-mono text-xs font-semibold text-primary">{asset.asset_code || asset.id}</td>
+                    <td className="px-6 py-2.5 border-r border-border font-medium text-foreground">{asset.name}</td>
+                    <td className="px-6 py-2.5 border-r border-border text-muted-foreground">{asset.type}</td>
+                    <td className="px-6 py-2.5 border-r border-border capitalize text-muted-foreground">{asset.condition || "—"}</td>
+                    <td className="px-6 py-2.5">
                       <StatusChip status={asset.status} />
                     </td>
                   </tr>

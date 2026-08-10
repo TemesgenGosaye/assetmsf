@@ -30,7 +30,6 @@ export type EntityType =
   | "house"
   | "newsletter"
   | "allocation"
-  | "license"
   | "department"
   | "scan";
 
@@ -250,7 +249,6 @@ export async function trackActivity(
     house: "House",
     newsletter: "Newsletter",
     allocation: "Allocation",
-    license: "License",
     department: "Department",
     scan: "Scan",
   };

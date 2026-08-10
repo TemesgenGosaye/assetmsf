@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { cn } from "@/lib/utils";
 import MetricCard from "@/components/ui/metric-card";
 
 export default function Newsletter() {
+  const confirm = useConfirm();
   const [posts, setPosts] = useState<NewsletterPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -93,8 +95,21 @@ export default function Newsletter() {
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm('Delete this post?')) return;
-    try { await deleteNewsletterPost(id); setPosts(s => s.filter(p => p.id !== id)); toast.success('Deleted'); await trackActivity("newsletter", "delete", { entityId: id }); } catch { toast.error('Delete failed'); }
+    const ok = await confirm({
+      title: "Delete Announcement Post",
+      description: "Are you sure you want to delete this post? This action cannot be undone.",
+      variant: "danger",
+      confirmLabel: "Delete Post",
+    });
+    if (!ok) return;
+    try {
+      await deleteNewsletterPost(id);
+      setPosts(s => s.filter(p => p.id !== id));
+      crudToast.deleted("Post", "Newsletter post removed.");
+      await trackActivity("newsletter", "delete", { entityId: id });
+    } catch {
+      crudToast.failed("delete post", "Unable to delete announcement post.");
+    }
   };
 
   // Derive a status-like badge from the title/body (no schema change required)

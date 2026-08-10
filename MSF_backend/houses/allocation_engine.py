@@ -18,6 +18,7 @@ import math
 from collections import defaultdict
 from decimal import Decimal
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import (
@@ -68,20 +69,33 @@ def check_allocation_constraints(application, house):
     """
     reasons = []
 
+    if application.status == HouseApplication.Status.ALLOCATED:
+        reasons.append("Application is already allocated")
+
     if not house.is_available:
         reasons.append(f"House {house.house_id} is full or inactive")
 
     if house.status != House.Status.ACTIVE:
         reasons.append(f"House {house.house_id} is inactive (needs repair)")
 
+    # Hard check: House must not already be fully occupied or allocated by another application
+    active_house_allocations = house.allocations.filter(status="Allocated", is_active=True).exclude(id=application.id).exists()
+    if house.current_occupancy >= house.capacity or active_house_allocations:
+        reasons.append(f"House {house.house_id} is already allocated/occupied")
+
     eligible_cat, _ = determine_eligible_category(application)
     if CATEGORY_ORDER.get(house.house_type, 0) > CATEGORY_ORDER.get(eligible_cat, 0):
         reasons.append(f"House type {house.house_type} exceeds eligible category {eligible_cat}")
 
-    already_allocated = HouseApplication.objects.filter(
-        emp_record=application.emp_record,
-        status="Allocated",
-    ).exclude(id=application.id).exists()
+    already_allocated = (
+        HouseApplication.objects.filter(
+            Q(emp_record_id=application.emp_record_id) | Q(employee_name=application.employee_name),
+            status="Allocated",
+            is_active=True,
+        ).exclude(id=application.id).exists()
+        if (application.emp_record_id or application.employee_name)
+        else False
+    )
     if already_allocated:
         reasons.append("Employee already has an active allocation")
 
@@ -171,7 +185,7 @@ def compute_mcda_score(application, config=None):
     wait_norm = _normalise(wait, 365)
     fifo_contrib = wait_norm * weights["fifo"]
     breakdown["fifo"] = {
-        "raw_days": wait, "normalised": round(wait_norm, 4),
+        "raw": wait, "normalised": round(wait_norm, 4),
         "weight": weights["fifo"], "contribution": round(fifo_contrib, 4),
     }
     if wait > 90:
@@ -185,11 +199,18 @@ def compute_mcda_score(application, config=None):
         "weight": weights["marital_status"], "contribution": round(marital_contrib, 4),
     }
 
-    # ── Employment Type (assume permanent = 1.0) ─────────────────────────
-    emp_type_norm = 1.0
+    # ── Employment Type ─────────────────────────────────────────────────
+    pos_type = application.position_type or application.job_type or "Permanent"
+    emp_type_norm = {
+        "Permanent": 1.0,
+        "Half Permanent": 0.6,
+        "Seasonal": 0.3,
+        "PPL": 0.2,
+        "Semi Permanent": 0.6,
+    }.get(pos_type, 0.4)
     emp_contrib = emp_type_norm * weights["employment_type"]
     breakdown["employment_type"] = {
-        "raw": "Permanent", "normalised": emp_type_norm,
+        "raw": pos_type, "normalised": emp_type_norm,
         "weight": weights["employment_type"], "contribution": round(emp_contrib, 4),
     }
 
@@ -217,9 +238,9 @@ def compute_mcda_score(application, config=None):
 #  3. TOPSIS RANKING
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _topsis_distance(values, ideal_best, ideal_worst):
-    """Euclidean distance from a reference point."""
-    return math.sqrt(sum((v - b) ** 2 for v, b in zip(values, ideal_best)))
+def _euclidean_distance(values, reference):
+    """Euclidean distance between a decision vector and a reference point."""
+    return math.sqrt(sum((v - r) ** 2 for v, r in zip(values, reference)))
 
 
 def topsis_rank(applications, config=None):
@@ -273,11 +294,13 @@ def topsis_rank(applications, config=None):
     ideal_best = [max(norm_matrix[i][j] for i in range(n_apps)) for j in range(n_criteria)]
     ideal_worst = [min(norm_matrix[i][j] for i in range(n_apps)) for j in range(n_criteria)]
 
-    # Closeness coefficient
+    # Closeness coefficient: how close a candidate is to the ideal solution
+    # relative to the anti-ideal (worst) solution — a larger d_worst / (d_best + d_worst)
+    # means the candidate dominates more of the criteria space.
     results = []
     for i in range(n_apps):
-        d_best = _topsis_distance(norm_matrix[i], ideal_best, [0] * n_criteria)
-        d_worst = _topsis_distance(norm_matrix[i], [0] * n_criteria, ideal_worst)
+        d_best = _euclidean_distance(norm_matrix[i], ideal_best)
+        d_worst = _euclidean_distance(norm_matrix[i], ideal_worst)
         total_dist = d_best + d_worst
         cc = d_worst / total_dist if total_dist > 0 else 0.5
         app, score, breakdown, reasons = scored[i]
@@ -481,7 +504,14 @@ def run_batch_allocation(user=None):
     ranked = topsis_rank(waiting, config)
 
     # Step 3: Get available houses grouped by type
-    available_houses = list(House.objects.filter(status=House.Status.ACTIVE, is_active=True))
+    # Exclude inactive/full units and guest houses from the auto-allocation pool.
+    available_houses = [
+        h for h in House.objects.filter(
+            status=House.Status.ACTIVE,
+            is_active=True,
+        ).exclude(allocation_category=House.AllocationCategory.GUEST)
+        if h.is_available
+    ]
 
     # Step 4: Hungarian optimal assignment
     ranked_apps = [r[0] for r in ranked]
@@ -601,14 +631,10 @@ def auto_allocate_single(house, target_application=None, user=None):
     if not candidates:
         raise ValueError("No eligible candidates for this house")
 
-    # Score all candidates
-    scored = []
-    for app in candidates:
-        total, breakdown, reasons = compute_mcda_score(app, config)
-        scored.append((app, total, breakdown, reasons))
-
-    scored.sort(key=lambda x: x[1], reverse=True)
-    best_app, best_score, best_breakdown, best_reasons = scored[0]
+    # Rank candidates with the same TOPSIS methodology used by the queue
+    # so a single auto-allocation matches the global priority order.
+    ranked = topsis_rank(candidates, config)
+    best_app, best_score, best_breakdown, best_reasons = ranked[0][0], ranked[0][1], ranked[0][2], ranked[0][3]
 
     ok, constraint_reason = check_allocation_constraints(best_app, house)
     if not ok:
@@ -617,6 +643,11 @@ def auto_allocate_single(house, target_application=None, user=None):
     cat, _ = determine_eligible_category(best_app)
 
     with transaction.atomic():
+        # Lock the house row so capacity cannot be over-allocated concurrently.
+        house = House.objects.select_for_update().get(house_id=house.house_id)
+        if not house.is_available:
+            raise ValueError(f"House {house.house_id} is no longer available")
+
         old_status = best_app.status
         best_app.status = HouseApplication.Status.ALLOCATED
         best_app.allocated_house = house
@@ -661,6 +692,11 @@ def manual_allocate(house, application, user=None, notes=""):
     cat, _ = determine_eligible_category(application)
 
     with transaction.atomic():
+        # Lock the house row so capacity cannot be over-allocated concurrently.
+        house = House.objects.select_for_update().get(house_id=house.house_id)
+        if not house.is_available:
+            raise ValueError(f"House {house.house_id} is no longer available")
+
         old_status = application.status
         application.status = HouseApplication.Status.ALLOCATED
         application.allocated_house = house
@@ -759,14 +795,21 @@ def get_ranked_queue(category=None, recalculate=False):
 
     config = ScoringConfig.objects.filter(is_active=True).first()
 
+    # Applications that have never been scored (fresh submissions) must not
+    # appear as zero — compute and persist a real breakdown for them so the
+    # queue is always fair and explainable.
     if recalculate:
-        for app in qs:
-            cat, _ = determine_eligible_category(app)
-            total, breakdown, reasons = compute_mcda_score(app, config)
-            app.eligible_house_category = cat
-            app.priority_score = total
-            app.score_breakdown = breakdown
-            app.save(update_fields=["eligible_house_category", "priority_score", "score_breakdown", "updated_at"])
+        apps_to_score = qs
+    else:
+        apps_to_score = qs.filter(score_breakdown={})
+
+    for app in apps_to_score:
+        cat, _ = determine_eligible_category(app)
+        total, breakdown, reasons = compute_mcda_score(app, config)
+        app.eligible_house_category = cat
+        app.priority_score = total
+        app.score_breakdown = breakdown
+        app.save(update_fields=["eligible_house_category", "priority_score", "score_breakdown", "updated_at"])
 
     apps = list(qs)
     ranked = topsis_rank(apps, config)

@@ -223,11 +223,15 @@ export async function loginWithDjango(email: string, password: string): Promise<
     writeToken('django_refresh_token', loginData.refresh);
     LS.setItem('django_user', JSON.stringify(loginData.user));
     LS.setItem('current_user_id', String(loginData.user.id));
+    const normalizedRole =
+      String(loginData.user.role || '').toUpperCase().replace(/[\s-]+/g, '_') === 'SUPER_ADMIN'
+        ? 'ADMIN'
+        : loginData.user.role;
     LS.setItem('auth_user', JSON.stringify({
       id: String(loginData.user.id),
       name: loginData.user.name,
       email: loginData.user.email,
-      role: loginData.user.role,
+      role: normalizedRole,
       department: loginData.user.department,
     }));
     

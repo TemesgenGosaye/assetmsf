@@ -41,6 +41,7 @@ import {
   LogOut,
   Bell,
   FileText,
+  KeyRound,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -1238,6 +1239,31 @@ export default function HouseOpp() {
             </div>
           );
         },
+      },
+      {
+        key: "assigned_to",
+        header: "Allocated To",
+        sortable: true,
+        width: "min-w-[160px]",
+        value: (h) => h.assigned_employee_name || h.assigned_application_no || "",
+        cell: (h) =>
+          h.assigned_employee_name || h.assigned_application_no ? (
+            <div className="flex flex-col gap-0.5">
+              {h.assigned_employee_name && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  <KeyRound className="h-3 w-3 shrink-0 text-emerald-500" />
+                  <span className="truncate max-w-[150px]">{h.assigned_employee_name}</span>
+                </span>
+              )}
+              {h.assigned_application_no && (
+                <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[150px]">
+                  Ref: {h.assigned_application_no}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          ),
       },
       ...(isAdmin
         ? [

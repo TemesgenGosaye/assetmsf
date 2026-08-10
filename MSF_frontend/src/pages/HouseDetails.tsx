@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { crudToast } from "@/lib/enterprise-feedback";
 import { BarcodeGenerator } from "@/components/barcode/BarcodeGenerator";
 import {
   Home,
@@ -137,20 +138,22 @@ export default function HouseDetails() {
   const handleDelete = async () => {
     if (!house) return;
     if (isAssigned) {
-      toast.error("Cannot delete an allocated/assigned house.");
+      crudToast.error("Cannot Delete House", "Cannot delete an allocated or assigned house.");
       return;
     }
-    if (
-      window.confirm(
-        `Are you sure you want to delete house "${house.house_id}"?`,
-      )
-    ) {
+    const ok = await confirm({
+      title: "Delete House Record",
+      description: `Are you sure you want to delete house "${house.house_id}"? This action cannot be undone.`,
+      variant: "danger",
+      confirmLabel: "Delete House",
+    });
+    if (ok) {
       try {
         await deleteHouse(house.id);
-        toast.success("House deleted successfully");
+        crudToast.deleted("House", `House ${house.house_id} has been removed.`);
         navigate("/house-opp");
       } catch (error: any) {
-        toast.error(error.message || "Failed to delete house");
+        crudToast.failed("delete house", error.message);
       }
     }
   };

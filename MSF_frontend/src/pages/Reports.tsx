@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 /* eslint-disable @typescript-eslint/no-explicit-any, no-empty */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -105,6 +106,8 @@ const reportTypes = [
 type CurrentUser = { id?: string; email?: string; name?: string; fullName?: string; role?: string; department?: string | null };
 
 export default function Reports() {
+  const confirm = useConfirm();
+
   // Identify user & role early (used for defaults below)
   const currentUser: CurrentUser = (() => {
     try {
@@ -1390,7 +1393,12 @@ export default function Reports() {
                     size="sm"
                     className="h-8 text-xs text-muted-foreground hover:text-destructive"
                     onClick={async () => {
-                      const ok = window.confirm('Clear all recent report logs? This cannot be undone.');
+                      const ok = await confirm({
+                        title: "Clear Recent Report Logs",
+                        description: "Are you sure you want to clear all recent report logs? This action cannot be undone.",
+                        variant: "danger",
+                        confirmLabel: "Clear Logs",
+                      });
                       if (!ok) return;
                       try {
                         await clearReports();
@@ -1399,17 +1407,16 @@ export default function Reports() {
                           const fresh = await listReports();
                           setRecentReports(scopeRecentReports(fresh as any, allowedProps));
                           if (!fresh || fresh.length === 0) {
-                            toast.success('Recent report logs cleared');
+                            crudToast.deleted("Report Logs", "Recent report logs cleared.");
                           } else {
-                            toast.error('Could not clear all logs. Check Supabase RLS/policies.');
+                            crudToast.warning("Partial Clear", "Could not clear all logs. Check permissions.");
                           }
                         } catch {
                           setRecentReports([]);
-                          toast.success('Recent report logs cleared');
+                          crudToast.deleted("Report Logs", "Recent report logs cleared.");
                         }
-                      } catch (e) {
-                        console.error(e);
-                        toast.error('Failed to clear logs');
+                      } catch (e: any) {
+                        crudToast.failed("clear report logs", e?.message);
                       }
                     }}
                   >

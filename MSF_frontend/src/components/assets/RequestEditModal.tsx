@@ -133,7 +133,7 @@ export default function RequestEditModal({ open, asset, onClose, onSubmitted }: 
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-  <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl sm:w-full grid grid-rows-[auto,1fr,auto] max-h-[90vh] p-0 rounded-2xl border border-border/60 bg-background/95 shadow-2xl">
+  <DialogContent aria-describedby={undefined} className="w-[calc(100vw-1.5rem)] max-w-2xl sm:w-full grid grid-rows-[auto,1fr,auto] max-h-[90vh] p-0 rounded-2xl border border-border/60 bg-background/95 shadow-2xl">
         <DialogHeader className="space-y-1.5 border-b border-border/60 bg-muted/10 px-4 py-4 sm:px-6 sm:py-6">
           <DialogTitle>Request Edit</DialogTitle>
         </DialogHeader>

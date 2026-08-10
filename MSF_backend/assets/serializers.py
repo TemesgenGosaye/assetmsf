@@ -3,7 +3,7 @@ Serializers for asset management.
 """
 from rest_framework import serializers
 from django.db import models
-from .models import Asset, AssetAttachment, AssetTransfer
+from .models import Asset, AssetAttachment, AssetTransfer, AssetLifecycleEvent
 from properties.models import Property
 from categories.models import Category, ItemType
 from authentication.models import User
@@ -359,37 +359,55 @@ class AssetTransferCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        """Snapshot from/to details and generate a transfer code."""
+        """Snapshot from/to details, apply the transfer to the asset, and generate a transfer code."""
+        from django.utils import timezone
         asset = validated_data['asset']
         user = self.context['request'].user
 
         to_owner = validated_data.get('to_owner')
         to_property = validated_data.get('to_property')
+        to_department = validated_data.get('to_department')
+        to_location = validated_data.get('to_location')
+
+        # Apply the transfer to the asset immediately
+        if to_department:
+            asset.department = to_department
+        if to_property:
+            asset.property = to_property
+        if to_owner:
+            asset.owner = to_owner
+        if to_location:
+            asset.location = to_location
+        asset.updated_by = user
+        asset.save(update_fields=['department', 'property', 'owner', 'location', 'updated_by', 'updated_at'])
 
         transfer = AssetTransfer(
             transfer_code=self.generate_transfer_code(),
             asset=asset,
-            from_department=asset.department or '',
+            from_department=asset.department if to_department else (asset.department or ''),
             from_owner=asset.owner,
             from_owner_name=asset.owner.name if asset.owner else None,
             from_owner_email=asset.owner.email if asset.owner else None,
             from_property=asset.property,
             from_property_name=asset.property.name if asset.property else None,
             from_location=asset.location,
-            to_department=validated_data.get('to_department'),
+            to_department=to_department,
             to_owner=to_owner,
             to_owner_name=to_owner.name if to_owner else None,
             to_owner_email=to_owner.email if to_owner else None,
             to_property=to_property,
             to_property_name=to_property.name if to_property else None,
-            to_location=validated_data.get('to_location'),
+            to_location=to_location,
             reason=validated_data['reason'],
             notes=validated_data.get('notes'),
             quantity=validated_data.get('quantity', 1),
-            status=AssetTransfer.Status.PENDING,
+            status=AssetTransfer.Status.COMPLETED,
             requested_by=user,
             requested_by_name=getattr(user, 'name', None) or user.get_full_name() or user.email,
             requested_by_email=user.email,
+            completed_by=user,
+            completed_by_name=getattr(user, 'name', None) or user.get_full_name() or user.email,
+            completed_at=timezone.now(),
             created_by=user,
         )
         transfer.save()
@@ -412,3 +430,21 @@ class AssetTransferCreateSerializer(serializers.ModelSerializer):
             candidate = f"TRF-{str(max_num).zfill(6)}"
             if not AssetTransfer.objects.filter(transfer_code=candidate).exists():
                 return candidate
+
+
+class AssetLifecycleEventSerializer(serializers.ModelSerializer):
+    """Serializer for the immutable asset lifecycle audit trail."""
+    asset_code = serializers.CharField(source='asset.asset_code', read_only=True)
+    asset_name = serializers.CharField(source='asset.name', read_only=True)
+    event_type_display = serializers.CharField(source='get_event_type_display', read_only=True)
+
+    class Meta:
+        model = AssetLifecycleEvent
+        fields = [
+            'id', 'asset', 'asset_code', 'asset_name',
+            'event_type', 'event_type_display',
+            'actor', 'actor_name',
+            'old_value', 'new_value', 'message', 'metadata',
+            'occurred_at', 'created_at',
+        ]
+        read_only_fields = fields

@@ -7,10 +7,9 @@ from rest_framework.decorators import api_view, permission_classes
 from core.responses import StandardResponse
 from core.permissions import IsAdminOrManager
 from .serializers import (
-    RecentActivitySerializer, SystemSettingsSerializer,
-    PropertyLicenseSerializer, LicenseMetaSerializer
+    RecentActivitySerializer, SystemSettingsSerializer
 )
-from .models import RecentActivity, SystemSettings, PropertyLicense, LicenseMeta
+from .models import RecentActivity, SystemSettings
 
 
 class RecentActivityListView(generics.ListAPIView):
@@ -87,90 +86,4 @@ class SystemSettingsView(generics.RetrieveUpdateAPIView):
         return StandardResponse.validation_error("Validation failed", serializer.errors)
 
 
-class PropertyLicenseListView(generics.ListCreateAPIView):
-    """List and create property licenses."""
-    queryset = PropertyLicense.objects.filter(is_active=True)
-    serializer_class = PropertyLicenseSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrManager]
-    
-    def list(self, request, *args, **kwargs):
-        """List licenses with standard response format."""
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
-        return StandardResponse.success(serializer.data, "Licenses retrieved successfully")
-    
-    def create(self, request, *args, **kwargs):
-        """Create license with standard response format."""
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save(created_by=request.user)
-            return StandardResponse.created(
-                serializer.data,
-                "License created successfully"
-            )
-        return StandardResponse.validation_error("Validation failed", serializer.errors)
 
-
-class PropertyLicenseDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """Retrieve, update, or delete a property license."""
-    queryset = PropertyLicense.objects.filter(is_active=True)
-    serializer_class = PropertyLicenseSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrManager]
-    lookup_field = 'property_id'
-    
-    def retrieve(self, request, *args, **kwargs):
-        """Retrieve license with standard response format."""
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return StandardResponse.success(serializer.data, "License retrieved successfully")
-    
-    def update(self, request, *args, **kwargs):
-        """Update license with standard response format."""
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        if serializer.is_valid():
-            serializer.save(updated_by=request.user)
-            return StandardResponse.success(
-                serializer.data,
-                "License updated successfully"
-            )
-        return StandardResponse.validation_error("Validation failed", serializer.errors)
-    
-    def destroy(self, request, *args, **kwargs):
-        """Soft delete license."""
-        instance = self.get_object()
-        instance.soft_delete(request.user)
-        return StandardResponse.no_content("License deleted successfully")
-
-
-class LicenseMetaView(generics.RetrieveUpdateAPIView):
-    """Retrieve or update license metadata."""
-    serializer_class = LicenseMetaSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrManager]
-    lookup_field = 'key'
-    
-    def get_object(self):
-        """Get or create license metadata."""
-        key = self.kwargs.get('key', 'global_limits')
-        meta, created = LicenseMeta.objects.get_or_create(key=key)
-        return meta
-    
-    def retrieve(self, request, *args, **kwargs):
-        """Retrieve metadata with standard response format."""
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return StandardResponse.success(serializer.data, "Metadata retrieved successfully")
-    
-    def update(self, request, *args, **kwargs):
-        """Update metadata with standard response format."""
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        if serializer.is_valid():
-            serializer.save(updated_by=request.user)
-            return StandardResponse.success(
-                serializer.data,
-                "Metadata updated successfully"
-            )
-        return StandardResponse.validation_error("Validation failed", serializer.errors)

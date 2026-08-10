@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -29,6 +30,11 @@ import {
   Home,
   CalendarClock,
   ChevronDown,
+  ArrowRightLeft,
+  TrendingUp,
+  Wrench,
+  ArrowRight,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SheetClose } from "@/components/ui/sheet";
@@ -65,11 +71,24 @@ type NavItem = {
 const baseNav: NavItem[] = [
   // Requested order
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Assets", href: "/assets", icon: Package },
+  {
+    name: "Assets",
+    href: "/assets",
+    icon: Package,
+    submenu: [
+      { name: "All Assets", href: "/assets", icon: Package },
+      { name: "Analytics", href: "/assets/analytics", icon: TrendingUp },
+      { name: "Compliance", href: "/assets/compliance", icon: ShieldCheck },
+      { name: "Maintenance", href: "/maintenance", icon: Wrench },
+      { name: "Transfers", href: "/transfers", icon: ArrowRightLeft },
+    ],
+  },
   { name: "Properties", href: "/properties", icon: Building2 },
   { name: "Employees", href: "/employees", icon: UserCheck },
   { name: "Residential Hub", href: "/residential-hub", icon: Building2 },
   { name: "House Opp", href: "/house-opp", icon: Home },
+  { name: "Command Center", href: "/houses/command-center", icon: Activity },
+  { name: "Operations", href: "/houses/operations", icon: Wrench },
   { name: "New Application", href: "/house-application/new", icon: FilePlus },
   { name: "My Applications", href: "/house-application/my", icon: Files },
   { name: "Application Status", href: "/house-application/status", icon: ClipboardList },
@@ -82,7 +101,6 @@ const baseNav: NavItem[] = [
   { name: "Help Center", href: "/help", icon: LifeBuoy },
   { name: "Users", href: "/users", icon: Users },
   { name: "Settings", href: "/settings", icon: Settings },
-  { name: "License", href: "/license", icon: ShieldCheck },
   { name: "System Status", href: "/status", icon: Activity },
 ];
 
@@ -104,18 +122,21 @@ const badgeToneClasses: Record<BadgeTone, string> = {
 
 const navGroupBlueprint: Array<{ key: string; title: string; items: string[] }> = [
   { key: "workspace", title: "Workspace", items: ["Dashboard", "Assets", "Properties", "Employees", "Residential Hub", "Scan QR"] },
-  { key: "operations", title: "Operations", items: ["House Opp", "Approvals", "Tickets", "Help Center", "QR Codes", "Newsletter"] },
+  { key: "operations", title: "Operations", items: ["House Opp", "Command Center", "Operations", "Approvals", "Tickets", "Help Center", "QR Codes", "Newsletter"] },
   { key: "house_application", title: "House Application", items: ["New Application", "My Applications", "Application Status"] },
   { key: "insights", title: "Insights", items: ["Reports", "Audit"] },
-  { key: "administration", title: "Administration", items: ["Users", "Settings", "License", "System Status"] },
+  { key: "administration", title: "Administration", items: ["Users", "Settings", "System Status"] },
 ];
 
 const pageNameToKey: Record<string, PageKey | null> = {
   Dashboard: null,
   Assets: "assets",
+  Transfers: "assets",
   Properties: "properties",
   "Residential Hub": "residential_hub",
   "House Opp": "houses",
+  "Command Center": "houses",
+  "Operations": "houses",
   "QR Codes": "qrcodes",
   Approvals: null,
   "Scan QR": null,
@@ -125,7 +146,6 @@ const pageNameToKey: Record<string, PageKey | null> = {
   Users: "users",
   "System Status": null,
   Settings: "settings",
-  License: null,
   Newsletter: null,
   "Help Center": null,
   Employees: "employees",
@@ -140,8 +160,8 @@ interface SidebarProps {
   onNavigate?: () => void;
 }
 
-// ── Residential Hub inline accordion ─────────────────────────────────────
-function ResidentialHubDropdown({
+// ── Generic inline accordion for grouped nav entries ─────────────────────
+function NavGroupDropdown({
   entry,
   onNavigate,
   location,
@@ -157,10 +177,33 @@ function ResidentialHubDropdown({
         location.pathname.startsWith(s.href + "/")
     ) ?? false;
   const [open, setOpen] = useState(isAnySubActive);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (isAnySubActive) setOpen(true);
   }, [isAnySubActive]);
+
+  // Hover-to-open with a short delay before closing so moving from the
+  // parent row into the submenu (or briefly leaving the edge) doesn't flicker.
+  const handleHoverOpen = () => {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+    setOpen(true);
+  };
+
+  const handleHoverClose = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setOpen(false), 220);
+  };
+
+  useEffect(
+    () => () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    []
+  );
 
   // Live counts from cache (no extra fetch — reads whatever is already cached)
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -170,11 +213,13 @@ function ResidentialHubDropdown({
       const permanent  = peekCachedValue<any[]>("residential:permanent");
       const seasonal   = peekCachedValue<any[]>("residential:seasonal");
       const guest      = peekCachedValue<any[]>("residential:guest");
+      const assetsList = peekCachedValue<any[]>("assets:list");
       setCounts({
         "/house-opp":                 houses?.length   ?? 0,
         "/residential-hub/permanent": permanent?.length ?? 0,
         "/residential-hub/seasonal":  seasonal?.length  ?? 0,
         "/residential-hub/guest":     guest?.length     ?? 0,
+        "/assets":                    assetsList?.length ?? 0,
       });
     };
     readCounts();
@@ -182,28 +227,192 @@ function ResidentialHubDropdown({
     if (open) readCounts();
   }, [open]);
 
-  const subColors: Record<string, string> = {
-    "/house-opp":                 "from-cyan-500 to-blue-600",
-    "/residential-hub/permanent": "from-blue-500 to-indigo-600",
-    "/residential-hub/seasonal":  "from-amber-500 to-orange-600",
-    "/residential-hub/guest":     "from-emerald-500 to-teal-600",
-  };
-
-  const subLabels: Record<string, string> = {
-    "/house-opp":                 "House Opp",
-    "/residential-hub/permanent": "Permanent",
-    "/residential-hub/seasonal":  "Seasonal",
-    "/residential-hub/guest":     "Guest",
-  };
-
   return (
-    <div>
-      {/* Parent row */}
+    <div onMouseEnter={handleHoverOpen} onMouseLeave={handleHoverClose} className="space-y-0.5">
+
+      {/* ── Trigger row ── */}
       <button
         onClick={() => setOpen((p) => !p)}
         className={cn(
-          "group/nav flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+          "group/nav flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/40",
           isAnySubActive
+            ? "text-sidebar-accent-foreground"
+            : "text-sidebar-foreground/65 hover:text-sidebar-foreground"
+        )}
+      >
+        <entry.icon
+          className={cn(
+            "h-4 w-4 shrink-0 transition-colors",
+            isAnySubActive
+              ? "text-sidebar-primary"
+              : "text-sidebar-foreground/45 group-hover/nav:text-sidebar-foreground/80"
+          )}
+          strokeWidth={2}
+        />
+        <span className="flex flex-1 items-center justify-between truncate">
+          <span>{entry.name}</span>
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 text-sidebar-foreground/30 transition-transform duration-200",
+              open && "rotate-180"
+            )}
+          />
+        </span>
+      </button>
+
+      {/* ── Submenu — no box, no background, just a guide line ── */}
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-200 ease-in-out",
+          open ? "max-h-60 opacity-100" : "max-h-0 opacity-0"
+        )}
+      >
+        <ul className="relative ml-[22px] border-l border-sidebar-border/50 py-0.5">
+          {entry.submenu?.map((sub) => {
+            const isSubActive =
+              location.pathname === sub.href ||
+              location.pathname.startsWith(sub.href + "/");
+            const count = counts[sub.href] ?? 0;
+            return (
+              <li key={sub.name}>
+                <NavLink
+                  to={sub.href}
+                  onClick={onNavigate}
+                  className={cn(
+                    "group/sub relative flex items-center gap-2.5 py-1.5 pl-4 pr-2 text-[13px] transition-colors duration-150 focus-visible:outline-none",
+                    isSubActive
+                      ? "font-semibold text-sidebar-foreground"
+                      : "font-normal text-sidebar-foreground/50 hover:text-sidebar-foreground/90"
+                  )}
+                >
+                  {/* Active dot on the guide line */}
+                  <span
+                    className={cn(
+                      "absolute -left-px top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full transition-all duration-150",
+                      isSubActive
+                        ? "bg-sidebar-primary opacity-100"
+                        : "bg-transparent opacity-0 group-hover/sub:bg-sidebar-foreground/25 group-hover/sub:opacity-100"
+                    )}
+                  />
+
+                  <span className="flex-1 truncate">{sub.name}</span>
+
+                  {count > 0 && (
+                    <span className="tabular-nums text-[10px] font-medium text-sidebar-foreground/40">
+                      {count}
+                    </span>
+                  )}
+                </NavLink>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// ── Professional right-side flyout for grouped nav entries (desktop) ─────
+// Hovering the parent row slides out a floating panel to the right of the
+// sidebar (positioned via a portal so it is never clipped by the sidebar's
+// overflow), instead of an inline under-dropdown.
+function NavGroupFlyout({
+  entry,
+  onNavigate,
+  location,
+}: {
+  entry: SidebarEntry;
+  onNavigate?: () => void;
+  location: ReturnType<typeof useLocation>;
+}) {
+  const isAnySubActive =
+    entry.submenu?.some(
+      (s) =>
+        location.pathname === s.href ||
+        location.pathname.startsWith(s.href + "/")
+    ) ?? false;
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const rowRef = useRef<HTMLAnchorElement | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Live counts from cache (no extra fetch — reads whatever is already cached)
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    const readCounts = () => {
+      const assetsList = peekCachedValue<any[]>("assets:list");
+      const houses     = peekCachedValue<any[]>("houses:list");
+      const permanent  = peekCachedValue<any[]>("residential:permanent");
+      const seasonal   = peekCachedValue<any[]>("residential:seasonal");
+      const guest      = peekCachedValue<any[]>("residential:guest");
+      setCounts({
+        "/assets":                    assetsList?.length ?? 0,
+        "/house-opp":                 houses?.length   ?? 0,
+        "/residential-hub/permanent": permanent?.length ?? 0,
+        "/residential-hub/seasonal":  seasonal?.length  ?? 0,
+        "/residential-hub/guest":     guest?.length     ?? 0,
+      });
+    };
+    readCounts();
+    if (open) readCounts();
+  }, [open]);
+
+  const updatePos = useCallback(() => {
+    if (!rowRef.current) return;
+    const rect = rowRef.current.getBoundingClientRect();
+    const panelEstimate = 320;
+    const top = Math.max(
+      8,
+      Math.min(rect.top, window.innerHeight - panelEstimate - 8)
+    );
+    setPos({ top, left: rect.right + 10 });
+  }, []);
+
+  const handleOpen = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    updatePos();
+    setOpen(true);
+  }, [updatePos]);
+
+  const handleClose = useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    // Grace period so moving the cursor from the row into the panel (10px gap)
+    // doesn't flicker the flyout closed.
+    closeTimer.current = setTimeout(() => setOpen(false), 220);
+  }, []);
+
+  // Keep the panel glued to the row while open (sidebar scroll, viewport resize)
+  useEffect(() => {
+    if (!open) return;
+    updatePos();
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [open, updatePos]);
+
+  useEffect(
+    () => () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    },
+    []
+  );
+
+  return (
+    <div onMouseEnter={handleOpen} onMouseLeave={handleClose}>
+      {/* Parent row — click navigates to the group's landing page */}
+      <NavLink
+        ref={rowRef}
+        to={entry.href}
+        onClick={onNavigate}
+        className={cn(
+          "group/nav flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+          isAnySubActive || open
             ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
         )}
@@ -217,71 +426,95 @@ function ResidentialHubDropdown({
         />
         <span className="flex flex-1 items-center justify-between truncate">
           <span>{entry.name}</span>
-          <ChevronDown
+          <ChevronRight
             className={cn(
               "h-3.5 w-3.5 shrink-0 text-sidebar-foreground/40 transition-transform duration-200",
-              open && "rotate-180"
+              open && "rotate-90"
             )}
           />
         </span>
-      </button>
+      </NavLink>
 
-      {/* Horizontal sub-tiles */}
-      {open && (
-        <div className="mt-2 px-1 pb-1">
-          <div className="grid grid-cols-2 gap-1.5">
-            {entry.submenu?.map((sub) => {
-              const isSubActive =
-                location.pathname === sub.href ||
-                location.pathname.startsWith(sub.href + "/");
-              const gradient = subColors[sub.href] ?? "from-primary to-primary/80";
-              const shortLabel = subLabels[sub.href] ?? sub.name;
-              const count = counts[sub.href] ?? 0;
-              return (
-                <NavLink
-                  key={sub.name}
-                  to={sub.href}
-                  onClick={onNavigate}
-                  className={cn(
-                    "group/tile relative flex flex-col items-start rounded-xl p-2.5 transition-all duration-200 overflow-hidden",
-                    isSubActive
-                      ? "bg-sidebar-accent ring-1 ring-sidebar-primary/40 shadow-sm"
-                      : "bg-sidebar-accent/40 hover:bg-sidebar-accent/80 hover:shadow-sm"
-                  )}
-                >
-                  {/* Gradient accent bar on top */}
-                  <div className={cn("absolute inset-x-0 top-0 h-0.5 rounded-t-xl bg-gradient-to-r opacity-80", gradient)} />
-                  {/* Icon circle */}
-                  <div className={cn(
-                    "mb-1.5 flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm",
-                    gradient
-                  )}>
-                    <sub.icon className="h-3.5 w-3.5" strokeWidth={2.5} />
-                  </div>
-                  {/* Count */}
-                  <span className={cn(
-                    "text-lg font-bold leading-none tabular-nums",
-                    isSubActive ? "text-sidebar-accent-foreground" : "text-sidebar-foreground"
-                  )}>
-                    {count}
-                  </span>
-                  {/* Label */}
-                  <span className={cn(
-                    "mt-0.5 text-[10px] font-medium leading-tight",
-                    isSubActive ? "text-sidebar-accent-foreground/80" : "text-sidebar-foreground/60"
-                  )}>
-                    {shortLabel}
-                  </span>
-                  {/* Active dot */}
-                  {isSubActive && (
-                    <div className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-sidebar-primary" />
-                  )}
-                </NavLink>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Floating panel, rendered into <body> so it escapes sidebar overflow */}
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            role="menu"
+            style={{ top: pos.top, left: pos.left }}
+            onMouseEnter={handleOpen}
+            onMouseLeave={handleClose}
+            className="fixed z-50 w-72 overflow-hidden rounded-xl border border-border/70 bg-popover/95 text-popover-foreground shadow-[0_18px_50px_-12px_rgba(0,0,0,0.35)] backdrop-blur-xl animate-in fade-in-0 slide-in-from-left-2 zoom-in-95 duration-200"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border/60 bg-muted/40 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary/10 text-sidebar-primary">
+                  <entry.icon className="h-4 w-4" strokeWidth={2} />
+                </span>
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold text-foreground">{entry.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {entry.submenu?.length ?? 0} sections
+                  </p>
+                </div>
+              </div>
+              <Link
+                to={entry.href}
+                onClick={onNavigate}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-sidebar-primary transition-colors hover:bg-sidebar-accent/60"
+              >
+                View All
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+
+            {/* Items */}
+            <div className="p-1.5">
+              {entry.submenu?.map((sub) => {
+                const isSubActive =
+                  location.pathname === sub.href ||
+                  location.pathname.startsWith(sub.href + "/");
+                const count = counts[sub.href] ?? 0;
+                return (
+                  <NavLink
+                    key={sub.name}
+                    to={sub.href}
+                    role="menuitem"
+                    onClick={onNavigate}
+                    className={cn(
+                      "group/item relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors duration-150",
+                      isSubActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                    )}
+                  >
+                    {/* Active accent bar */}
+                    <span
+                      className={cn(
+                        "absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-sidebar-primary transition-opacity",
+                        isSubActive ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent/60 text-sidebar-foreground/70 transition-colors group-hover/item:bg-sidebar-accent group-hover/item:text-sidebar-primary">
+                      <sub.icon className="h-3.5 w-3.5" strokeWidth={2} />
+                    </span>
+                    <span className="flex flex-1 items-center justify-between truncate">
+                      <span className="truncate">{sub.name}</span>
+                      {count > 0 && (
+                        <span className="rounded-full bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sidebar-foreground/70">
+                          {count}
+                        </span>
+                      )}
+                    </span>
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/30 opacity-0 transition-all group-hover/item:translate-x-0.5 group-hover/item:opacity-100" />
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -456,7 +689,6 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
       if (item.name === "Approvals") return resolvedRole === "admin" || resolvedRole === "manager";
       if (item.name === "New Application" || item.name === "My Applications" || item.name === "Application Status")
         return resolvedRole === "manager" || resolvedRole === "requester";
-      if (item.name === "License") return resolvedRole === "admin";
       if (item.name === "Audit") {
         const rule = (effective as any)["audit"];
         return (
@@ -753,19 +985,14 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
                   className="inline-flex items-center justify-center"
                   aria-label="Go to dashboard"
                 >
-                  <div 
-                    className="h-10 w-32 bg-sidebar-primary transition-colors" 
-                    style={{
-                      maskImage: 'url("/sams_logo.png")',
-                      maskSize: 'contain',
-                      maskRepeat: 'no-repeat',
-                      maskPosition: 'left center',
-                      WebkitMaskImage: 'url("/sams_logo.png")',
-                      WebkitMaskSize: 'contain',
-                      WebkitMaskRepeat: 'no-repeat',
-                      WebkitMaskPosition: 'left center'
-                    }}
-                  />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary p-1 shadow-lg ring-2 ring-primary/30">
+                    <img
+                      src="/msf_logo.jpg"
+                      alt="MSF Logo"
+                      className="h-full w-full rounded-full object-cover"
+                      draggable={false}
+                    />
+                  </div>
                 </Link>
               </div>
               <SheetClose asChild>
@@ -791,7 +1018,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
                   // Submenu item → same horizontal tiles as desktop
                   if (entry.submenu && entry.submenu.length > 0) {
                     return (
-                      <ResidentialHubDropdown
+                      <NavGroupDropdown
                         key={entry.name}
                         entry={entry}
                         onNavigate={onNavigate}
@@ -878,22 +1105,17 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
           {!collapsed && (
             <Link
               to={homeHref}
-              className="inline-flex items-center pl-2"
+              className="inline-flex items-center gap-3 pl-2"
               aria-label="Go to dashboard"
             >
-              <div 
-                className="h-10 w-40 bg-sidebar-primary transition-colors" 
-                style={{
-                  maskImage: 'url("/sams_logo.png")',
-                  maskSize: 'contain',
-                  maskRepeat: 'no-repeat',
-                  maskPosition: 'left center',
-                  WebkitMaskImage: 'url("/sams_logo.png")',
-                  WebkitMaskSize: 'contain',
-                  WebkitMaskRepeat: 'no-repeat',
-                  WebkitMaskPosition: 'left center'
-                }}
-              />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary p-1 shadow-lg ring-2 ring-primary/30">
+                <img
+                  src="/msf_logo.jpg"
+                  alt="MSF Logo"
+                  className="h-full w-full rounded-full object-cover"
+                  draggable={false}
+                />
+              </div>
             </Link>
           )}
           {!isMobile && (
@@ -958,10 +1180,10 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
                 </h4>
                 <div className="space-y-1">
                   {group.items.map((entry) => {
-                    // Submenu item — inline accordion
+                    // Submenu item — right-side hover flyout
                     if (entry.submenu && entry.submenu.length > 0) {
                       return (
-                        <ResidentialHubDropdown key={entry.name} entry={entry} onNavigate={onNavigate} location={location} />
+                        <NavGroupFlyout key={entry.name} entry={entry} onNavigate={onNavigate} location={location} />
                       );
                     }
                     // Regular item

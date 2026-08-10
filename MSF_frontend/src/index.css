@@ -72,6 +72,9 @@ All colors MUST be HSL.
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
     --border: 220 13% 91%;
     --input: 220 13% 91%;
   /* Focus ring aligns with brand */
@@ -139,6 +142,11 @@ All colors MUST be HSL.
     --destructive: 0 62.8% 60%;
     --destructive-foreground: 210 40% 98%;
 
+  --success: 142 76% 40%;
+  --warning: 38 92% 55%;
+  --info: 217 91% 65%;
+  --info-foreground: 0 0% 100%;
+
   /* Stronger borders/inputs for clear separation */
   --border: 60 3% 25%;
   --input: 60 3% 22%;
@@ -203,6 +211,10 @@ All colors MUST be HSL.
   .badge-pill-danger {
     @apply badge-pill border-destructive/40 bg-destructive/10 text-destructive;
   }
+
+  .badge-pill-info {
+    @apply badge-pill border-info/30 bg-info/10 text-info;
+  }
 }
 
   /* Compact mode utility class: reduces padding/margins for denser layouts */
@@ -235,3 +247,156 @@ All colors MUST be HSL.
   .greeting-icon {
     /* static — no pulse animation */
   }
+
+/* ================================================================
+   SAMS unified toast theme (sonner)
+   Color-coded, card-based toasts rendered top-center.
+   Scoped to the toaster so it never leaks into the app.
+   ================================================================ */
+.sams-toaster[data-sonner-toaster] {
+  --width: 420px;
+  width: min(92vw, 420px);
+  max-width: min(92vw, 420px);
+  padding-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .sams-toaster[data-sonner-toaster] {
+    --width: calc(100vw - 24px);
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+  }
+}
+
+/* Base card — overrides sonner's [data-styled] default */
+.sams-toaster [data-sonner-toast][data-styled="true"] {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 14px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px hsl(0 0% 0% / 0.04), 0 12px 32px -8px hsl(0 0% 0% / 0.18);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* Color-coded accent bar on the leading edge */
+.sams-toaster [data-sonner-toast][data-styled="true"]::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 3px;
+  background: hsl(var(--muted-foreground) / 0.35);
+}
+.sams-toaster [data-sonner-toast][data-styled="true"][data-type="success"]::before { background: hsl(var(--success)); }
+.sams-toaster [data-sonner-toast][data-styled="true"][data-type="error"]::before   { background: hsl(var(--destructive)); }
+.sams-toaster [data-sonner-toast][data-styled="true"][data-type="warning"]::before { background: hsl(var(--warning)); }
+.sams-toaster [data-sonner-toast][data-styled="true"][data-type="info"]::before    { background: hsl(var(--info)); }
+
+/* Icons — tinted chips, colored per type */
+.sams-toaster [data-sonner-toast] [data-icon] {
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+.sams-toaster [data-sonner-toast] [data-icon] svg {
+  height: 13px;
+  width: 13px;
+  margin: 0;
+}
+.sams-toaster [data-sonner-toast][data-type="success"] [data-icon] { background: hsl(var(--success) / 0.14); color: hsl(var(--success)); }
+.sams-toaster [data-sonner-toast][data-type="error"] [data-icon]   { background: hsl(var(--destructive) / 0.14); color: hsl(var(--destructive)); }
+.sams-toaster [data-sonner-toast][data-type="warning"] [data-icon] { background: hsl(var(--warning) / 0.16); color: hsl(var(--warning)); }
+.sams-toaster [data-sonner-toast][data-type="info"] [data-icon]    { background: hsl(var(--info) / 0.14); color: hsl(var(--info)); }
+.sams-toaster [data-sonner-toast][data-type="loading"] [data-icon] { color: hsl(var(--primary)); }
+
+/* Content block */
+.sams-toaster [data-sonner-toast] [data-content] {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 2px;
+}
+.sams-toaster [data-sonner-toast] [data-title] {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+}
+.sams-toaster [data-sonner-toast] [data-description] {
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Close button */
+.sams-toaster [data-sonner-toast] [data-close-button] {
+  position: relative;
+  top: auto;
+  right: auto;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  opacity: 0;
+  transition: opacity 150ms ease, background 150ms ease, color 150ms ease;
+}
+.sams-toaster [data-sonner-toast]:hover [data-close-button] {
+  opacity: 1;
+}
+.sams-toaster [data-sonner-toast] [data-close-button]:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+/* Action / cancel buttons */
+.sams-toaster [data-sonner-toast] [data-button] {
+  border-radius: 8px;
+  padding: 4px 10px;
+  height: 26px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.sams-toaster [data-sonner-toast] [data-button][data-action="true"] {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.sams-toaster [data-sonner-toast] [data-button][data-action="false"] {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+/* Loading spinner uses brand color */
+.sams-toaster [data-sonner-toast] .sonner-loading-wrapper {
+  color: hsl(var(--primary));
+}
+
+/* Dark-mode refinements */
+[data-sonner-toaster][data-theme="dark"] .sams-toaster [data-sonner-toast][data-styled="true"] {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  box-shadow: 0 1px 2px hsl(0 0% 0% / 0.5), 0 16px 40px -12px hsl(0 0% 0% / 0.6);
+}
+[data-sonner-toaster][data-theme="dark"] .sams-toaster [data-sonner-toast][data-type="success"] [data-icon] { background: hsl(var(--success) / 0.2); }
+[data-sonner-toaster][data-theme="dark"] .sams-toaster [data-sonner-toast][data-type="error"] [data-icon]   { background: hsl(var(--destructive) / 0.2); }
+[data-sonner-toaster][data-theme="dark"] .sams-toaster [data-sonner-toast][data-type="warning"] [data-icon] { background: hsl(var(--warning) / 0.2); }
+[data-sonner-toaster][data-theme="dark"] .sams-toaster [data-sonner-toast][data-type="info"] [data-icon]    { background: hsl(var(--info) / 0.2); }

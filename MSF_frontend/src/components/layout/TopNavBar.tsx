@@ -157,7 +157,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
     if (type === 'house') { return '/house-opp'; }
     if (type === 'newsletter') { return '/newsletter'; }
     if (type === 'allocation') { return '/residential-hub'; }
-    if (type === 'license') { return '/license'; }
     if (type === 'audit') { return '/audit'; }
     if (type === 'scan') { return '/audit'; }
     if (type === 'department') { return '/users'; }
@@ -265,7 +264,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
     { label: 'Help Center', href: '/help', icon: LifeBuoy },
     { label: 'Users', href: '/users', icon: Users, roles: ['admin'] },
     { label: 'Settings', href: '/settings', icon: Settings },
-    { label: 'License', href: '/license', icon: ShieldCheck, roles: ['admin'] },
   ];
 
   const labelToKey: Record<string, PageKey | null> = {
@@ -282,7 +280,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
     'Help Center': null,
     Users: 'users',
     Settings: 'settings',
-    License: null,
     Newsletter: null,
   };
 
@@ -310,7 +307,6 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
         if (item.label === 'Newsletter') return showNewsletter;
         if (item.label === 'Help Center') return showHelpCenter;
         if (item.label === 'Approvals') return roleForPerm === 'admin' || roleForPerm === 'manager';
-        if (item.label === 'License') return roleForPerm === 'admin';
         if (item.label === 'Audit') {
           const rule = (effectivePerm as any)['audit'];
           return (

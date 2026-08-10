@@ -1,3 +1,4 @@
+import { crudToast } from "@/lib/enterprise-feedback";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -358,19 +359,19 @@ export default function Settings() {
         // Same-tab broadcast
         try { window.dispatchEvent(new CustomEvent('user-preferences-changed', { detail: patch })); } catch { }
       } catch { }
-      // Success toast removed per request
+      crudToast.settingsSaved("Your theme, sound, and workspace preferences have been saved.");
     } catch (e: any) {
-      toast({ title: "Failed to save", description: e.message || String(e), variant: "destructive" });
+      crudToast.failed("save settings", e.message || String(e));
     }
   };
 
   const handleChangePassword = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
-      toast({ title: "Missing fields", description: "Fill all password fields.", variant: "destructive" });
+      crudToast.warning("Missing Fields", "Please complete all password fields.");
       return;
     }
     if (newPassword !== confirmPassword) {
-      toast({ title: "Passwords do not match", description: "New and confirm passwords must match.", variant: "destructive" });
+      crudToast.warning("Passwords Do Not Match", "New password and confirmation password must match.");
       return;
     }
     try {
@@ -386,7 +387,7 @@ export default function Settings() {
         } catch { }
       }
       if (!uid || !emailForValidation) {
-        toast({ title: "Not signed in", description: "No current user found.", variant: "destructive" });
+        crudToast.error("Authentication Error", "No current signed-in user session found.");
         return;
       }
       // Use secure RPC to change own password server-side (validates current password)
@@ -400,9 +401,9 @@ export default function Settings() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast({ title: "Password updated", description: "Your password has been changed." });
+      crudToast.success("Password Updated", "Your account password has been changed successfully.");
     } catch (e: any) {
-      toast({ title: "Update failed", description: e?.message || String(e), variant: "destructive" });
+      crudToast.failed("change password", e?.message || String(e));
     }
   };
 

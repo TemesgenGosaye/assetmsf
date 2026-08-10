@@ -16,7 +16,6 @@ import {
   GitBranch,
   HelpCircle,
   Wrench,
-  ScrollText,
   BookText,
   Menu,
 } from "lucide-react";
@@ -40,7 +39,6 @@ const navItems = [
   { name: "Versioning & Releases", href: "#versioning", icon: GitBranch },
   { name: "FAQ", href: "#faq", icon: HelpCircle },
   { name: "Troubleshooting", href: "#troubleshooting", icon: Wrench },
-  { name: "License", href: "#license", icon: ScrollText },
   { name: "Code of Conduct", href: "#code-of-conduct", icon: BookText },
 ] as const;
 

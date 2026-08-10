@@ -11,7 +11,8 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model."""
-    
+    profile_image = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = User
         fields = [

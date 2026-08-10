@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function RequesterMyApplications() {
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [applications, setApplications] = useState<HouseApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,13 +52,19 @@ export default function RequesterMyApplications() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this application?")) return;
+    const ok = await confirm({
+      title: "Delete Application",
+      description: "Are you sure you want to delete this application draft? This action cannot be undone.",
+      variant: "danger",
+      confirmLabel: "Delete Application",
+    });
+    if (!ok) return;
     try {
       await deleteApplication(id);
-      toast.success("Application deleted");
+      crudToast.deleted("Application", "Application draft removed.");
       fetch();
     } catch (err: any) {
-      toast.error(err?.message || "Failed to delete");
+      crudToast.failed("delete application", err?.message);
     }
   };
 

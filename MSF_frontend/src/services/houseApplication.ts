@@ -11,6 +11,28 @@ export type ApplicationStatus =
   | "Rejected"
   | "Returned";
 
+export type CriterionContribution = {
+  raw: string | number | boolean;
+  normalised: number;
+  weight: number;
+  contribution: number;
+};
+
+export type ScoreBreakdown = {
+  job_grade?: CriterionContribution;
+  years_of_service?: CriterionContribution;
+  family_size?: CriterionContribution;
+  disability?: CriterionContribution;
+  fifo?: CriterionContribution;
+  marital_status?: CriterionContribution;
+  employment_type?: CriterionContribution;
+  medical_priority?: CriterionContribution;
+  topsis_closeness?: number;
+  rank?: number;
+  recommendation_reasons?: string[];
+  [key: string]: unknown;
+};
+
 export type HouseApplication = {
   id: string;
   application_no: string;
@@ -32,6 +54,7 @@ export type HouseApplication = {
   eligible_house_category?: string;
   priority_score: number;
   queue_position?: number | null;
+  score_breakdown?: ScoreBreakdown | null;
   reason_for_request: string;
   preferred_location: string;
   supporting_document: string | null;
@@ -135,6 +158,7 @@ function fromDjango(row: any): HouseApplication {
     eligible_house_category: row.eligible_house_category ?? "",
     priority_score: Number(row.priority_score) || 0,
     queue_position: row.queue_position ?? null,
+    score_breakdown: row.score_breakdown ?? null,
     reason_for_request: row.reason_for_request ?? "",
     preferred_location: row.preferred_location ?? "",
     supporting_document: row.supporting_document ?? null,
@@ -265,6 +289,7 @@ export async function autoAllocateHouse(houseId: string, applicationId?: string)
   });
   if (res.success) {
     invalidateCache("applications:list");
+    invalidateCache("houses:list");
     return fromDjango(res.data);
   }
   throw new Error(res.message || "Failed to auto-allocate house");
@@ -297,10 +322,14 @@ export async function batchAllocateAll(): Promise<{
 }
 
 export async function recalculateApplicationScore(applicationId: string): Promise<HouseApplication> {
-  await djangoRequest<any>("/houses/queue/?recalculate=true", { method: "GET" });
-  const app = await getApplication(applicationId);
-  invalidateCache("applications:list");
-  return app;
+  const res = await djangoRequest<any>(`/houses/applications/${applicationId}/recalculate-score/`, {
+    method: "POST",
+  });
+  if (res.success) {
+    invalidateCache("applications:list");
+    return fromDjango(res.data);
+  }
+  throw new Error(res.message || "Failed to recalculate score");
 }
 
 export async function manualAllocateHouse(
@@ -314,6 +343,7 @@ export async function manualAllocateHouse(
   });
   if (res.success) {
     invalidateCache("applications:list");
+    invalidateCache("houses:list");
     return fromDjango(res.data);
   }
   throw new Error(res.message || "Failed to manually allocate house");
@@ -326,6 +356,7 @@ export async function deallocateHouse(applicationId: string, notes?: string): Pr
   });
   if (res.success) {
     invalidateCache("applications:list");
+    invalidateCache("houses:list");
     return fromDjango(res.data);
   }
   throw new Error(res.message || "Failed to deallocate house");

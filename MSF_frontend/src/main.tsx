@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client'
+import '@/lib/toast-global'
 import App from './App.tsx'
 import { initNotificationSound } from '@/lib/sound'
 import './index.css'

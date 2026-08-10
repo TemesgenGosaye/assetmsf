@@ -28,7 +28,6 @@ from .allocation_engine import (
     compute_mcda_score, topsis_rank, check_allocation_constraints,
 )
 
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  HOUSE CRUD
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -283,6 +282,43 @@ class HouseQueueView(APIView):
         return StandardResponse.success(data, "Queue retrieved")
 
 
+class HouseApplicationRecalcScoreView(APIView):
+    """Recompute a single application's eligibility + MCDA/TOPSIS score
+    and refresh its queue position. Returns the enriched detail payload."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        try:
+            instance = HouseApplication.objects.get(id=pk, is_active=True)
+        except HouseApplication.DoesNotExist:
+            return StandardResponse.not_found("Application not found")
+
+        config = ScoringConfig.objects.filter(is_active=True).first()
+        cat, _ = determine_eligible_category(instance)
+        total, breakdown, reasons = compute_mcda_score(instance, config)
+        instance.eligible_house_category = cat
+        instance.priority_score = total
+        instance.score_breakdown = breakdown
+        instance.save(update_fields=[
+            "eligible_house_category", "priority_score", "score_breakdown", "updated_at",
+        ])
+
+        # Re-rank the live queue so queue_position reflects the new score.
+        ranked = get_ranked_queue(recalculate=False)
+        for rank, app in enumerate(ranked, 1):
+            if app.id == instance.id:
+                instance.queue_position = rank
+                instance.save(update_fields=["queue_position", "updated_at"])
+                break
+
+        return StandardResponse.success(
+            HouseApplicationDetailSerializer(instance).data,
+            "Score recalculated and queue re-ranked",
+        )
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  ALLOCATION ACTIONS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -303,10 +339,12 @@ class AutoAllocateView(APIView):
                 except House.DoesNotExist:
                     return StandardResponse.not_found(f"House '{house_id}' not found")
         else:
-            available = House.objects.filter(
-                is_active=True, status=House.Status.ACTIVE
-            )
-            available = [h for h in available if h.is_available]
+            available = [
+                h for h in House.objects.filter(
+                    is_active=True, status=House.Status.ACTIVE,
+                ).exclude(allocation_category=House.AllocationCategory.GUEST)
+                if h.is_available
+            ]
             if not available:
                 return StandardResponse.bad_request("No available vacant houses found")
             house = available[0]

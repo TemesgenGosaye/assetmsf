@@ -236,7 +236,7 @@ export default function AssetTable({
             dense={dense}
             stickyHeader
             stickyFirstCol
-            className="text-sm"
+            className="text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"
           >
             <TableHeader className="bg-transparent">
               <TableRow className="border-b border-border/60 shadow-[inset_0_-1px_0_theme(colors.border/0.45)] hover:bg-transparent">
@@ -394,7 +394,7 @@ export default function AssetTable({
                         )}
                         {isVisible("name") && (
                           <TableCell>
-                            <span className="font-semibold text-foreground leading-5">
+                            <span className="font-semibold text-foreground leading-5 truncate max-w-[220px]">
                               {rep.name || rep.id}
                             </span>
                           </TableCell>
@@ -406,11 +406,11 @@ export default function AssetTable({
                         )}
                         {isVisible("property") && (
                           <TableCell>
-                            <div className="flex flex-col gap-0.5 text-sm">
-                              <span className="font-medium text-foreground/90">
+                            <div className="flex max-w-[200px] flex-col gap-0.5 text-sm">
+                              <span className="truncate font-medium text-foreground/90">
                                 {propName(String(rep.property))}
                               </span>
-                              <span className="text-[11px] text-muted-foreground">
+                              <span className="truncate text-[11px] text-muted-foreground">
                                 {propCode(String(rep.property))}
                               </span>
                             </div>
@@ -434,7 +434,7 @@ export default function AssetTable({
                           </TableCell>
                         )}
                         {isVisible("location") && (
-                          <TableCell>{rep.location || "-"}</TableCell>
+                          <TableCell className="truncate max-w-[160px]">{rep.location || "-"}</TableCell>
                         )}
                         {isVisible("purchaseDate") && (
                           <TableCell>{rep.purchaseDate}</TableCell>
@@ -450,16 +450,16 @@ export default function AssetTable({
                           </TableCell>
                         )}
                         {isVisible("depreciationMethod") && (
-                          <TableCell>{depMethodLabel(rep.depreciationMethod)}</TableCell>
+                          <TableCell className="truncate max-w-[140px]">{depMethodLabel(rep.depreciationMethod)}</TableCell>
                         )}
                         {isVisible("vendor") && (
-                          <TableCell>{rep.vendor || "-"}</TableCell>
+                          <TableCell className="truncate max-w-[150px]">{rep.vendor || "-"}</TableCell>
                         )}
                         {isVisible("invoiceNumber") && (
-                          <TableCell>{rep.invoiceNumber || "-"}</TableCell>
+                          <TableCell className="truncate max-w-[130px]">{rep.invoiceNumber || "-"}</TableCell>
                         )}
                         {isVisible("warrantyExpiry") && (
-                          <TableCell>{rep.warrantyExpiry || "-"}</TableCell>
+                          <TableCell className="truncate max-w-[120px]">{rep.warrantyExpiry || "-"}</TableCell>
                         )}
                         {isVisible("status") && (
                           <TableCell>{getStatusBadge(rep.status)}</TableCell>
@@ -484,7 +484,7 @@ export default function AssetTable({
                           </TableCell>
                         )}
                         {isVisible("createdBy") && (
-                          <TableCell>
+                          <TableCell className="truncate max-w-[160px]">
                             {rep.createdByName ||
                               rep.createdByEmail ||
                               rep.createdById ||
@@ -492,10 +492,10 @@ export default function AssetTable({
                           </TableCell>
                         )}
                         {isVisible("serial") && (
-                          <TableCell>{rep.serialNumber || "-"}</TableCell>
+                          <TableCell className="truncate max-w-[140px]">{rep.serialNumber || "-"}</TableCell>
                         )}
                         {isVisible("description") && (
-                          <TableCell>{rep.description || "-"}</TableCell>
+                          <TableCell className="truncate max-w-[240px]">{rep.description || "-"}</TableCell>
                         )}
                         {isVisible("actions") && (
                           <TableCell className="text-right">
@@ -608,7 +608,7 @@ export default function AssetTable({
                                 )}
                                 {isVisible("name") && (
                                   <TableCell>
-                                    <span className="font-semibold text-foreground leading-5">
+                                    <span className="font-semibold text-foreground leading-5 truncate max-w-[220px]">
                                       {asset.name || asset.id}
                                     </span>
                                   </TableCell>
@@ -620,11 +620,11 @@ export default function AssetTable({
                                 )}
                                 {isVisible("property") && (
                                   <TableCell>
-                                    <div className="flex flex-col gap-0.5 text-sm">
-                                      <span className="font-medium text-foreground/90">
+                                    <div className="flex max-w-[200px] flex-col gap-0.5 text-sm">
+                                      <span className="truncate font-medium text-foreground/90">
                                         {propName(String(asset.property))}
                                       </span>
-                                      <span className="text-[11px] text-muted-foreground">
+                                      <span className="truncate text-[11px] text-muted-foreground">
                                         {propCode(String(asset.property))}
                                       </span>
                                     </div>
@@ -641,7 +641,7 @@ export default function AssetTable({
                                   </TableCell>
                                 )}
                                 {isVisible("location") && (
-                                  <TableCell>{asset.location || "-"}</TableCell>
+                                  <TableCell className="truncate max-w-[160px]">{asset.location || "-"}</TableCell>
                                 )}
                                 {isVisible("purchaseDate") && (
                                   <TableCell>{asset.purchaseDate}</TableCell>
@@ -657,20 +657,20 @@ export default function AssetTable({
                                   </TableCell>
                                 )}
                                 {isVisible("depreciationMethod") && (
-                                  <TableCell>
+                                  <TableCell className="truncate max-w-[140px]">
                                     {depMethodLabel(asset.depreciationMethod)}
                                   </TableCell>
                                 )}
                                 {isVisible("vendor") && (
-                                  <TableCell>{asset.vendor || "-"}</TableCell>
+                                  <TableCell className="truncate max-w-[150px]">{asset.vendor || "-"}</TableCell>
                                 )}
                                 {isVisible("invoiceNumber") && (
-                                  <TableCell>
+                                  <TableCell className="truncate max-w-[130px]">
                                     {asset.invoiceNumber || "-"}
                                   </TableCell>
                                 )}
                                 {isVisible("warrantyExpiry") && (
-                                  <TableCell>
+                                  <TableCell className="truncate max-w-[120px]">
                                     {asset.warrantyExpiry || "-"}
                                   </TableCell>
                                 )}
@@ -687,7 +687,7 @@ export default function AssetTable({
                                   </TableCell>
                                 )}
                                 {isVisible("createdBy") && (
-                                  <TableCell>
+                                  <TableCell className="truncate max-w-[160px]">
                                     {asset.createdByName ||
                                       asset.createdByEmail ||
                                       asset.createdById ||
@@ -695,12 +695,12 @@ export default function AssetTable({
                                   </TableCell>
                                 )}
                                 {isVisible("serial") && (
-                                  <TableCell>
+                                  <TableCell className="truncate max-w-[140px]">
                                     {asset.serialNumber || "-"}
                                   </TableCell>
                                 )}
                                 {isVisible("description") && (
-                                  <TableCell>
+                                  <TableCell className="truncate max-w-[240px]">
                                     {asset.description || "-"}
                                   </TableCell>
                                 )}

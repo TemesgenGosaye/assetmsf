@@ -5,7 +5,8 @@ from django.urls import path
 from .views import (
     MaintenanceTicketListView, MaintenanceTicketDetailView,
     TicketEventListView, TicketAttachmentListView,
-    MaintenanceScheduleListView, MaintenanceScheduleDetailView
+    MaintenanceScheduleListView, MaintenanceScheduleDetailView,
+    MaintenanceScheduleActionView, MaintenanceAnalyticsView,
 )
 
 urlpatterns = [
@@ -15,4 +16,6 @@ urlpatterns = [
     path('<uuid:ticket_id>/attachments/', TicketAttachmentListView.as_view(), name='ticket_attachment_list'),
     path('schedules/', MaintenanceScheduleListView.as_view(), name='schedule_list'),
     path('schedules/<uuid:id>/', MaintenanceScheduleDetailView.as_view(), name='schedule_detail'),
+    path('schedules/<uuid:id>/perform/', MaintenanceScheduleActionView.as_view(), name='schedule_perform'),
+    path('analytics/', MaintenanceAnalyticsView.as_view(), name='maintenance_analytics'),
 ]

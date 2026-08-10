@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
@@ -88,6 +89,8 @@ const mockQRCodes = [
 ];
 
 export default function QRCodes() {
+  const confirm = useConfirm();
+
   const [loadingUI, setLoadingUI] = useState(true);
   const [role, setRole] = useState<string>("");
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
@@ -123,7 +126,7 @@ export default function QRCodes() {
     printed?: boolean;
     generatedDate?: string;
   } | null>(null);
-  const navigate = useNavigate();
+
   const [canEditPage, setCanEditPage] = useState<boolean>(true);
   // Download selection state
   const [dlSingleOpen, setDlSingleOpen] = useState(false);
@@ -312,7 +315,13 @@ export default function QRCodes() {
   const handleClearAll = async () => {
     if (role !== 'admin') return;
 
-    const ok = window.confirm("This will permanently delete every stored QR code. Continue?");
+    const ok = await confirm({
+      title: "Clear All Stored QR Codes",
+      description: "This will permanently delete every stored QR code in the system. Type CLEAR to confirm.",
+      variant: "danger",
+      confirmLabel: "Clear All QR Codes",
+      requireText: "CLEAR",
+    });
     if (!ok) return;
     try {
       setPurging(true);
@@ -320,11 +329,11 @@ export default function QRCodes() {
       setCodes([]);
       setComputedImages({});
       setHighlightId(null);
-      toast.success("All QR codes have been cleared.");
+      crudToast.deleted("QR Code Registry", "All QR codes have been permanently cleared.");
       await logActivity("qr_cleared_all", "All QR history cleared", actor);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast.error("Failed to clear QR codes");
+      crudToast.failed("clear QR codes", e?.message);
     } finally {
       setPurging(false);
     }
@@ -753,7 +762,7 @@ export default function QRCodes() {
         </Dialog>
 
         <Dialog open={assetPickerOpen} onOpenChange={setAssetPickerOpen}>
-          <DialogContent className="sm:max-w-xl">
+          <DialogContent aria-describedby={undefined} className="sm:max-w-xl">
             <DialogHeader>
               <DialogTitle>Select an asset to generate a QR</DialogTitle>
             </DialogHeader>
@@ -1175,7 +1184,7 @@ export default function QRCodes() {
 
         {/* QR Preview Dialog */}
         <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-          <DialogContent className="sm:max-w-md overflow-hidden rounded-3xl border-0 bg-background/80 backdrop-blur-xl p-0 shadow-2xl ring-1 ring-white/10">
+          <DialogContent aria-describedby={undefined} className="sm:max-w-md overflow-hidden rounded-3xl border-0 bg-background/80 backdrop-blur-xl p-0 shadow-2xl ring-1 ring-white/10">
             <DialogTitle className="sr-only">
               {previewMeta ? `QR Code – ${previewMeta.assetName}` : "QR Code Preview"}
             </DialogTitle>
@@ -1257,7 +1266,7 @@ export default function QRCodes() {
 
         {/* Download single format chooser */}
         <Dialog open={dlSingleOpen} onOpenChange={setDlSingleOpen}>
-          <DialogContent className="sm:max-w-sm">
+          <DialogContent aria-describedby={undefined} className="sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>Download format</DialogTitle>
             </DialogHeader>
@@ -1280,7 +1289,7 @@ export default function QRCodes() {
 
         {/* Download all format chooser */}
         <Dialog open={dlAllOpen} onOpenChange={setDlAllOpen}>
-          <DialogContent className="sm:max-w-sm">
+          <DialogContent aria-describedby={undefined} className="sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>Download all</DialogTitle>
             </DialogHeader>

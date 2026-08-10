@@ -1,7 +1,6 @@
 import ExcelJS from "exceljs";
 import type { Asset } from "./assets";
 import { createAsset, listAssets } from "./assets";
-import { checkLicenseBeforeCreate } from './license';
 import { listProperties } from "./properties";
 import { listItemTypes } from "./itemTypes";
 import { getAccessiblePropertyIdsForCurrentUser } from "./userAccess";
@@ -410,19 +409,6 @@ export async function importAssetsFromFile(file: File): Promise<ImportResult> {
     };
 
     try {
-      // License check accounts for each unit we are about to create
-      try {
-        const check = await checkLicenseBeforeCreate(propertyCode, quantityUnits);
-        if (!check.ok) {
-          skipped++;
-          errors.push({ row: rowNum, message: check.message || 'License Exceed: upgrade required' });
-          continue;
-        }
-      } catch (e:any) {
-        if (/license/i.test(String(e?.message||''))) {
-          skipped++; errors.push({ row: rowNum, message: e.message }); continue;
-        }
-      }
       const unitIds: string[] = [];
       const firstId = providedId || nextId(type, propertyCode);
       unitIds.push(firstId);
@@ -431,14 +417,18 @@ export async function importAssetsFromFile(file: File): Promise<ImportResult> {
         const next = nextId(type, propertyCode);
         unitIds.push(next);
       }
-      for (let ui = 0; ui < unitIds.length; ui++) {
-        const unitId = unitIds[ui];
-        await createAsset({
-          ...baseAsset,
-          id: unitId,
-          serialNumber: ui === 0 ? baseAsset.serialNumber : null,
-        } as Asset);
-        inserted++;
+      const settled = await Promise.allSettled(
+        unitIds.map((unitId, ui) =>
+          createAsset({
+            ...baseAsset,
+            id: unitId,
+            serialNumber: ui === 0 ? baseAsset.serialNumber : null,
+          } as Asset),
+        ),
+      );
+      for (const result of settled) {
+        if (result.status === "fulfilled") inserted++;
+        else errors.push({ row: rowNum, message: result.reason?.message || "Failed to insert asset" });
       }
     } catch (e: any) {
       skipped++;

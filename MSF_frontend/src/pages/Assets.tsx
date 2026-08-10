@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { isDemoMode } from "@/lib/demo";
@@ -22,8 +23,6 @@ import {
   getCachedAssetsSnapshot,
   subscribeToAssetsCache,
 } from "@/services/assets";
-import { checkLicenseBeforeCreate } from "@/services/license";
-import { LicenseExceedModal } from "@/components/assets/LicenseExceedModal";
 import { listProperties, type Property } from "@/services/properties";
 import { listDepartments } from "@/services/departments";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
@@ -63,6 +62,7 @@ import QrExportModal from "@/components/assets/QrExportModal";
 import AssetFormDialog from "@/components/assets/AssetFormDialog";
 
 export default function Assets() {
+  const confirm = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showAddForm, setShowAddForm] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
@@ -82,10 +82,6 @@ export default function Assets() {
   const [typeOptions, setTypeOptions] = useState<string[]>([]);
   const [propertyOptions, setPropertyOptions] = useState<string[]>([]);
   const [deptOptions, setDeptOptions] = useState<string[]>([]);
-  const [licenseModal, setLicenseModal] = useState<{
-    open: boolean;
-    info: any | null;
-  }>({ open: false, info: null });
   const navigate = useNavigate();
   const [propsById, setPropsById] = useState<Record<string, Property>>({});
   const [propsByName, setPropsByName] = useState<Record<string, Property>>({});
@@ -849,48 +845,21 @@ export default function Assets() {
       }
     } catch {}
     try {
-      // Perform license pre-check BEFORE any create/update action (both Supabase & local)
-      const propertyCodeRaw = assetData.property; // property id/code from select
-      try {
-        const increment = selectedAsset
-          ? 0
-          : Math.max(1, Number(assetData.quantity) || 1);
-        const check = await checkLicenseBeforeCreate(
-          propertyCodeRaw,
-          increment,
-        );
-        if (!check.ok) {
-          setLicenseModal({
-            open: true,
-            info: {
-              ...check,
-              propertyId: propertyCodeRaw,
-              message: check.message || "License Exceeded",
-            },
-          });
-          return false; // Block creation
-        }
-      } catch (e: any) {
-        // If license call itself fails in a license-specific way, surface modal; else allow (fail-open)
-        if (/license/i.test(String(e?.message || ""))) {
-          setLicenseModal({
-            open: true,
-            info: { reason: "GLOBAL_LIMIT", message: e.message },
-          });
-          return false;
-        }
-      }
+      // Reuse the already-cached asset list for sequence derivation so we don't
+      // re-fetch all assets from the server (which is very slow on cold backends).
+      const cachedAssets: any[] | null = assets;
       const amcEnabled = Boolean(assetData.amcEnabled);
-      const amcStartDate = amcEnabled
-        ? toISODate(assetData.amcStartDate)
-        : null;
+      const amcStartDate = amcEnabled ? toISODate(assetData.amcStartDate) : null;
       const amcEndDate = amcEnabled ? toISODate(assetData.amcEndDate) : null;
 
       if (!isDemoMode()) {
         const propertyCodeRaw = assetData.property;
         const seqPrefix = `${typePrefix(assetData.itemType)}0-0-00-`;
         const quantity = Math.max(1, Number(assetData.quantity) || 1);
-        const baseSeq = nextSequence(assets, seqPrefix);
+        const baseSeq = nextSequence(
+          cachedAssets && cachedAssets.length ? cachedAssets : assets,
+          seqPrefix,
+        );
 
         if (selectedAsset) {
           // Update existing asset — property cannot be changed after creation
@@ -924,21 +893,21 @@ export default function Assets() {
             amcStartDate,
             amcEndDate,
           } as any);
-          await logActivity(
+          logActivity(
             "asset_updated",
             `Asset ${selectedAsset.id} (${assetData.itemName}) updated`,
-          );
+          ).catch(() => {});
           trackActivity("asset", "update", {
             entityName: assetData.itemName,
             entityId: selectedAsset.id,
           }).catch(() => {});
+          crudToast.updated("Asset", selectedAsset.id);
         } else {
-          // Create new assets
-          let newAssetId: string | null = null;
-          for (let i = 0; i < quantity; i++) {
-            const assetCode = `${seqPrefix}${String(baseSeq + i).padStart(3, "0")}`;
-            const created = await createAsset({
-              asset_code: assetCode,
+          // Create new assets — fire all requests in parallel so the save is
+          // as fast as the slowest single request, not quantity x round-trips.
+          const makeAsset = (seq: number, index: number) =>
+            ({
+              asset_code: `${seqPrefix}${String(seq).padStart(3, "0")}`,
               name: assetData.itemName,
               type: assetData.itemType,
               property_id: propertyCodeRaw,
@@ -964,22 +933,63 @@ export default function Assets() {
               status: "active",
               location: assetData.location || null,
               description: assetData.description || null,
-              serialNumber: i === 0 ? (assetData.serialNumber || null) : null,
+              serialNumber:
+                index === 0 ? (assetData.serialNumber || null) : null,
               amcEnabled,
               amcStartDate,
               amcEndDate,
             } as any);
-            if (!newAssetId) newAssetId = created.id;
-          }
-          await logActivity("asset_created", `Assets created`);
+          const fireBatch = async (startSeq: number) => {
+            const settled = await Promise.allSettled(
+              Array.from({ length: quantity }, (_, i) =>
+                createAsset(makeAsset(startSeq + i, i)),
+              ),
+            );
+            const created: any[] = [];
+            let conflicted = false;
+            let fatal: any = null;
+            for (const r of settled) {
+              if (r.status === "fulfilled") created.push(r.value);
+              else if (
+                /already exists|must be unique/i.test(
+                  String((r as any).reason?.message || ""),
+                )
+              )
+                conflicted = true;
+              else fatal = fatal || (r as any).reason;
+            }
+            if (fatal) throw fatal;
+            if (conflicted) {
+              // Codes collided with existing rows (e.g. a concurrent create).
+              // Recompute the sequence from server truth and fill only the
+              // missing slots so the batch never creates more than requested.
+              const latest = await listAssets({ force: true });
+              const missing = quantity - created.length;
+              const retried = await Promise.all(
+                Array.from({ length: missing }, (_, i) =>
+                  createAsset(
+                    makeAsset(nextSequence(latest, seqPrefix) + i, i),
+                  ),
+                ),
+              );
+              return [...created, ...retried];
+            }
+            return created;
+          };
+          const createdList = await fireBatch(baseSeq);
+          const newAssetId = createdList[0]?.id ?? null;
+          // Activity + tracking are non-blocking — never delay the success toast.
+          logActivity("asset_created", `Assets created`).catch(() => {});
           trackActivity("asset", "create", { entityName: assetData.itemName }).catch(() => {});
           if (newAssetId) {
             toast.success(`Asset ${newAssetId} created`);
             navigate(`/assets/${newAssetId}`);
           }
         }
-        const data = await listAssets({ force: true });
-        setAssets(data as any);
+        // Refresh in the background — never block the success feedback or the
+        // dialog close on a full list fetch (the cache subscription already
+        // keeps the table in sync once the refresh resolves).
+        listAssets({ force: true }).catch(() => {});
       }
       setShowAddForm(false);
       setSelectedAsset(null);
@@ -1071,21 +1081,24 @@ export default function Assets() {
 
   const handleDeleteAsset = async (assetId: string) => {
     if (role !== "admin") return; // only admin can delete
-    const ok = window.confirm(
-      `Are you sure you want to delete asset ${assetId}? This action cannot be undone.`,
-    );
+    const ok = await confirm({
+      title: "Delete Asset Record",
+      description: `Are you sure you want to delete asset ${assetId}? This action cannot be undone.`,
+      variant: "danger",
+      confirmLabel: "Delete Asset",
+    });
     if (!ok) return;
     try {
       if (!isDemoMode()) {
         await deleteAsset(assetId);
         const data = await listAssets({ force: true });
         setAssets(data as any);
-        toast.success(`Asset ${assetId} deleted`);
+        crudToast.deleted("Asset", `Asset ${assetId} has been removed.`);
         await logActivity("asset_deleted", `Asset ${assetId} deleted`);
         trackActivity("asset", "delete", { entityId: assetId }).catch(() => {});
       } else {
         setAssets((prev) => prev.filter((a) => a.id !== assetId));
-        toast.info("Demo mode; deleted locally only");
+        crudToast.info("Demo Mode", `Asset ${assetId} deleted locally in demo mode.`);
         await logActivity(
           "asset_deleted",
           `Asset ${assetId} deleted (demo)`,
@@ -1093,16 +1106,20 @@ export default function Assets() {
         );
       }
     } catch (e: any) {
-      toast.error(e.message || "Failed to delete asset");
+      crudToast.failed("delete asset", e.message);
     }
   };
 
   const handleDeleteGroup = async (assetsToDelete: any[]) => {
     if (role !== "admin") return;
     const count = assetsToDelete.length;
-    const ok = window.confirm(
-      `Are you sure you want to delete ${count} assets? This action cannot be undone.`,
-    );
+    const ok = await confirm({
+      title: `Delete ${count} Assets`,
+      description: `Are you sure you want to permanently delete ${count} selected assets? This action cannot be undone.`,
+      variant: "danger",
+      confirmLabel: `Delete ${count} Assets`,
+      requireText: count > 3 ? "DELETE" : undefined,
+    });
     if (!ok) return;
 
     try {
@@ -1110,7 +1127,7 @@ export default function Assets() {
         await Promise.all(assetsToDelete.map((a) => deleteAsset(a.id)));
         const data = await listAssets({ force: true });
         setAssets(data as any);
-        toast.success(`${count} assets deleted`);
+        crudToast.deleted("Assets", `${count} asset records removed.`);
         await logActivity("asset_deleted", `${count} assets deleted`);
         trackActivity("asset", "delete", {
           entityName: `${count} assets`,
@@ -1118,7 +1135,7 @@ export default function Assets() {
       } else {
         const ids = new Set(assetsToDelete.map((a) => a.id));
         setAssets((prev) => prev.filter((a) => !ids.has(a.id)));
-        toast.info("Demo mode; deleted locally only");
+        crudToast.info("Demo Mode", `${count} assets deleted locally in demo mode.`);
         await logActivity(
           "asset_deleted",
           `${count} assets deleted (demo)`,
@@ -1348,23 +1365,10 @@ export default function Assets() {
     );
   };
 
-  const handleFormClose = async (open: boolean) => {
+  const handleFormClose = (open: boolean) => {
     if (!open) {
-      // Determine the ID of the asset that was just created or updated
-      let newAssetId: string | undefined;
-      if (selectedAsset) {
-        // Update case – use the existing asset ID
-        newAssetId = selectedAsset.id;
-      } else {
-        // Creation case – refresh the list to pick up the new asset
-        await listAssets({ force: true });
-      }
-      if (newAssetId) {
-        toast.success(`Asset ${newAssetId} saved`);
-        navigate(`/assets/${newAssetId}`);
-      } else {
-        toast.success(`Asset saved`);
-      }
+      // Just close the dialog — save success (toast, navigation, refresh)
+      // is already handled inside handleAddAsset.
       setShowAddForm(false);
       setSelectedAsset(null);
       clearAddParams();
@@ -1395,36 +1399,6 @@ export default function Assets() {
 
   return (
     <div className="space-y-8 pb-10">
-      <LicenseExceedModal
-        open={licenseModal.open}
-        info={licenseModal.info}
-        onClose={() => setLicenseModal({ open: false, info: null })}
-        onCreateTicket={(info) => {
-          try {
-            const draft = {
-              type: "license-upgrade",
-              createdAt: new Date().toISOString(),
-              reason: info.reason,
-              propertyId: info.propertyId || null,
-              globalUsage: info.globalUsage ?? null,
-              globalLimit: info.globalLimit ?? null,
-              propertyUsage: info.propertyUsage ?? null,
-              propertyLimit: info.propertyLimit ?? null,
-              message: info.message,
-            };
-            localStorage.setItem(
-              "ticket_draft_license_upgrade",
-              JSON.stringify(draft),
-            );
-            toast.info("Draft upgrade ticket created");
-            setLicenseModal({ open: false, info: null });
-            navigate("/tickets?draft=license-upgrade");
-          } catch (e: any) {
-            toast.error(e?.message || "Failed to create draft ticket");
-          }
-        }}
-      />
-
       <Dialog open={showQRGenerator} onOpenChange={setShowQRGenerator}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>

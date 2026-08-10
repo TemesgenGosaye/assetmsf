@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -71,6 +72,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export default function EligibilityConfigPage() {
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [rules, setRules] = useState<EligibilityRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,13 +148,19 @@ export default function EligibilityConfigPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this eligibility rule?")) return;
+    const ok = await confirm({
+      title: "Delete Eligibility Rule",
+      description: "Are you sure you want to delete this eligibility rule? This action cannot be undone.",
+      variant: "danger",
+      confirmLabel: "Delete Rule",
+    });
+    if (!ok) return;
     try {
       await deleteEligibilityRule(id);
-      toast.success("Rule deleted");
+      crudToast.deleted("Eligibility Rule", "The eligibility rule has been removed.");
       void fetchRules();
     } catch (err: any) {
-      toast.error(err?.message || "Failed to delete rule");
+      crudToast.failed("delete eligibility rule", err?.message);
     }
   };
 

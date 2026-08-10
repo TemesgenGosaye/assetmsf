@@ -1,8 +1,12 @@
 """
 Views for maintenance ticket management.
 """
+from datetime import timedelta
+
 from rest_framework import generics, status, filters
 from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+from django.db.models import Count, Sum
 from django_filters.rest_framework import DjangoFilterBackend
 from core.responses import StandardResponse
 from core.exceptions import ValidationException
@@ -14,7 +18,8 @@ from .serializers import (
     MaintenanceScheduleCreateSerializer
 )
 from .models import MaintenanceTicket, TicketEvent, TicketAttachment, MaintenanceSchedule
-from assets.models import Asset
+from assets.models import Asset, AssetLifecycleEvent
+from assets.signals import log_lifecycle_event
 from authentication.models import User, UserPropertyAccess
 
 
@@ -366,3 +371,139 @@ class MaintenanceScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         instance.soft_delete(request.user)
         return StandardResponse.no_content("Schedule deleted successfully")
+
+
+class MaintenanceScheduleActionView(generics.GenericAPIView):
+    """
+    Perform a maintenance schedule.
+
+    Marks the schedule as performed (last_performed = today), advances next_due
+    by the configured frequency, and records an immutable asset lifecycle event.
+    """
+    queryset = MaintenanceSchedule.objects.filter(is_active=True)
+    serializer_class = MaintenanceScheduleSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        instance = self.queryset.filter(id=self.kwargs.get('id')).first()
+        if not instance:
+            from django.http import Http404
+            raise Http404("No MaintenanceSchedule matches the given query.")
+        return instance
+
+    @staticmethod
+    def _advance_due(current_due, frequency):
+        from datetime import date
+        if frequency == MaintenanceSchedule.Frequency.DAILY:
+            return current_due + timedelta(days=1)
+        if frequency == MaintenanceSchedule.Frequency.WEEKLY:
+            return current_due + timedelta(weeks=1)
+        if frequency == MaintenanceSchedule.Frequency.MONTHLY:
+            month = current_due.month + 1
+            year = current_due.year + (month - 1) // 12
+            month = (month - 1) % 12 + 1
+            day = min(current_due.day, 28)
+            return date(year, month, day)
+        if frequency == MaintenanceSchedule.Frequency.QUARTERLY:
+            return current_due + timedelta(days=90)
+        if frequency == MaintenanceSchedule.Frequency.YEARLY:
+            return current_due.replace(year=current_due.year + 1)
+        return current_due + timedelta(days=30)
+
+    def post(self, request, *args, **kwargs):
+        schedule = self.get_object()
+        from datetime import date
+        today = date.today()
+
+        schedule.last_performed = today
+        schedule.next_due = self._advance_due(schedule.next_due, schedule.frequency)
+        if schedule.end_date and schedule.next_due > schedule.end_date:
+            schedule.is_active = False
+        schedule.updated_by = request.user
+        schedule.save(update_fields=['last_performed', 'next_due', 'is_active', 'updated_by', 'updated_at'])
+
+        if schedule.asset_id:
+            log_lifecycle_event(
+                asset=schedule.asset,
+                event_type=AssetLifecycleEvent.EventType.MAINTENANCE_COMPLETED,
+                actor=request.user,
+                new_value={
+                    'schedule': schedule.name,
+                    'frequency': schedule.frequency,
+                    'performed_on': today.isoformat(),
+                    'next_due': schedule.next_due.isoformat(),
+                },
+                message=f"Preventive maintenance '{schedule.name}' performed on {today}",
+            )
+
+        return StandardResponse.success(
+            MaintenanceScheduleSerializer(schedule).data,
+            "Schedule marked as performed."
+        )
+
+
+class MaintenanceAnalyticsView(generics.GenericAPIView):
+    """Aggregated maintenance performance analytics."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        from assets.views import scoped_assets
+
+        asset_ids = list(scoped_assets(request.user).values_list('id', flat=True))
+        tickets = (MaintenanceTicket.objects.filter(is_active=True, asset_id__in=asset_ids)
+                   if asset_ids else MaintenanceTicket.objects.none())
+
+        now = timezone.now()
+        open_statuses = [
+            MaintenanceTicket.Status.BACKLOG, MaintenanceTicket.Status.OPEN,
+            MaintenanceTicket.Status.IN_PROGRESS, MaintenanceTicket.Status.WAITING_PARTS,
+            MaintenanceTicket.Status.ON_HOLD,
+        ]
+
+        status_rows = tickets.values('status').annotate(count=Count('id'))
+        status_breakdown = [
+            {'key': r['status'], 'label': str(dict(MaintenanceTicket.Status.choices).get(r['status'], r['status'])),
+             'count': r['count']}
+            for r in status_rows
+        ]
+
+        priority_rows = tickets.values('priority').annotate(count=Count('id'), cost=Sum('actual_cost'))
+        priority_breakdown = [
+            {'key': r['priority'], 'label': str(dict(MaintenanceTicket.Priority.choices).get(r['priority'], r['priority'])),
+             'count': r['count'], 'cost': round(float(r['cost'] or 0), 2)}
+            for r in priority_rows
+        ]
+
+        resolved = tickets.filter(status=MaintenanceTicket.Status.RESOLVED, resolved_at__isnull=False)
+        avg_resolution_hours = None
+        durations = []
+        for t in resolved.only('created_at', 'resolved_at'):
+            durations.append((t.resolved_at - t.created_at).total_seconds() / 3600)
+        if durations:
+            avg_resolution_hours = round(sum(durations) / len(durations), 1)
+
+        schedules = (MaintenanceSchedule.objects.filter(is_active=True, asset_id__in=asset_ids)
+                     if asset_ids else MaintenanceSchedule.objects.none())
+        today = timezone.localdate()
+
+        data = {
+            'totals': {
+                'total_tickets': tickets.count(),
+                'open_tickets': tickets.filter(status__in=open_statuses).count(),
+                'overdue_tickets': tickets.filter(status__in=open_statuses, due_date__lt=now).count(),
+                'resolved_total': resolved.count(),
+                'closed_30d': tickets.filter(status=MaintenanceTicket.Status.CLOSED,
+                                             updated_at__gte=now - timedelta(days=30)).count(),
+                'resolved_30d': tickets.filter(status=MaintenanceTicket.Status.RESOLVED,
+                                               resolved_at__gte=now - timedelta(days=30)).count(),
+                'sla_breached': tickets.filter(sla_breach=True).count(),
+                'estimated_cost': round(float(tickets.aggregate(v=Sum('estimated_cost'))['v'] or 0), 2),
+                'actual_cost': round(float(tickets.aggregate(v=Sum('actual_cost'))['v'] or 0), 2),
+                'avg_resolution_hours': avg_resolution_hours,
+                'schedules_due': schedules.filter(next_due__lte=today + timedelta(days=30)).count(),
+                'schedules_overdue': schedules.filter(next_due__lt=today).count(),
+            },
+            'status_breakdown': status_breakdown,
+            'priority_breakdown': priority_breakdown,
+        }
+        return StandardResponse.success(data, "Maintenance analytics retrieved successfully")

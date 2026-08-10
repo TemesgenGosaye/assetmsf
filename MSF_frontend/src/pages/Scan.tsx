@@ -1,3 +1,4 @@
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { isDemoMode } from "@/lib/demo";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import type { Result } from "@zxing/library";
 import { cn } from "@/lib/utils";
 
 export default function Scan() {
+  const confirm = useConfirm();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [active, setActive] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -153,14 +155,20 @@ export default function Scan() {
         if (idMatch) {
           window.location.assign(`/assets/${idMatch[0]}`);
         } else {
-          toast.success("Code Scanned");
-          // Show result dialog or toast with action
-          setTimeout(() => {
-             if (confirm(`Scanned: ${text}\n\nCopy to clipboard?`)) {
-               navigator.clipboard.writeText(text);
-             }
-             // Restart scanning if they didn't navigate
-             start();
+          crudToast.info("Barcode Scanned", `Content: ${text}`);
+          setTimeout(async () => {
+            const ok = await confirm({
+              title: "Code Scanned Successfully",
+              description: `Scanned text: "${text}". Would you like to copy this to your clipboard?`,
+              variant: "info",
+              confirmLabel: "Copy to Clipboard",
+              cancelLabel: "Done",
+            });
+            if (ok) {
+              await navigator.clipboard.writeText(text);
+              crudToast.success("Copied", "Barcode text copied to clipboard.");
+            }
+            start();
           }, 100);
         }
       }

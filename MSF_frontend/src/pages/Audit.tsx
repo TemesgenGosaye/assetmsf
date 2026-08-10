@@ -25,10 +25,12 @@ import { verifyAssetViaScan, listMyScansForSession } from "@/services/auditScans
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 
 type Row = { id: string; name: string; status: "verified" | "missing" | "damaged"; comment: string };
 
 export default function Audit() {
+  const confirm = useConfirm();
   const [department, setDepartment] = useState<string>("");
   const [rows, setRows] = useState<Row[]>([]);
   const [sessionId, setSessionId] = useState<string>("");
@@ -634,17 +636,23 @@ export default function Audit() {
   const submit = async () => {
     const dep = role === 'admin' ? adminDept : department;
     if (!sessionId || !dep) return;
-    if (!confirm("Submit audit for your department? You can still edit until admin closes the session.")) return;
+    const ok = await confirm({
+      title: "Submit Department Audit",
+      description: "Submit audit for your department? You can still edit until admin closes the session.",
+      variant: "info",
+      confirmLabel: "Submit Audit",
+    });
+    if (!ok) return;
     try {
       setSubmitting(true);
       await saveProgress();
       const raw = localStorage.getItem('auth_user');
       const au = raw ? JSON.parse(raw) : null;
       await submitAssignment(sessionId, dep, au?.name || au?.email || au?.id || null);
-      toast.success("Submitted");
+      crudToast.success("Department Audit Submitted", `Audit report for ${dep} has been submitted.`);
       await trackActivity("audit", "update", { entityName: dep, entityId: sessionId, changes: ["audit submitted"] });
       setAssignmentStatus('submitted');
-    } catch (e: any) { toast.error(e?.message || "Submit failed"); } finally { setSubmitting(false); }
+    } catch (e: any) { crudToast.failed("submit department audit", e?.message); } finally { setSubmitting(false); }
   };
 
   // Load full reviews for latest report to enable dept-wise details

@@ -26,14 +26,14 @@ export function TablePagination({
   const totalPages = Math.ceil(totalItems / rowsPerPage);
 
   return (
-    <div className="flex items-center justify-between border-t border-border/60 bg-muted/20 px-4 py-3">
+    <div className="flex items-center justify-between border-t border-border bg-muted/40 px-4 py-2.5">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span>Rows per page:</span>
+        <span className="text-xs">Rows per page:</span>
         <Select
           value={rowsPerPage.toString()}
           onValueChange={(value) => onRowsPerPageChange(Number(value))}
         >
-          <SelectTrigger className="h-8 w-[70px]">
+          <SelectTrigger className="h-8 w-[70px] rounded-full text-xs">
             <SelectValue placeholder={rowsPerPage} />
           </SelectTrigger>
           <SelectContent>
@@ -46,13 +46,13 @@ export function TablePagination({
         </Select>
       </div>
       <div className="flex items-center gap-2">
-        <div className="text-sm text-muted-foreground mr-2">
+        <div className="text-xs text-muted-foreground mr-2">
           Page {currentPage} of {totalPages || 1}
         </div>
         <Button
           variant="outline"
           size="sm"
-          className="h-8 w-8 p-0"
+          className="h-8 w-8 rounded-full p-0"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
         >
@@ -61,7 +61,7 @@ export function TablePagination({
         <Button
           variant="outline"
           size="sm"
-          className="h-8 w-8 p-0"
+          className="h-8 w-8 rounded-full p-0"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages || totalPages === 0}
         >

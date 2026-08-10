@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import NotFound from "@/pages/NotFound";
 import { isDemoMode } from "@/lib/demo";
-import { getCurrentUserId, listUserPermissions, mergeDefaultsWithOverrides, roleDefaults, type PageKey } from "@/services/permissions";
+import { getCurrentUserId, listUserPermissions, mergeDefaultsWithOverrides, normalizeRole, roleDefaults, type PageKey } from "@/services/permissions";
 
 type Props = {
   page: PageKey;
@@ -21,7 +21,13 @@ export function RequireView({ page, children }: Props) {
           const raw = localStorage.getItem("auth_user");
           role = raw ? (JSON.parse(raw).role || "") : "";
         } catch {}
-        const r = role.toLowerCase();
+        const r = normalizeRole(role);
+        // Admins (and Django super admins) always have full page access;
+        // explicit per-page rows can never downgrade them.
+        if (r === "admin") {
+          if (!cancelled) setAllowed(true);
+          return;
+        }
         const uid = getCurrentUserId();
         let perms: Record<PageKey, { v: boolean; e: boolean }> = {} as any;
         if (uid) {

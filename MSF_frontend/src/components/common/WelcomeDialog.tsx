@@ -354,6 +354,7 @@ export function WelcomeDialog() {
       <Dialog open onOpenChange={close}>
         <DialogContent
           hideCloseButton
+          aria-describedby={undefined}
           className="sams-welcome border-0 bg-transparent p-0 shadow-none sm:max-w-[620px] [&>button]:hidden"
         >
           <DialogTitle className="sr-only">Welcome to Metahara Sugar Factory</DialogTitle>

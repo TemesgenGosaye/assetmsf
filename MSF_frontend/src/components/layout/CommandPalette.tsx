@@ -28,9 +28,9 @@ import {
   PlusCircle,
   UploadCloud,
   ClipboardCheck,
-  ShieldCheck,
   LifeBuoy,
   Megaphone,
+  ArrowRightLeft,
 } from "lucide-react";
 
 type Props = {
@@ -54,6 +54,7 @@ type ActionItem = {
 const PAGE_LABEL_TO_KEY: Record<string, PageKey | null> = {
   Dashboard: null,
   Assets: "assets",
+  Transfers: "assets",
   Properties: "properties",
   "House Opp": "houses",
   "QR Codes": "qrcodes",
@@ -129,11 +130,12 @@ export default function CommandPalette({ open, onOpenChange, role }: Props) {
     [prefix]
   );
 
-  const pages = useMemo<PageItem[]>(() => {
-    const base = [
-      { label: "Dashboard", route: "/dashboard", icon: LayoutDashboard },
-      { label: "Assets", route: "/assets", icon: Package },
-      { label: "Properties", route: "/properties", icon: Building2 },
+    const pages = useMemo<PageItem[]>(() => {
+      const base = [
+        { label: "Dashboard", route: "/dashboard", icon: LayoutDashboard },
+        { label: "Assets", route: "/assets", icon: Package },
+        { label: "Transfers", route: "/transfers", icon: ArrowRightLeft },
+        { label: "Properties", route: "/properties", icon: Building2 },
       { label: "House Opp", route: "/house-opp", icon: Home },
       { label: "QR Codes", route: "/qr-codes", icon: QrCode },
       { label: "Tickets", route: "/tickets", icon: Ticket },
@@ -144,7 +146,6 @@ export default function CommandPalette({ open, onOpenChange, role }: Props) {
       { label: "Scan", route: "/scan", icon: ScanLine },
       { label: "Approvals", route: "/approvals", icon: ClipboardCheck, roles: ["admin", "manager"] },
       { label: "Audit", route: "/audit", icon: ClipboardCheck, roles: ["admin", "manager"] },
-      { label: "License", route: "/license", icon: ShieldCheck, roles: ["admin"] },
     ] as Array<{ label: string; route: string; icon: LucideIcon; roles?: string[] }>;
 
     if (showNewsletter && !base.find((item) => item.label === "Newsletter")) {
@@ -158,11 +159,10 @@ export default function CommandPalette({ open, onOpenChange, role }: Props) {
       .filter((item) => !item.roles || item.roles.includes(normalizedRole))
       .map((item) => ({ ...item, path: applyPrefix(item.route) }))
       .filter((item) => {
-        if (demo && (item.label === "Audit" || item.label === "License")) return false;
+        if (demo && item.label === "Audit") return false;
         if (item.label === "Dashboard" || item.label === "Scan" || item.label === "Tickets") return true;
         if (item.label === "Newsletter") return showNewsletter;
         if (item.label === "Approvals") return roleForPerm === "admin" || roleForPerm === "manager";
-        if (item.label === "License") return roleForPerm === "admin";
         if (item.label === "Audit") {
           const rule = (effectivePerm as any)["audit"];
           return (

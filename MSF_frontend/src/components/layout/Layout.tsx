@@ -28,7 +28,6 @@ const ROUTE_TITLE_MAP: Record<string, string> = {
   "/audit": "Audit",
   "/users": "Users",
   "/settings": "Settings",
-  "/license": "License",
 };
 
 export function Layout({ children }: LayoutProps) {

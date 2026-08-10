@@ -69,7 +69,7 @@ class HouseSerializer(serializers.ModelSerializer):
 
     def get_current_occupancy(self, obj):
         try:
-            return obj.allocations.filter(status="Active").count()
+            return obj.allocations.filter(status="Allocated", is_active=True).count()
         except Exception:
             return 0
 
@@ -289,18 +289,112 @@ class AllocationLogSerializer(serializers.ModelSerializer):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class HouseInspectionSerializer(serializers.ModelSerializer):
+    house_hid = serializers.CharField(source="house.house_id", read_only=True, default="")
+    house_location = serializers.CharField(source="house.location", read_only=True, default="")
+    house_type = serializers.CharField(source="house.house_type", read_only=True, default="")
+    inspector_name = serializers.SerializerMethodField()
+    requested_by_name = serializers.CharField(source="created_by.name", read_only=True, default="")
+
     class Meta:
         model = HouseInspection
-        fields = "__all__"
+        fields = [
+            "id", "house", "house_hid", "house_location", "house_type",
+            "inspector", "inspector_name", "inspection_type", "status",
+            "scheduled_date", "completed_date", "findings", "damage_costs",
+            "checklist_results", "requested_by_name",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = ["id", "completed_date", "created_at", "updated_at", "is_active"]
+
+    def get_inspector_name(self, obj):
+        return obj.inspector.get_full_name() if obj.inspector else ""
 
 
 class MaintenanceRequestSerializer(serializers.ModelSerializer):
+    house_hid = serializers.CharField(source="house.house_id", read_only=True, default="")
+    house_location = serializers.CharField(source="house.location", read_only=True, default="")
+    house_type = serializers.CharField(source="house.house_type", read_only=True, default="")
+    requested_by_name = serializers.CharField(source="requested_by.name", read_only=True, default="")
+
     class Meta:
         model = MaintenanceRequest
-        fields = "__all__"
+        fields = [
+            "id", "house", "house_hid", "house_location", "house_type",
+            "requested_by", "requested_by_name", "title", "description",
+            "priority", "status", "cost", "assigned_to", "resolved_at",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = ["id", "resolved_at", "created_at", "updated_at", "is_active"]
 
 
 class HouseTransferSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source="employee.full_name", read_only=True, default="")
+    employee_id = serializers.CharField(source="employee.employee_id", read_only=True, default="")
+    current_house_hid = serializers.CharField(source="current_house.house_id", read_only=True, default=None)
+    target_house_hid = serializers.CharField(source="target_house.house_id", read_only=True, default="")
+    approved_by_name = serializers.CharField(source="approved_by.name", read_only=True, default="")
+
     class Meta:
         model = HouseTransfer
-        fields = "__all__"
+        fields = [
+            "id", "employee", "employee_name", "employee_id",
+            "current_house", "current_house_hid",
+            "target_house", "target_house_hid",
+            "reason", "status", "approved_by", "approved_by_name",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "is_active"]
+
+
+class RentalContractSerializer(serializers.ModelSerializer):
+    tenant_name = serializers.CharField(source="tenant.full_name", read_only=True, default="")
+    tenant_id = serializers.CharField(source="tenant.employee_id", read_only=True, default="")
+    house_hid = serializers.CharField(source="house.house_id", read_only=True, default="")
+    house_location = serializers.CharField(source="house.location", read_only=True, default="")
+    application_no = serializers.CharField(source="application.application_no", read_only=True, default=None)
+
+    class Meta:
+        model = RentalContract
+        fields = [
+            "id", "contract_no", "tenant", "tenant_name", "tenant_id",
+            "house", "house_hid", "house_location",
+            "application", "application_no",
+            "start_date", "end_date", "monthly_rent", "security_deposit",
+            "status", "terms_conditions",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = ["id", "contract_no", "created_at", "updated_at", "is_active"]
+
+
+class RentalInvoiceSerializer(serializers.ModelSerializer):
+    contract_no = serializers.CharField(source="contract.contract_no", read_only=True, default="")
+    tenant_name = serializers.CharField(source="tenant.full_name", read_only=True, default="")
+    tenant_id = serializers.CharField(source="tenant.employee_id", read_only=True, default="")
+    house_hid = serializers.CharField(source="contract.house.house_id", read_only=True, default="")
+
+    class Meta:
+        model = RentalInvoice
+        fields = [
+            "id", "invoice_no", "contract", "contract_no", "tenant",
+            "tenant_name", "tenant_id", "house_hid",
+            "billing_month", "due_date", "rent_amount", "penalty_amount",
+            "paid_amount", "balance", "status",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = ["id", "invoice_no", "balance", "created_at", "updated_at", "is_active"]
+
+
+class RentalPaymentSerializer(serializers.ModelSerializer):
+    invoice_no = serializers.CharField(source="invoice.invoice_no", read_only=True, default="")
+    tenant_name = serializers.CharField(source="invoice.tenant.full_name", read_only=True, default="")
+    recorded_by_name = serializers.CharField(source="recorded_by.name", read_only=True, default="")
+
+    class Meta:
+        model = RentalPayment
+        fields = [
+            "id", "receipt_no", "invoice", "invoice_no", "tenant_name",
+            "amount_paid", "payment_method", "reference_no", "notes",
+            "recorded_by", "recorded_by_name",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = ["id", "receipt_no", "created_at", "updated_at", "is_active"]
