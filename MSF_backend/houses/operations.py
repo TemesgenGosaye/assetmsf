@@ -6,7 +6,7 @@ whole housing lifecycle stays traceable end-to-end.
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
@@ -18,7 +18,6 @@ from .models import (
 from .allocation_engine import (
     allocate_application, terminate_allocation, record_audit,
 )
-
 
 # ── inspections ───────────────────────────────────────────────────────────
 
@@ -56,7 +55,6 @@ def complete_inspection(user, inspection, findings="", damage_costs=None,
         inspection.save()
 
         if status == HouseInspection.Status.COMPLETED and checklist_results:
-            # Best-effort sync: a checklist may flag damaged fixtures.
             damage_flags = {
                 "door": "damaged_door", "windows": "damaged_windows",
                 "walls": "damaged_walls", "switch": "damaged_switch",
@@ -71,7 +69,6 @@ def complete_inspection(user, inspection, findings="", damage_costs=None,
             if changed:
                 inspection.house.save(update_fields=[*damage_flags.values(), "updated_at"])
     return inspection
-
 
 # ── maintenance ───────────────────────────────────────────────────────────
 
@@ -108,7 +105,6 @@ def update_maintenance_status(user, request_obj, new_status, cost=None,
             request_obj.description = f"{request_obj.description}\n\nResolution: {resolution_note}"
     request_obj.save()
     return request_obj
-
 
 # ── transfers ─────────────────────────────────────────────────────────────
 
@@ -220,7 +216,6 @@ def complete_transfer(user, transfer):
     transfer.save(update_fields=["status", "updated_at"])
     return transfer
 
-
 # ── rentals ───────────────────────────────────────────────────────────────
 
 def create_rental_contract(user, tenant, house, start_date, end_date,
@@ -305,3 +300,139 @@ def cancel_contract(user, contract, reason=""):
         contract.terms_conditions = f"{contract.terms_conditions}\n\nTerminated: {reason}".strip()
     contract.save()
     return contract
+
+def update_overdue_invoices():
+    """
+    Checks all active invoices with balance > 0.
+    If today's date is past the due_date, automatically updates status to OVERDUE.
+    """
+    today = timezone.now().date()
+    unpaid_qs = RentalInvoice.objects.filter(
+        is_active=True,
+        balance__gt=0,
+        due_date__lt=today,
+        status__in=[RentalInvoice.Status.UNPAID, RentalInvoice.Status.PARTIAL]
+    )
+    updated_count = 0
+    for inv in unpaid_qs:
+        inv.status = RentalInvoice.Status.OVERDUE
+        inv.save(update_fields=["status", "updated_at"])
+        updated_count += 1
+    return updated_count
+
+def get_annual_rent_roll(year):
+    """
+    Returns annual rent matrix grouped by active contracts and 12 calendar months.
+    """
+    update_overdue_invoices()
+
+    months = ["January", "February", "March", "April", "May", "June",
+              "July", "August", "September", "October", "November", "December"]
+
+    contracts = RentalContract.objects.filter(is_active=True).select_related("tenant", "house")
+
+    rows = []
+    annual_total_expected = Decimal("0.00")
+    annual_total_collected = Decimal("0.00")
+    annual_total_outstanding = Decimal("0.00")
+    total_overdue_count = 0
+
+    for contract in contracts:
+        c_invoices = RentalInvoice.objects.filter(
+            contract=contract,
+            is_active=True,
+            billing_month__icontains=str(year)
+        )
+        month_map = {}
+        contract_collected = Decimal("0.00")
+        contract_balance = Decimal("0.00")
+        for m_idx, m_name in enumerate(months, 1):
+            m_str_full = f"{m_name} {year}"
+            m_str_short = f"{m_name[:3]} {year}"
+            m_str_num = f"{year}-{m_idx:02d}"
+            inv = c_invoices.filter(
+                models.Q(billing_month__iexact=m_str_full) |
+                models.Q(billing_month__iexact=m_str_short) |
+                models.Q(billing_month__startswith=m_str_num) |
+                models.Q(billing_month__icontains=m_name)
+            ).first()
+            if inv:
+                contract_collected += inv.paid_amount
+                contract_balance += inv.balance
+                if inv.status == RentalInvoice.Status.OVERDUE:
+                    total_overdue_count += 1
+                month_map[m_name] = {
+                    "invoice_id": str(inv.id),
+                    "invoice_no": inv.invoice_no,
+                    "billing_month": inv.billing_month,
+                    "due_date": inv.due_date.isoformat() if inv.due_date else None,
+                    "rent_amount": float(inv.rent_amount),
+                    "paid_amount": float(inv.paid_amount),
+                    "balance": float(inv.balance),
+                    "status": inv.status,
+                    "is_overdue_30_days": inv.status == RentalInvoice.Status.OVERDUE or (inv.due_date and (timezone.now().date() - inv.due_date).days > 30 and inv.balance > 0)
+                }
+            else:
+                month_map[m_name] = {
+                    "invoice_id": None,
+                    "invoice_no": None,
+                    "billing_month": m_str_full,
+                    "due_date": None,
+                    "rent_amount": float(contract.monthly_rent),
+                    "paid_amount": 0.0,
+                    "balance": float(contract.monthly_rent),
+                    "status": "Unbilled",
+                    "is_overdue_30_days": False
+                }
+        annual_total_expected += contract.monthly_rent * 12
+        annual_total_collected += contract_collected
+        annual_total_outstanding += contract_balance
+        rows.append({
+            "contract_id": str(contract.id),
+            "contract_no": contract.contract_no,
+            "tenant_id": contract.tenant.employee_id,
+            "tenant_name": contract.tenant.full_name,
+            "house_hid": contract.house.house_id,
+            "house_number": contract.house.house_number,
+            "monthly_rent": float(contract.monthly_rent),
+            "status": contract.status,
+            "months": month_map,
+            "total_collected": float(contract_collected),
+            "total_balance": float(contract_balance),
+        })
+    monthly_summaries = []
+    for m_name in months:
+        m_invoices = RentalInvoice.objects.filter(
+            is_active=True,
+            billing_month__icontains=str(year)
+        ).filter(models.Q(billing_month__icontains=m_name))
+        invoiced = m_invoices.aggregate(tot=Sum("rent_amount"))["tot"] or Decimal("0.00")
+        collected = m_invoices.aggregate(tot=Sum("paid_amount"))["tot"] or Decimal("0.00")
+        balance = m_invoices.aggregate(tot=Sum("balance"))["tot"] or Decimal("0.00")
+        overdue_cnt = m_invoices.filter(status=RentalInvoice.Status.OVERDUE).count()
+        status_flag = "Unpaid"
+        if invoiced > 0 and balance <= 0:
+            status_flag = "Paid"
+        elif collected > 0 and balance > 0:
+            status_flag = "Partial"
+        elif overdue_cnt > 0:
+            status_flag = "Overdue"
+        monthly_summaries.append({
+            "month_name": m_name,
+            "billing_month": f"{m_name} {year}",
+            "total_invoiced": float(invoiced),
+            "total_collected": float(collected),
+            "total_balance": float(balance),
+            "overdue_count": overdue_cnt,
+            "status": status_flag,
+        })
+    return {
+        "year": year,
+        "contracts_count": len(rows),
+        "total_expected": float(annual_total_expected),
+        "total_collected": float(annual_total_collected),
+        "total_outstanding": float(annual_total_outstanding),
+        "overdue_count": total_overdue_count,
+        "rows": rows,
+        "monthly_summaries": monthly_summaries,
+    }

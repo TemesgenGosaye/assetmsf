@@ -487,22 +487,84 @@ export const JOB_TYPE_OPTIONS = ["Permanent", "Semi Permanent", "Seasonal"];
 
 // ── Employee Validation ────────────────────────────────────────────────
 
+export interface EmployeeLookupResult {
+  valid: boolean;
+  employee_name?: string;
+  employee?: {
+    employee_id: string;
+    full_name: string;
+    national_id: string;
+    job_position: string;
+    job_grade: string;
+    job_type: string;
+    service_years: number;
+    marital_status: string;
+    has_disability: boolean;
+    family_size: number;
+  };
+  has_active_allocation?: boolean;
+  allocation_info?: string;
+  error_message?: string;
+}
+
 /**
- * Check if an employee_id exists in the employees table.
- * Returns { valid, employee_name? } so the form can auto-fill the name.
+ * Check if an employee_id exists in the employees table, fetch profile data for form auto-fill,
+ * and check if they already have an active house allocation.
  */
-export async function validateEmployeeId(employeeId: string): Promise<{ valid: boolean; employee_name?: string }> {
+export async function validateEmployeeId(employeeId: string): Promise<EmployeeLookupResult> {
   const trimmed = employeeId.trim();
   if (!trimmed) return { valid: false };
+  try {
+    const res = await djangoRequest<any>(`/employees/lookup/${encodeURIComponent(trimmed)}/`);
+    if (res.success && res.data) {
+      const data = res.data;
+      const emp = data.employee;
+      return {
+        valid: true,
+        employee_name: emp?.full_name || "",
+        employee: emp,
+        has_active_allocation: Boolean(data.has_active_allocation),
+        allocation_info: data.allocation_info || undefined,
+        error_message: data.has_active_allocation
+          ? `Employee ${emp?.full_name || trimmed} already has an active house allocation (${data.allocation_info || "Allocated"}) and cannot submit a new application.`
+          : undefined,
+      };
+    }
+  } catch {
+    /* fallback to general search if lookup route fails */
+  }
+
   try {
     const res = await djangoRequest<any>(`/employees/?search=${encodeURIComponent(trimmed)}&page_size=5`);
     if (res.success) {
       const rows = Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
-      const match = rows.find((e: any) => (e.employee_id || "").toLowerCase() === trimmed.toLowerCase());
+      const match = rows.find(
+        (e: any) =>
+          (e.employee_id || "").toLowerCase() === trimmed.toLowerCase() ||
+          (e.employee_id || "").toLowerCase() === `emp-${trimmed.toLowerCase()}`
+      );
       if (match) {
-        return { valid: true, employee_name: match.full_name || "" };
+        return {
+          valid: true,
+          employee_name: match.full_name || "",
+          employee: {
+            employee_id: match.employee_id || trimmed,
+            full_name: match.full_name || "",
+            national_id: match.national_id || "",
+            job_position: match.job_position || "",
+            job_grade: match.job_grade || "",
+            job_type: match.job_type || "Permanent",
+            service_years: match.service_years || 0,
+            marital_status: match.marital_status || "Single",
+            has_disability: Boolean(match.has_disability),
+            family_size: match.family_size || 1,
+          },
+          has_active_allocation: false,
+        };
       }
     }
-  } catch { /* ignore — backend validation will catch it */ }
+  } catch {
+    /* ignore */
+  }
   return { valid: false };
 }

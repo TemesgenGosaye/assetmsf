@@ -24,7 +24,7 @@ from .operations_views import (
     TransferListCreateView, TransferDetailView, TransferDecideView, TransferCompleteView,
     ContractListCreateView, ContractDetailView, ContractTerminateView,
     InvoiceListCreateView, InvoiceDetailView,
-    PaymentListCreateView, InvoicePaymentsView, RentalSummaryView,
+    PaymentListCreateView, InvoicePaymentsView, RentalSummaryView, RentRollMatrixView,
 )
 
 urlpatterns = [
@@ -105,6 +105,7 @@ urlpatterns = [
     path("contracts/<uuid:id>/",       ContractDetailView.as_view(),                 name="contract_detail"),
     path("contracts/<uuid:id>/terminate/", ContractTerminateView.as_view(),          name="contract_terminate"),
     path("invoices/",                  InvoiceListCreateView.as_view(),              name="invoice_list_create"),
+    path("invoices/rent-roll/",        RentRollMatrixView.as_view(),                 name="rent_roll_matrix"),
     path("invoices/<uuid:id>/",        InvoiceDetailView.as_view(),                  name="invoice_detail"),
     path("invoices/<uuid:id>/payments/", InvoicePaymentsView.as_view(),              name="invoice_payments"),
     path("payments/",                  PaymentListCreateView.as_view(),              name="payment_list_create"),

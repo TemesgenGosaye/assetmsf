@@ -23,7 +23,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { PageSkeleton } from "@/components/ui/page-skeletons";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
+  AlertTriangle,
   ArrowLeft,
   FileText,
   Save,
@@ -103,6 +105,8 @@ export default function ApplicantApplicationNew() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [application, setApplication] = useState<HouseApplication | null>(null);
   const [employeeChecking, setEmployeeChecking] = useState(false);
+  const [hasActiveAllocation, setHasActiveAllocation] = useState(false);
+  const [allocationInfo, setAllocationInfo] = useState<string | null>(null);
 
   const canEdit =
     !application ||
@@ -128,11 +132,40 @@ export default function ApplicantApplicationNew() {
     try {
       const result = await validateEmployeeId(id);
       if (!result.valid) {
+        setHasActiveAllocation(false);
+        setAllocationInfo(null);
         setErrors((prev) => ({ ...prev, employee_id: `Employee ID "${id}" not found in the system. Please verify your ID.` }));
       } else {
-        setErrors((prev) => ({ ...prev, employee_id: "" }));
-        if (!form.employee_name.trim() && result.employee_name) {
-          setForm((prev) => ({ ...prev, employee_name: result.employee_name! }));
+        if (result.employee) {
+          const emp = result.employee;
+          setForm((prev) => ({
+            ...prev,
+            employee_id: emp.employee_id || prev.employee_id,
+            employee_name: emp.full_name || prev.employee_name,
+            national_id: emp.national_id || prev.national_id,
+            job_position: emp.job_position || prev.job_position,
+            job_grade: emp.job_grade || prev.job_grade,
+            job_type: emp.job_type || prev.job_type,
+            position_type: prev.position_type || emp.job_type || "Permanent",
+            years_of_service: emp.service_years ?? prev.years_of_service,
+            marital_status: emp.marital_status || prev.marital_status,
+            has_disability: emp.has_disability ?? prev.has_disability,
+            family_size: emp.family_size ?? prev.family_size,
+          }));
+          toast.success("Employee details loaded");
+        }
+
+        if (result.has_active_allocation) {
+          setHasActiveAllocation(true);
+          setAllocationInfo(result.allocation_info || null);
+          setErrors((prev) => ({
+            ...prev,
+            employee_id: result.error_message || "Employee already has an active house allocation and cannot submit a new application.",
+          }));
+        } else {
+          setHasActiveAllocation(false);
+          setAllocationInfo(null);
+          setErrors((prev) => ({ ...prev, employee_id: "" }));
         }
       }
     } finally {
@@ -214,6 +247,9 @@ export default function ApplicantApplicationNew() {
     ) {
       e.supporting_document = "Only PDF, JPG, PNG files allowed";
     }
+    if (hasActiveAllocation) {
+      e.employee_id = "Employee already has an active house allocation and cannot submit a new application.";
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -221,6 +257,10 @@ export default function ApplicantApplicationNew() {
   const handleSubmit = async (saveAsDraft: boolean) => {
     if (!canEdit) {
       toast.error("This application can no longer be edited from this page");
+      return;
+    }
+    if (hasActiveAllocation) {
+      toast.error("This employee already has an active house allocation. Cannot submit application.");
       return;
     }
     if (!validate()) return;
@@ -233,6 +273,17 @@ export default function ApplicantApplicationNew() {
         const result = await validateEmployeeId(empId);
         if (!result.valid) {
           setErrors((prev) => ({ ...prev, employee_id: `Employee ID "${empId}" not found in the system. Please verify your ID.` }));
+          setSaving(false);
+          setEmployeeChecking(false);
+          return;
+        }
+        if (result.has_active_allocation) {
+          setHasActiveAllocation(true);
+          setErrors((prev) => ({
+            ...prev,
+            employee_id: result.error_message || "Employee already has an active house allocation and cannot submit a new application.",
+          }));
+          toast.error("Employee already has an active house allocation.");
           setSaving(false);
           setEmployeeChecking(false);
           return;
@@ -468,6 +519,16 @@ export default function ApplicantApplicationNew() {
               and is now read-only from this page.
             </div>
           ) : null}
+
+          {hasActiveAllocation && (
+            <Alert variant="destructive" className="border-red-500 bg-red-50 text-red-900 dark:bg-red-950 dark:text-red-100">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              <AlertTitle className="font-bold">Active Allocation Detected</AlertTitle>
+              <AlertDescription className="mt-1">
+                This employee already has an active house allocation ({allocationInfo || "Active Allocation"}). Employees with an active allocation cannot submit a new application.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -793,7 +854,7 @@ export default function ApplicantApplicationNew() {
             <Button
               variant="outline"
               onClick={() => handleSubmit(true)}
-              disabled={saving || !canEdit}
+              disabled={saving || !canEdit || hasActiveAllocation}
               className="gap-2"
             >
               <Save className="h-4 w-4" />
@@ -805,7 +866,7 @@ export default function ApplicantApplicationNew() {
             </Button>
             <Button
               onClick={() => handleSubmit(false)}
-              disabled={saving || !canEdit}
+              disabled={saving || !canEdit || hasActiveAllocation}
               className="gap-2 bg-[#0B4F2F] hover:bg-[#0E5A37]"
             >
               <Send className="h-4 w-4" />

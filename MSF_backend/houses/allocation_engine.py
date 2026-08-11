@@ -97,13 +97,34 @@ def analyze_eligibility(application):
 
 def determine_eligible_category(application):
     """
-    Determine the highest house type an employee qualifies for.
+    Determine the house type an employee qualifies for based on job grade:
+      * > 17  → Staff
+      * 15–17 → A
+      * 12–14 → B
+      * 10–11 → C
+      * 7–9   → D
+      * < 7   → E
     Returns (category_str, reason_str).
     """
-    results, best = analyze_eligibility(application)
-    if any(r["passed"] for r in results):
-        return best, f"Eligible for {best} based on grade/eligibility rules"
-    return best, "Default (no matching rule)"
+    try:
+        grade = int(str(application.job_grade or "").strip())
+    except (TypeError, ValueError):
+        grade = 0
+
+    if grade > 17:
+        cat = "Staff"
+    elif grade >= 15:
+        cat = "A"
+    elif grade >= 12:
+        cat = "B"
+    elif grade >= 10:
+        cat = "C"
+    elif grade >= 7:
+        cat = "D"
+    else:
+        cat = "E"
+
+    return cat, f"Eligible for {cat} based on job grade {grade}"
 
 
 def check_allocation_constraints(application, house, allow_existing=False):

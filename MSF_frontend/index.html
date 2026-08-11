@@ -105,7 +105,7 @@
       100% { transform: scale(1.2) translate(4%, 4%); }
     }
 
-    /* Clean White Card — Sleek Wide Installer Layout */
+    /* Clean Cardless Layout — content floats directly on background */
     .loader-card {
       position: relative;
       z-index: 1;
@@ -115,12 +115,11 @@
       align-items: center;
       gap: 1.5rem;
       padding: clamp(2rem, 5vw, 3.5rem) clamp(2rem, 6vw, 4rem);
-      border-radius: 1.75rem;
-      background: var(--loader-card);
-      border: 1px solid var(--loader-border);
-      backdrop-filter: blur(28px);
-      -webkit-backdrop-filter: blur(28px);
-      box-shadow: 0 20px 45px -10px var(--loader-shadow), 0 0 35px -5px var(--brand-glow);
+      background: transparent;
+      border: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      box-shadow: none;
     }
 
     /* === Circular progress ring & logo === */
@@ -157,9 +156,9 @@
       width: 65%; height: 65%;
       border-radius: 50%;
       padding: 4px;
-      background: var(--loader-card);
-      border: 1px solid var(--loader-border);
-      box-shadow: 0 8px 20px -4px var(--loader-shadow);
+      background: transparent;
+      border: none;
+      box-shadow: none;
       animation: loader-float 4s ease-in-out infinite;
     }
     .loader-logo {
@@ -325,6 +324,16 @@
       30% { opacity: 1; }
     }
 
+    .loader-amharic {
+      width: 100%;
+      text-align: center;
+      color: var(--loader-muted);
+      font-size: 0.80rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      padding-top: 0.25rem;
+    }
+
     .loader-footer {
       position: relative; z-index: 1;
       color: var(--loader-faint);
@@ -457,8 +466,8 @@
 
       <div class="loader-brand">
         <span class="loader-badge">Enterprise Asset System</span>
-        <div class="loader-title">METAHARA SUGAR FACTORY</div>
-        <div class="loader-sub">መተሐራ ስኳር ፋብሪካ &middot; EAMS Platform</div>
+        <div class="loader-title">የመተሐራ ስኳር ፋብሪካ ቋሚ ንብረት አስተዳደር እና የቤት ምደባ ሲስተም</div>
+        <div class="loader-sub">መተሐራ ስኳር ፋብሪካ &middot; Asset and House Platform</div>
       </div>
 
       <div class="loader-percent"><span id="preloader-percent">0</span><small>%</small></div>
@@ -473,10 +482,11 @@
             <span class="loader-dots" aria-hidden="true"><i></i><i></i><i></i></span>
           </div>
         </div>
+        <div class="loader-amharic"></div>
       </div>
     </div>
 
-    <div class="loader-footer">Secured Enterprise Access &middot; IT Division</div>
+    <div class="loader-footer">Powered By Temesgen G. &middot; MSF IT Division</div>
   </div>
 
   <div id="root"></div>

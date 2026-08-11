@@ -527,6 +527,7 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
     ordering = ["-due_date"]
 
     def list(self, request, *args, **kwargs):
+        operations_service.update_overdue_invoices()
         qs = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(qs)
         if page is not None:
@@ -633,7 +634,26 @@ class RentalSummaryView(APIView):
             "total_collected": float(total_paid),
             "outstanding_balance": float(outstanding),
             "overdue_invoices": invoices.filter(
-                status__in=[RentalInvoice.Status.UNPAID, RentalInvoice.Status.PARTIAL],
+                status__in=[RentalInvoice.Status.UNPAID, RentalInvoice.Status.PARTIAL, RentalInvoice.Status.OVERDUE],
                 due_date__lt=timezone.now().date(),
             ).count(),
         }, "Rental summary retrieved")
+
+
+class RentRollMatrixView(APIView):
+    """
+    GET /api/houses/invoices/rent-roll/?year=2026
+    Returns annual rent matrix grouped by active contracts and 12 calendar months.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        year_param = request.query_params.get("year")
+        try:
+            year = int(year_param) if year_param else timezone.now().year
+        except (TypeError, ValueError):
+            year = timezone.now().year
+
+        data = operations_service.get_annual_rent_roll(year)
+        return StandardResponse.success(data, f"Annual rent roll retrieved for {year}")
+

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, FileText, Save, Send } from "lucide-react";
+import { AlertTriangle, ArrowLeft, FileText, Save, Send } from "lucide-react";
 import { createApplication, validateEmployeeId, GENDER_OPTIONS, MARITAL_STATUS_OPTIONS, HOUSE_CATEGORIES, POSITION_TYPE_OPTIONS, JOB_TYPE_OPTIONS } from "@/services/houseApplication";
 
 const EMPTY_FORM = {
@@ -42,6 +43,8 @@ export default function RequesterApplicationNew() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [employeeChecking, setEmployeeChecking] = useState(false);
+  const [hasActiveAllocation, setHasActiveAllocation] = useState(false);
+  const [allocationInfo, setAllocationInfo] = useState<string | null>(null);
 
   const set = (field: string, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -55,11 +58,40 @@ export default function RequesterApplicationNew() {
     try {
       const result = await validateEmployeeId(id);
       if (!result.valid) {
+        setHasActiveAllocation(false);
+        setAllocationInfo(null);
         setErrors((prev) => ({ ...prev, employee_id: `Employee ID "${id}" not found in the system. Please verify your ID.` }));
       } else {
-        setErrors((prev) => ({ ...prev, employee_id: "" }));
-        if (!form.employee_name.trim() && result.employee_name) {
-          setForm((prev) => ({ ...prev, employee_name: result.employee_name! }));
+        if (result.employee) {
+          const emp = result.employee;
+          setForm((prev) => ({
+            ...prev,
+            employee_id: emp.employee_id || prev.employee_id,
+            employee_name: emp.full_name || prev.employee_name,
+            national_id: emp.national_id || prev.national_id,
+            job_position: emp.job_position || prev.job_position,
+            job_grade: emp.job_grade || prev.job_grade,
+            job_type: emp.job_type || prev.job_type,
+            position_type: prev.position_type || emp.job_type || "Permanent",
+            years_of_service: emp.service_years ?? prev.years_of_service,
+            marital_status: emp.marital_status || prev.marital_status,
+            has_disability: emp.has_disability ?? prev.has_disability,
+            family_size: emp.family_size ?? prev.family_size,
+          }));
+          toast.success("Employee details loaded");
+        }
+
+        if (result.has_active_allocation) {
+          setHasActiveAllocation(true);
+          setAllocationInfo(result.allocation_info || null);
+          setErrors((prev) => ({
+            ...prev,
+            employee_id: result.error_message || "Employee already has an active house allocation and cannot submit a new application.",
+          }));
+        } else {
+          setHasActiveAllocation(false);
+          setAllocationInfo(null);
+          setErrors((prev) => ({ ...prev, employee_id: "" }));
         }
       }
     } finally {
@@ -82,11 +114,20 @@ export default function RequesterApplicationNew() {
     if (file && file.size > 5 * 1024 * 1024) e.supporting_document = "File must be under 5 MB";
     if (file && !["pdf", "jpg", "jpeg", "png"].includes(file.name.split(".").pop()?.toLowerCase() || ""))
       e.supporting_document = "Only PDF, JPG, PNG files allowed";
+
+    if (hasActiveAllocation) {
+      e.employee_id = "Employee already has an active house allocation and cannot submit a new application.";
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const handleSubmit = async (saveAsDraft: boolean) => {
+    if (hasActiveAllocation) {
+      toast.error("This employee already has an active house allocation. Cannot submit application.");
+      return;
+    }
     if (!validate()) return;
     const empId = form.employee_id.trim();
     if (empId) {
@@ -95,6 +136,17 @@ export default function RequesterApplicationNew() {
         const result = await validateEmployeeId(empId);
         if (!result.valid) {
           setErrors((prev) => ({ ...prev, employee_id: `Employee ID "${empId}" not found in the system. Please verify your ID.` }));
+          setSaving(false);
+          setEmployeeChecking(false);
+          return;
+        }
+        if (result.has_active_allocation) {
+          setHasActiveAllocation(true);
+          setErrors((prev) => ({
+            ...prev,
+            employee_id: result.error_message || "Employee already has an active house allocation and cannot submit a new application.",
+          }));
+          toast.error("Employee already has an active house allocation.");
           setSaving(false);
           setEmployeeChecking(false);
           return;
@@ -150,6 +202,16 @@ export default function RequesterApplicationNew() {
           <CardDescription>Fill in your details below</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {hasActiveAllocation && (
+            <Alert variant="destructive" className="border-red-500 bg-red-50 text-red-900 dark:bg-red-950 dark:text-red-100">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              <AlertTitle className="font-bold">Active Allocation Detected</AlertTitle>
+              <AlertDescription className="mt-1">
+                This employee already has an active house allocation ({allocationInfo || "Active Allocation"}). Employees with an active allocation cannot submit a new application.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Employee ID <span className="text-destructive">*</span></Label>
@@ -291,11 +353,11 @@ export default function RequesterApplicationNew() {
           </div>
 
           <div className="flex flex-col gap-3 pt-2 sm:flex-row">
-            <Button variant="outline" onClick={() => handleSubmit(true)} disabled={saving} className="gap-2">
+            <Button variant="outline" onClick={() => handleSubmit(true)} disabled={saving || hasActiveAllocation} className="gap-2">
               <Save className="h-4 w-4" />
               {saving ? "Saving..." : "Save as Draft"}
             </Button>
-            <Button onClick={() => handleSubmit(false)} disabled={saving} className="gap-2">
+            <Button onClick={() => handleSubmit(false)} disabled={saving || hasActiveAllocation} className="gap-2">
               <Send className="h-4 w-4" />
               {saving ? "Submitting..." : "Submit Application"}
             </Button>
@@ -305,3 +367,4 @@ export default function RequesterApplicationNew() {
     </div>
   );
 }
+

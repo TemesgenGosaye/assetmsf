@@ -27,7 +27,7 @@ class Employee(BaseModel):
         DIVORCED = "Divorced", _("Divorced")
         WIDOWED = "Widowed", _("Widowed")
 
-    # Unique human-readable ID, auto-generated on save (EMP-0001 format)
+    # Unique human-readable ID, auto-generated on save (EMP-00001 format)
     employee_id = models.CharField(
         _("employee ID"),
         max_length=20,
@@ -129,7 +129,7 @@ class Employee(BaseModel):
                     num = 1
             else:
                 num = 1
-            self.employee_id = f"EMP-{num:04d}"
+            self.employee_id = f"EMP-{num:05d}"
         super().save(*args, **kwargs)
 
     # ------------------------------------------------------------------

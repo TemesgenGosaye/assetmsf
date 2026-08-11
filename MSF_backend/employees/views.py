@@ -3,6 +3,7 @@ Views for the employees app.
 """
 import json
 
+from django.db import models
 from rest_framework import generics, filters
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -250,3 +251,83 @@ def employee_bulk_import(request):
         {"created": created_count, "skipped": skipped_count, "errors": errors},
         f"Bulk import completed: {created_count} created, {skipped_count} skipped.",
     )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def employee_lookup_view(request, employee_id):
+    """
+    GET /api/employees/lookup/<str:employee_id>/
+
+    Looks up employee details by code or ID (e.g. "EMP-0001" or "0001"),
+    returns corresponding profile input values, and checks if they already have
+    an active house allocation.
+    """
+    raw_code = (employee_id or "").strip()
+    if not raw_code:
+        return StandardResponse.bad_request("Employee ID is required.")
+
+    # Try matching employee_id directly, or formatted as EMP-XXXX if digits passed
+    emp = Employee.objects.filter(employee_id__iexact=raw_code, is_active=True).first()
+    if not emp and raw_code.isdigit():
+        formatted_code = f"EMP-{int(raw_code):05d}"
+        emp = Employee.objects.filter(employee_id__iexact=formatted_code, is_active=True).first()
+
+    if not emp:
+        # Also try searching by national_id as fallback
+        emp = Employee.objects.filter(national_id__iexact=raw_code, is_active=True).first()
+
+    if not emp:
+        return StandardResponse.not_found(f"Employee ID '{raw_code}' not found.")
+
+    from houses.models import Allocation, HouseApplication
+
+    # Check if employee has an active house allocation
+    alloc = Allocation.objects.filter(
+        models.Q(employee_id__iexact=emp.employee_id) | models.Q(emp_record=emp),
+        status=Allocation.Status.ACTIVE
+    ).select_related("house").first()
+
+    has_active_alloc = False
+    allocation_info = None
+
+    if alloc:
+        has_active_alloc = True
+        allocation_info = f"House {alloc.house.house_number} ({alloc.house.house_id})" if alloc.house else "Allocated"
+    else:
+        # Fallback check on HouseApplication status
+        app_alloc = HouseApplication.objects.filter(
+            models.Q(employee_id__iexact=emp.employee_id) | models.Q(emp_record=emp),
+            status=HouseApplication.Status.ALLOCATED
+        ).select_related("allocated_house").first()
+        if app_alloc:
+            has_active_alloc = True
+            house_str = app_alloc.allocated_house.house_number if app_alloc.allocated_house else "Allocated"
+            allocation_info = f"House {house_str}"
+
+    emp_data = {
+        "id": str(emp.id),
+        "employee_id": emp.employee_id,
+        "full_name": emp.full_name,
+        "names": emp.names,
+        "national_id": emp.national_id,
+        "job_position": emp.job_position,
+        "job_grade": emp.job_grade,
+        "job_type": emp.job_type,
+        "service_years": emp.service_years,
+        "marital_status": emp.marital_status,
+        "has_disability": emp.has_disability,
+        "family_size": emp.family_size,
+        "status": emp.status,
+    }
+
+    return StandardResponse.success(
+        {
+            "valid": True,
+            "employee": emp_data,
+            "has_active_allocation": has_active_alloc,
+            "allocation_info": allocation_info,
+        },
+        "Employee details loaded successfully."
+    )
+

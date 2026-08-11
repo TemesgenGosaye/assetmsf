@@ -1,6 +1,7 @@
 """
 Serializers for the houses app — CRU, allocation, scoring, logs.
 """
+from django.db import models
 from rest_framework import serializers
 from .models import (
     House, HouseApplication, HouseInspection, MaintenanceRequest,
@@ -195,11 +196,25 @@ class HouseApplicationCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_employee_id(self, value):
-        if not Employee.objects.filter(employee_id=value, status="Active").exists():
+        emp = Employee.objects.filter(employee_id__iexact=value, status="Active").first()
+        if not emp:
             raise serializers.ValidationError(
                 f"Employee '{value}' does not exist or is not active."
             )
-        return value
+        
+        has_alloc = Allocation.objects.filter(
+            models.Q(employee_id__iexact=emp.employee_id) | models.Q(emp_record=emp),
+            status=Allocation.Status.ACTIVE
+        ).exists() or HouseApplication.objects.filter(
+            models.Q(employee_id__iexact=emp.employee_id) | models.Q(emp_record=emp),
+            status=HouseApplication.Status.ALLOCATED
+        ).exists()
+
+        if has_alloc:
+            raise serializers.ValidationError(
+                f"Employee '{value}' ({emp.full_name}) already has an active house allocation and cannot submit a new application."
+            )
+        return emp.employee_id
 
     def _link_employee(self, instance):
         if instance.employee_id:

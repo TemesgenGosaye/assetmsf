@@ -367,6 +367,59 @@ export async function recordPayment(data: {
   throw new Error(res.message || "Failed to record payment");
 }
 
+export interface RentRollMonthCell {
+  invoice_id: string | null;
+  invoice_no: string | null;
+  billing_month: string;
+  due_date: string | null;
+  rent_amount: number;
+  paid_amount: number;
+  balance: number;
+  status: string;
+  is_overdue_30_days: boolean;
+}
+
+export interface RentRollContractRow {
+  contract_id: string;
+  contract_no: string;
+  tenant_id: string;
+  tenant_name: string;
+  house_hid: string;
+  house_number: string;
+  monthly_rent: number;
+  status: string;
+  months: Record<string, RentRollMonthCell>;
+  total_collected: number;
+  total_balance: number;
+}
+
+export interface RentRollMonthSummary {
+  month_name: string;
+  billing_month: string;
+  total_invoiced: number;
+  total_collected: number;
+  total_balance: number;
+  overdue_count: number;
+  status: string;
+}
+
+export interface RentRollMatrixResponse {
+  year: number;
+  contracts_count: number;
+  total_expected: number;
+  total_collected: number;
+  total_outstanding: number;
+  overdue_count: number;
+  rows: RentRollContractRow[];
+  monthly_summaries: RentRollMonthSummary[];
+}
+
+export async function getRentRollMatrix(year: number): Promise<RentRollMatrixResponse> {
+  const res = await djangoRequest<any>(`/houses/invoices/rent-roll/?year=${year}`);
+  if (res.success) return res.data as RentRollMatrixResponse;
+  throw new Error(res.message || "Failed to fetch rent roll matrix");
+}
+
 export async function getRentalSummary(options?: { force?: boolean }): Promise<RentalSummary> {
   return getCachedValue(
     "houses:rentals:summary",

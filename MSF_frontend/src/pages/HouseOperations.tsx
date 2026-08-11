@@ -60,6 +60,7 @@ import {
   listPayments,
   recordPayment,
   getRentalSummary,
+  getRentRollMatrix,
   invalidateHouseOperationsCache,
   type HouseInspection,
   type MaintenanceRequest,
@@ -68,6 +69,9 @@ import {
   type RentalInvoice,
   type RentalPayment,
   type RentalSummary,
+  type RentRollMatrixResponse,
+  type RentRollContractRow,
+  type RentRollMonthSummary,
   type MaintenancePriority,
   type MaintenanceStatus,
 } from "@/services/houseOperations";
@@ -90,6 +94,11 @@ import {
   Home,
   User,
   Sparkles,
+  Calendar,
+  Check,
+  AlertTriangle,
+  Search,
+  DollarSign,
 } from "lucide-react";
 
 const PRIORITY_ORDER = { Urgent: 0, High: 1, Medium: 2, Low: 3 };
