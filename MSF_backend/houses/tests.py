@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
-from .models import House, HouseApplication, ScoringConfig
+from .models import House, HouseApplication, ScoringConfig, Allocation
 from .serializers import HouseSerializer, HouseCreateUpdateSerializer
 from .allocation_engine import topsis_rank, run_batch_allocation
 
@@ -66,14 +66,25 @@ class AllocationEngineTests(TestCase):
         self.assertLess(cc[weak.application_no], 0.2)
 
     def test_occupancy_counts_allocated_not_active(self):
-        """House occupancy must count live 'Allocated' applications, not the
-        non-existent 'Active' status — capacity must then block allocation."""
+        """House occupancy counts live Allocation records (the authoritative
+        source), not the legacy 'Allocated' status alone — capacity must then
+        block allocation."""
         allocated = _app(self.user, self.house, 10, grade=15, service=5, family=2, days_ago=10)
         allocated.status = HouseApplication.Status.ALLOCATED
         allocated.allocated_house = self.house
         allocated.save()
 
-        other = _app(self.user, self.house, 11, grade=15, service=5, family=2, days_ago=5, status="Verified")
+        Allocation.objects.create(
+            application=allocated,
+            house=self.house,
+            employee_id=allocated.employee_id,
+            employee_name=allocated.employee_name,
+            status=Allocation.Status.ACTIVE,
+            occupancy_status=Allocation.Occupancy.OCCUPIED,
+            created_by=self.user,
+        )
+
+        _app(self.user, self.house, 11, grade=15, service=5, family=2, days_ago=5, status="Verified")
 
         self.house.refresh_from_db()
         self.assertEqual(self.house.current_occupancy, 1)
@@ -98,6 +109,26 @@ class AllocationEngineTests(TestCase):
 
         self.house.refresh_from_db()
         self.assertEqual(self.house.current_occupancy, 1)
+
+    def test_batch_allocation_dry_run_is_pure(self):
+        """dry_run must preview the same matches without persisting anything."""
+        app_a = _app(self.user, self.house, 20, grade=15, service=5, family=2, days_ago=10)
+        app_b = _app(self.user, self.house, 21, grade=14, service=4, family=3, days_ago=5)
+
+        result = run_batch_allocation(user=self.user, dry_run=True)
+
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(len(result["allocated"]), 1)
+        self.house.refresh_from_db()
+        self.assertEqual(self.house.current_occupancy, 0)
+        self.assertEqual(self.house.vacant, 1)
+        app_a.refresh_from_db()
+        app_b.refresh_from_db()
+        self.assertEqual(app_a.status, HouseApplication.Status.WAITING_FOR_ALLOCATION)
+        self.assertEqual(app_b.status, HouseApplication.Status.WAITING_FOR_ALLOCATION)
+        self.assertIsNone(app_a.allocated_house)
+        self.assertIsNone(app_b.allocated_house)
+        self.assertEqual(Allocation.objects.count(), 0)
 
 
 class HouseTests(TestCase):

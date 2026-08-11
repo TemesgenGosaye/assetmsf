@@ -13,6 +13,10 @@ from django.utils import timezone
 from .models import (
     House, HouseApplication, HouseInspection, MaintenanceRequest,
     HouseTransfer, RentalContract, RentalInvoice, RentalPayment, AllocationLog,
+    Allocation, HouseAuditTrail,
+)
+from .allocation_engine import (
+    allocate_application, terminate_allocation, record_audit,
 )
 
 
@@ -152,40 +156,55 @@ def decide_transfer(user, transfer, decision, notes=""):
             raise ValueError(f"Target house {target.house_id} is no longer available.")
 
         allocation = (
-            HouseApplication.objects
-            .filter(emp_record=transfer.employee, status=HouseApplication.Status.ALLOCATED,
-                    is_active=True)
+            Allocation.objects
+            .filter(application__emp_record=transfer.employee,
+                    status=Allocation.Status.ACTIVE, is_active=True)
             .select_for_update()
             .first()
         )
         if allocation is None:
             raise ValueError("Employee has no live allocation to transfer.")
 
-        old_house = allocation.allocated_house
-        allocation.status = HouseApplication.Status.ALLOCATED
-        allocation.allocated_house = target
-        allocation.allocated_at = timezone.now()
-        allocation.allocated_by = user
-        allocation.allocation_notes = f"Transferred to {target.house_id}. {notes}".strip()
-        allocation.save()
+        old_house = allocation.house
+        application = allocation.application
+
+        # Terminate the previous allocation (no queue re-entry during a transfer).
+        terminate_allocation(allocation, user, f"Transferred to {target.house_id}",
+                             move_to_queue=False)
+        # Allocate the target house (application may already be 'Allocated').
+        new_allocation = allocate_application(
+            application, target, user, "Manual",
+            notes=f"Transferred to {target.house_id}. {notes}".strip(),
+            allow_existing=True,
+        )
 
         AllocationLog.objects.create(
-            application=allocation,
-            application_no=allocation.application_no,
-            employee_name=allocation.employee_name,
-            employee_id=allocation.employee_id,
+            application=application,
+            application_no=application.application_no,
+            employee_name=application.employee_name,
+            employee_id=application.employee_id,
             house=target,
             house_hid=target.house_id,
             action=AllocationLog.Action.TRANSFERRED,
-            old_status=allocation.status,
-            new_status=allocation.status,
-            priority_score=allocation.priority_score,
-            eligible_category=allocation.eligible_house_category,
-            score_breakdown=allocation.score_breakdown,
+            old_status=application.status,
+            new_status=application.status,
+            priority_score=application.priority_score,
+            eligible_category=application.eligible_house_category,
+            score_breakdown=application.score_breakdown,
             recommendation_reason=f"House transfer from {old_house.house_id if old_house else 'N/A'} to {target.house_id}",
             notes=notes,
             performed_by=user,
             performed_by_name=user.get_full_name() if user else "",
+        )
+        record_audit(
+            application, HouseAuditTrail.Action.TRANSFERRED, user,
+            old_status=application.status, new_status=application.status,
+            detail={
+                "from_house": old_house.house_id if old_house else None,
+                "to_house": target.house_id,
+                "allocation_no": new_allocation.allocation_no,
+            },
+            note=notes,
         )
 
         transfer.status = HouseTransfer.Status.APPROVED

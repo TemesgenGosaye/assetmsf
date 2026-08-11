@@ -15,18 +15,34 @@ from core.permissions import IsAdminOrManager
 from .models import (
     House, HouseApplication, HouseInspection, MaintenanceRequest,
     HouseTransfer, ScoringConfig, EligibilityRule, AllocationLog,
+    HouseOpportunity, Allocation, HouseAuditTrail,
 )
 from .serializers import (
     HouseSerializer, HouseCreateUpdateSerializer,
     HouseApplicationListSerializer, HouseApplicationDetailSerializer,
     HouseApplicationCreateSerializer, HouseApplicationStatusSerializer,
     ScoringConfigSerializer, EligibilityRuleSerializer, AllocationLogSerializer,
+    HouseOpportunitySerializer, AllocationSerializer, HouseAuditTrailSerializer,
 )
 from .allocation_engine import (
     get_ranked_queue, auto_allocate_single, manual_allocate,
     deallocate, run_batch_allocation, determine_eligible_category,
     compute_mcda_score, topsis_rank, check_allocation_constraints,
+    analyze_eligibility, generate_opportunities, rank_opportunities,
+    allocate_application, override_allocate, terminate_allocation,
+    record_audit,
 )
+
+
+def _resolve_house(house_id):
+    """Resolve a house by its HID (90-XXX-00) or its UUID pk."""
+    try:
+        return House.objects.get(house_id=house_id, is_active=True)
+    except House.DoesNotExist:
+        try:
+            return House.objects.get(id=house_id, is_active=True)
+        except House.DoesNotExist:
+            return None
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  HOUSE CRUD
@@ -171,6 +187,9 @@ class HouseApplicationSubmitView(APIView):
         instance.status = "Submitted"
         instance.submitted_at = timezone.now()
         instance.save(update_fields=["status", "submitted_at", "updated_at"])
+        record_audit(instance, HouseAuditTrail.Action.SUBMITTED, request.user,
+                     old_status="Draft", new_status="Submitted",
+                     note="Application submitted by employee")
         return StandardResponse.success(HouseApplicationDetailSerializer(instance).data, "Application submitted")
 
 
@@ -228,6 +247,10 @@ class HouseApplicationStatusUpdateView(APIView):
             performed_by=request.user,
             performed_by_name=request.user.get_full_name(),
         )
+        record_audit(instance, HouseAuditTrail.Action.STATUS_CHANGED, request.user,
+                     old_status=old_status, new_status=new_status,
+                     detail={"reason": ser.validated_data.get("rejection_reason") or ser.validated_data.get("returned_reason") or ""},
+                     note=f"Status → '{new_status}'")
 
         return StandardResponse.success(HouseApplicationDetailSerializer(instance).data, f"Status → '{new_status}'")
 
@@ -296,13 +319,16 @@ class HouseApplicationRecalcScoreView(APIView):
             return StandardResponse.not_found("Application not found")
 
         config = ScoringConfig.objects.filter(is_active=True).first()
-        cat, _ = determine_eligible_category(instance)
+        results, best = analyze_eligibility(instance)
+        cat = best
         total, breakdown, reasons = compute_mcda_score(instance, config)
         instance.eligible_house_category = cat
+        instance.eligibility_analysis = results
         instance.priority_score = total
         instance.score_breakdown = breakdown
         instance.save(update_fields=[
-            "eligible_house_category", "priority_score", "score_breakdown", "updated_at",
+            "eligible_house_category", "eligibility_analysis", "priority_score",
+            "score_breakdown", "updated_at",
         ])
 
         # Re-rank the live queue so queue_position reflects the new score.
@@ -312,6 +338,11 @@ class HouseApplicationRecalcScoreView(APIView):
                 instance.queue_position = rank
                 instance.save(update_fields=["queue_position", "updated_at"])
                 break
+
+        record_audit(instance, HouseAuditTrail.Action.SCORE_RECALCULATED, request.user,
+                     new_status=instance.status,
+                     detail={"priority_score": str(total), "eligible_category": cat},
+                     note=f"Score recalculated ({total})")
 
         return StandardResponse.success(
             HouseApplicationDetailSerializer(instance).data,
@@ -370,8 +401,16 @@ class BatchAllocateView(APIView):
     permission_classes = [IsAuthenticated, IsAdminOrManager]
 
     def post(self, request, *args, **kwargs):
-        result = run_batch_allocation(user=request.user)
-        return StandardResponse.success(result, f"Batch allocation complete: {len(result['allocated'])} allocated, {len(result['skipped'])} skipped")
+        raw = request.data.get("dry_run")
+        if raw is None:
+            raw = request.query_params.get("dry_run")
+        dry_run = str(raw).strip().lower() in ("true", "1", "yes")
+        result = run_batch_allocation(user=request.user, dry_run=dry_run)
+        if dry_run:
+            message = f"Dry-run preview: {len(result['allocated'])} would be allocated, {len(result['skipped'])} skipped"
+        else:
+            message = f"Batch allocation complete: {len(result['allocated'])} allocated, {len(result['skipped'])} skipped"
+        return StandardResponse.success(result, message)
 
 
 class ManualAllocateView(APIView):
@@ -497,3 +536,259 @@ class AllocationLogListView(generics.ListAPIView):
         if page is not None:
             return self.get_paginated_response(AllocationLogSerializer(page, many=True).data)
         return StandardResponse.success(AllocationLogSerializer(qs, many=True).data, "Allocation logs retrieved")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  REVIEW QUEUE OVERVIEW  (real KPIs for the House Review Queue)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class ReviewOverviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        qs = HouseApplication.objects.filter(is_active=True)
+        houses = House.objects.filter(is_active=True)
+
+        counts = {s: qs.filter(status=s).count() for s in HouseApplication.Status.values}
+        total_queue = sum(counts.get(s, 0) for s in [
+            HouseApplication.Status.SUBMITTED,
+            HouseApplication.Status.UNDER_REVIEW,
+            HouseApplication.Status.VERIFIED,
+            HouseApplication.Status.WAITING_FOR_ALLOCATION,
+        ])
+
+        ranked = get_ranked_queue(recalculate=False)
+        avg_score = round(sum(float(a.priority_score) for a in ranked) / len(ranked), 4) if ranked else 0
+        high_priority = sum(1 for a in ranked if float(a.priority_score) >= 25)
+
+        available_houses = sum(
+            1 for h in houses
+            if h.is_available and h.allocation_category != House.AllocationCategory.GUEST
+        )
+        active_allocations = Allocation.objects.filter(status=Allocation.Status.ACTIVE).count()
+
+        data = {
+            "total_queue": total_queue,
+            "submitted": counts.get(HouseApplication.Status.SUBMITTED, 0),
+            "under_review": counts.get(HouseApplication.Status.UNDER_REVIEW, 0),
+            "verified": counts.get(HouseApplication.Status.VERIFIED, 0),
+            "waiting_for_allocation": counts.get(HouseApplication.Status.WAITING_FOR_ALLOCATION, 0),
+            "allocated": counts.get(HouseApplication.Status.ALLOCATED, 0),
+            "rejected": counts.get(HouseApplication.Status.REJECTED, 0),
+            "returned": counts.get(HouseApplication.Status.RETURNED, 0),
+            "average_score": avg_score,
+            "high_priority": high_priority,
+            "available_houses": available_houses,
+            "active_allocations": active_allocations,
+            "houses_by_type": {
+                t: houses.filter(house_type=t).count() for t in
+                ["Staff", "A", "B", "C", "D", "E"]
+            },
+            "allocations_by_type": {
+                t: Allocation.objects.filter(status=Allocation.Status.ACTIVE, house__house_type=t).count()
+                for t in ["Staff", "A", "B", "C", "D", "E"]
+            },
+        }
+        return StandardResponse.success(data, "Review overview retrieved")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE OPPORTUNITIES  (house_opp)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class HouseOpportunityListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = HouseOpportunity.objects.filter(is_active=True)
+    serializer_class = HouseOpportunitySerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["application", "house", "status", "recommendation"]
+    search_fields = ["application__application_no", "house__house_id", "house__location"]
+    ordering_fields = ["compatibility_score", "rank", "priority_score"]
+    ordering = ["rank", "-compatibility_score"]
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(HouseOpportunitySerializer(page, many=True).data)
+        return StandardResponse.success(HouseOpportunitySerializer(qs, many=True).data, "Opportunities retrieved")
+
+
+class ApplicationOpportunitiesView(APIView):
+    """List the ranked house_opp shortlist for one application."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        try:
+            application = HouseApplication.objects.get(id=pk, is_active=True)
+        except HouseApplication.DoesNotExist:
+            return StandardResponse.not_found("Application not found")
+
+        opps = application.opportunities.select_related("house").order_by("rank", "-compatibility_score")
+        return StandardResponse.success(HouseOpportunitySerializer(opps, many=True).data, "Opportunities retrieved")
+
+
+class GenerateOpportunitiesView(APIView):
+    """Generate + rank the house_opp shortlist for an application."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        try:
+            application = HouseApplication.objects.get(id=pk, is_active=True)
+        except HouseApplication.DoesNotExist:
+            return StandardResponse.not_found("Application not found")
+
+        try:
+            created = generate_opportunities(application, request.user)
+            ranked = rank_opportunities(application, request.user)
+            opps = application.opportunities.select_related("house").order_by("rank", "-compatibility_score")
+            return StandardResponse.success({
+                "generated": created,
+                "ranked": ranked,
+                "opportunities": HouseOpportunitySerializer(opps, many=True).data,
+            }, f"Generated {created} and ranked {ranked} opportunities")
+        except Exception as e:
+            return StandardResponse.bad_request(str(e))
+
+
+class RankOpportunitiesView(APIView):
+    """Re-rank an application's existing house_opp shortlist."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        try:
+            application = HouseApplication.objects.get(id=pk, is_active=True)
+        except HouseApplication.DoesNotExist:
+            return StandardResponse.not_found("Application not found")
+
+        ranked = rank_opportunities(application, request.user)
+        opps = application.opportunities.select_related("house").order_by("rank", "-compatibility_score")
+        return StandardResponse.success({
+            "ranked": ranked,
+            "opportunities": HouseOpportunitySerializer(opps, many=True).data,
+        }, f"Ranked {ranked} opportunities")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ALLOCATIONS  (Allocated House module)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class AllocationListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = Allocation.objects.filter(is_active=True)
+    serializer_class = AllocationSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["status", "allocation_type", "house", "application", "occupancy_status"]
+    search_fields = [
+        "allocation_no", "employee_name", "employee_id",
+        "house__house_id", "application__application_no",
+    ]
+    ordering_fields = ["allocated_at", "priority_score", "confidence"]
+    ordering = ["-allocated_at"]
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(AllocationSerializer(page, many=True).data)
+        return StandardResponse.success(AllocationSerializer(qs, many=True).data, "Allocations retrieved")
+
+
+class AllocationDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = Allocation.objects.filter(is_active=True)
+    serializer_class = AllocationSerializer
+    lookup_field = "id"
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        return StandardResponse.success(AllocationSerializer(instance).data, "Allocation retrieved")
+
+
+class AllocateView(APIView):
+    """
+    Unified allocation endpoint.
+    Body: {house_id, application_id, allocation_type (Auto|Manual|Override),
+           notes?, override_reason?}
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        house_id = request.data.get("house_id")
+        app_id = request.data.get("application_id")
+        allocation_type = str(request.data.get("allocation_type", "Manual")).capitalize()
+        notes = request.data.get("notes", "")
+        override_reason = request.data.get("override_reason", "")
+
+        if not house_id or not app_id:
+            return StandardResponse.bad_request("house_id and application_id are required")
+
+        house = _resolve_house(house_id)
+        if house is None:
+            return StandardResponse.not_found(f"House '{house_id}' not found")
+        try:
+            app = HouseApplication.objects.get(id=app_id, is_active=True)
+        except HouseApplication.DoesNotExist:
+            return StandardResponse.not_found("Application not found")
+
+        try:
+            if allocation_type == "Auto":
+                allocation = allocate_application(app, house, request.user, "Auto", notes=notes)
+            elif allocation_type == "Override":
+                if not override_reason.strip():
+                    return StandardResponse.bad_request("override_reason is required for manual overrides")
+                allocation = override_allocate(house, app, request.user, override_reason, notes)
+            else:
+                allocation = allocate_application(app, house, request.user, "Manual", notes=notes)
+            return StandardResponse.success(
+                AllocationSerializer(allocation).data,
+                f"Allocated {house.house_id} to {app.employee_name}",
+            )
+        except ValueError as e:
+            return StandardResponse.bad_request(str(e))
+
+
+class TerminateAllocationView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        reason = request.data.get("notes", "") or request.data.get("reason", "")
+        move_to_queue = str(request.data.get("move_to_queue", "true")).lower() != "false"
+
+        try:
+            allocation = Allocation.objects.get(id=pk, is_active=True)
+        except Allocation.DoesNotExist:
+            return StandardResponse.not_found("Allocation not found")
+
+        try:
+            allocation = terminate_allocation(allocation, request.user, reason, move_to_queue)
+            return StandardResponse.success(AllocationSerializer(allocation).data, "Allocation terminated")
+        except ValueError as e:
+            return StandardResponse.bad_request(str(e))
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  AUDIT TIMELINE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class ApplicationAuditView(APIView):
+    """Merged audit timeline (generic trail + allocation logs) for an application."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        try:
+            application = HouseApplication.objects.get(id=pk, is_active=True)
+        except HouseApplication.DoesNotExist:
+            return StandardResponse.not_found("Application not found")
+
+        audit = HouseAuditTrailSerializer(application.audit_trail.all(), many=True).data
+        logs = AllocationLogSerializer(application.allocation_logs.all(), many=True).data
+        return StandardResponse.success({
+            "audit": audit,
+            "logs": logs,
+        }, "Audit timeline retrieved")

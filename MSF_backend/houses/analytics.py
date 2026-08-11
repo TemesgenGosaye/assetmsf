@@ -19,12 +19,14 @@ from django.db.models import Count, Sum, Q
 from django.utils import timezone
 
 from .models import (
-    House, HouseApplication, AllocationLog, HouseInspection,
-    MaintenanceRequest, HouseTransfer, RentalContract, RentalInvoice,
+    House, HouseApplication, Allocation, AllocationLog, HouseAuditTrail,
+    HouseInspection, MaintenanceRequest, HouseTransfer, RentalContract,
+    RentalInvoice,
 )
 from .allocation_engine import (
     determine_eligible_category, compute_mcda_score, topsis_rank,
-    check_allocation_constraints, CATEGORY_ORDER,
+    check_allocation_constraints, terminate_allocation, record_audit,
+    CATEGORY_ORDER,
 )
 from .serializers import HouseApplicationDetailSerializer
 
@@ -356,17 +358,33 @@ def available_house_insights():
     from .models import ScoringConfig
     config = ScoringConfig.objects.filter(is_active=True).first()
 
+    # Get IDs or employee identifiers of employees who already hold an active allocation
+    allocated_employee_ids = set(
+        Allocation.objects.filter(status=Allocation.Status.ACTIVE)
+        .exclude(emp_record=None)
+        .values_list("emp_record_id", flat=True)
+    )
+    allocated_employee_names = set(
+        Allocation.objects.filter(status=Allocation.Status.ACTIVE)
+        .values_list("employee_id", flat=True)
+    )
+
     insights = []
     for house in sorted(houses, key=lambda h: (h.allocation_category, h.house_type, h.house_id)):
-        candidates = list(
-            HouseApplication.objects.filter(
-                status__in=[
-                    HouseApplication.Status.VERIFIED,
-                    HouseApplication.Status.WAITING_FOR_ALLOCATION,
-                ],
-                is_active=True,
-            ).select_related("requester", "allocated_house")
-        )
+        candidates = []
+        for c in HouseApplication.objects.filter(
+            status__in=[
+                HouseApplication.Status.VERIFIED,
+                HouseApplication.Status.WAITING_FOR_ALLOCATION,
+            ],
+            is_active=True,
+        ).select_related("requester", "allocated_house", "emp_record"):
+            # Exclude employees who already have an active house allocation
+            if c.emp_record_id and c.emp_record_id in allocated_employee_ids:
+                continue
+            if c.employee_id and c.employee_id in allocated_employee_names:
+                continue
+            candidates.append(c)
         eligible = []
         for c in candidates:
             ec, _ = determine_eligible_category(c)
@@ -499,9 +517,181 @@ def detect_conflicts(user=None):
                 "employee_id": app.employee_id,
                 "employee_name": app.employee_name,
                 "detail": f"{app.employee_name} already has an allocation but application {app.application_no} is still live.",
+                "applications": [{"id": str(app.id), "no": app.application_no, "status": app.status}],
             })
 
     return sorted(conflicts, key=lambda c: {"critical": 0, "warning": 1}[c["severity"]])
+
+
+# ── conflict resolution (opt-in, audited) ──────────────────────────────────
+# `detect_conflicts` is deliberately read-only. These resolvers are the
+# explicit "fix it" actions an admin can invoke from the command center; every
+# mutation is audited via HouseAuditTrail + AllocationLog so nothing happens
+# silently.
+
+def _reset_application_to_queue(app, user, note):
+    """Reset a misplaced application to the allocation queue (no house ref)."""
+    old_status = app.status
+    app.status = HouseApplication.Status.WAITING_FOR_ALLOCATION
+    app.allocated_house = None
+    app.allocated_at = None
+    app.allocated_by = None
+    app.allocation_notes = ""
+    app.allocation_confidence = 0
+    app.deallocation_reason = note
+    app.save(update_fields=[
+        "status", "allocated_house", "allocated_at", "allocated_by",
+        "allocation_notes", "allocation_confidence", "deallocation_reason",
+        "updated_at",
+    ])
+    AllocationLog.objects.create(
+        application=app,
+        house=None,
+        application_no=app.application_no,
+        employee_name=app.employee_name,
+        employee_id=app.employee_id,
+        action=AllocationLog.Action.STATUS_CHANGED,
+        old_status=old_status,
+        new_status=app.status,
+        notes=note,
+        performed_by=user,
+        performed_by_name=getattr(user, "name", "") or getattr(user, "username", ""),
+    )
+    record_audit(app, HouseAuditTrail.Action.STATUS_CHANGED, user,
+                 old_status=old_status, new_status=app.status,
+                 note=f"Conflict resolution: {note}")
+
+
+def _return_application(app, user, note):
+    """Close a redundant live application (Returned) with full audit."""
+    old_status = app.status
+    app.status = HouseApplication.Status.RETURNED
+    app.returned_reason = note
+    app.save(update_fields=["status", "returned_reason", "updated_at"])
+    AllocationLog.objects.create(
+        application=app,
+        house=None,
+        application_no=app.application_no,
+        employee_name=app.employee_name,
+        employee_id=app.employee_id,
+        action=AllocationLog.Action.STATUS_CHANGED,
+        old_status=old_status,
+        new_status=app.status,
+        notes=note,
+        performed_by=user,
+        performed_by_name=getattr(user, "name", "") or getattr(user, "username", ""),
+    )
+    record_audit(app, HouseAuditTrail.Action.STATUS_CHANGED, user,
+                 old_status=old_status, new_status=app.status, note=note)
+
+
+def resolve_orphaned_allocation(app_id, user):
+    """Application says 'Allocated' but carries no house reference."""
+    app = HouseApplication.objects.filter(id=app_id, is_active=True).first()
+    if app is None:
+        raise ValueError("Application not found")
+    if app.status != HouseApplication.Status.ALLOCATED:
+        raise ValueError("Application is not in Allocated status")
+    if app.allocated_house is not None:
+        raise ValueError("Application already has a house reference")
+    _reset_application_to_queue(app, user, "Orphaned allocation fixed — returned to allocation queue.")
+    return app
+
+
+def resolve_capacity_breach(house_id, user):
+    """More live 'Allocated' applications than capacity → free the extras."""
+    house = House.objects.filter(id=house_id, is_active=True).first()
+    if house is None:
+        house = House.objects.filter(house_id=house_id, is_active=True).first()
+    if house is None:
+        raise ValueError("House not found")
+
+    live = list(
+        house.allocations
+        .filter(status=HouseApplication.Status.ALLOCATED, is_active=True)
+        .order_by("allocated_at", "created_at")
+    )
+    overflow = live[house.capacity:]
+    if not overflow:
+        raise ValueError("House is not over capacity")
+
+    freed = []
+    for app in overflow:
+        allocation = app.allocation_records.filter(status=Allocation.Status.ACTIVE).first()
+        try:
+            if allocation is not None:
+                terminate_allocation(
+                    allocation, user,
+                    reason=f"Capacity breach resolved on {house.house_id}",
+                    move_to_queue=True,
+                )
+            else:
+                _reset_application_to_queue(
+                    app, user,
+                    f"Capacity breach resolved on {house.house_id} — no Allocation record.",
+                )
+            freed.append(app.application_no)
+        except ValueError:
+            continue
+    return {"house_id": house.house_id, "freed": freed}
+
+
+def resolve_duplicate_applications(keep_app_id, user):
+    """Keep the selected application; return every other live one for the employee."""
+    keep = HouseApplication.objects.filter(id=keep_app_id, is_active=True).first()
+    if keep is None:
+        raise ValueError("Application not found")
+
+    duplicates = HouseApplication.objects.filter(
+        employee_id=keep.employee_id,
+        is_active=True,
+    ).exclude(id=keep.id).exclude(status__in=[
+        HouseApplication.Status.REJECTED,
+        HouseApplication.Status.RETURNED,
+        HouseApplication.Status.DRAFT,
+        HouseApplication.Status.ALLOCATED,
+    ])
+    returned = []
+    for app in duplicates:
+        _return_application(
+            app, user,
+            "Duplicate application auto-returned during conflict resolution.",
+        )
+        returned.append(app.application_no)
+    return {"kept": keep.application_no, "returned": returned}
+
+
+def resolve_already_allocated(app_id, user):
+    """Employee already holds an allocation — return the extra live application."""
+    app = HouseApplication.objects.filter(id=app_id, is_active=True).first()
+    if app is None:
+        raise ValueError("Application not found")
+    if app.status in (HouseApplication.Status.ALLOCATED,
+                      HouseApplication.Status.REJECTED,
+                      HouseApplication.Status.RETURNED,
+                      HouseApplication.Status.DRAFT):
+        raise ValueError("Application is not a live duplicate")
+    _return_application(
+        app, user,
+        "Employee already allocated — redundant application returned.",
+    )
+    return {"application_no": app.application_no, "status": app.status}
+
+
+def resolve_conflict(conflict_type, target_id, user):
+    """Dispatch a conflict-resolution request. Raises ValueError when the
+    conflict type is not safely auto-resolvable or the target is invalid."""
+    kind = (conflict_type or "").strip()
+    if kind == "orphaned_allocation":
+        app = resolve_orphaned_allocation(target_id, user)
+        return {"action": "orphaned_allocation", "application_no": app.application_no, "status": app.status}
+    if kind == "capacity_breach":
+        return {"action": "capacity_breach", **resolve_capacity_breach(target_id, user)}
+    if kind == "duplicate_application":
+        return {"action": "duplicate_application", **resolve_duplicate_applications(target_id, user)}
+    if kind == "already_allocated":
+        return {"action": "already_allocated", **resolve_already_allocated(target_id, user)}
+    raise ValueError(f"Conflict type '{conflict_type}' is not auto-resolvable")
 
 
 def recommend_allocations(limit=None):

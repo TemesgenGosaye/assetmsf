@@ -30,6 +30,8 @@ import {
   Users,
   Activity,
   ArrowRight,
+  Wand2,
+  Loader2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -57,6 +59,7 @@ import {
 import {
   getConflicts,
   getRecommendations,
+  resolveConflict,
   type ConflictItem,
   type Recommendation,
 } from "@/services/houseOperations";
@@ -108,6 +111,7 @@ export default function HouseCommandCenter() {
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [resolving, setResolving] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [houseTypeFilter, setHouseTypeFilter] = useState("");
 
@@ -147,6 +151,40 @@ export default function HouseCommandCenter() {
   }, [loadAll]);
 
   const handleRefresh = () => loadAll(true);
+
+  const RESOLVABLE_TYPES = new Set([
+    "orphaned_allocation",
+    "capacity_breach",
+    "duplicate_application",
+    "already_allocated",
+  ]);
+
+  const conflictTargetId = (c: ConflictItem): string | null =>
+    c.type === "capacity_breach" ? c.house_id ?? null : c.applications?.[0]?.id ?? null;
+
+  const handleResolve = async (c: ConflictItem) => {
+    const targetId = conflictTargetId(c);
+    if (!targetId) return;
+    const key = `${c.type}:${targetId}`;
+    setResolving(key);
+    try {
+      const res = await resolveConflict(c.type, targetId);
+      setConflicts(res.conflicts);
+      const r = res.resolved;
+      const detail =
+        r.action === "capacity_breach"
+          ? `freed ${(r.freed ?? []).length} allocation(s) on ${r.house_id}`
+          : r.action === "duplicate_application"
+            ? `kept ${r.kept}, returned ${(r.returned ?? []).length} duplicate(s)`
+            : `${r.application_no ?? "application"} → ${r.status ?? r.action.replace(/_/g, " ")}`;
+      toast.success(`Conflict resolved — ${detail}`);
+      void loadAll(true);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to resolve conflict");
+    } finally {
+      setResolving(null);
+    }
+  };
 
   const kpis = analytics?.kpis;
 
@@ -481,7 +519,30 @@ export default function HouseCommandCenter() {
                       <span className="text-sm font-semibold capitalize">
                         {c.type.replace(/_/g, " ")}
                       </span>
-                      <StatusChip status={c.severity} size="sm" />
+                      <span className="flex items-center gap-1.5">
+                        <StatusChip status={c.severity} size="sm" />
+                        {RESOLVABLE_TYPES.has(c.type) && conflictTargetId(c) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px]"
+                            disabled={resolving === `${c.type}:${conflictTargetId(c)}`}
+                            onClick={() => void handleResolve(c)}
+                            title={
+                              c.type === "duplicate_application"
+                                ? "Keep the first application and return the others"
+                                : "Apply the audited auto-fix for this conflict"
+                            }
+                          >
+                            {resolving === `${c.type}:${conflictTargetId(c)}` ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Wand2 className="h-3 w-3" />
+                            )}
+                            Resolve
+                          </Button>
+                        )}
+                      </span>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">{c.detail}</p>
                   </div>

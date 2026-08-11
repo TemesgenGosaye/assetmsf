@@ -17,10 +17,11 @@ from .models import (
 User = get_user_model()
 
 
-def basic_auth(user, password="testpassword123"):
-    import base64
-    token = base64.b64encode(f"{user.email}:{password}".encode()).decode()
-    return {"HTTP_AUTHORIZATION": f"Basic {token}"}
+def jwt_auth(user, password="testpassword123"):
+    """Mint a real JWT access token for the user (the API is JWT-authenticated)."""
+    from rest_framework_simplejwt.tokens import RefreshToken
+    refresh = RefreshToken.for_user(user)
+    return {"HTTP_AUTHORIZATION": f"Bearer {refresh.access_token}"}
 
 
 class OperationsApiTestCase(TestCase):
@@ -36,8 +37,8 @@ class OperationsApiTestCase(TestCase):
             name="Requester User", role="REQUESTER",
         )
         self.client = Client()
-        self.admin_auth = basic_auth(self.admin)
-        self.requester_auth = basic_auth(self.requester)
+        self.admin_auth = jwt_auth(self.admin)
+        self.requester_auth = jwt_auth(self.requester)
 
         self.house = House.objects.create(
             location="Compound A", house_type="A", status="Active",
@@ -89,6 +90,7 @@ class OperationsApiTestCase(TestCase):
         )
 
     def _allocated_app(self, house=None):
+        house = house or self.house
         app = HouseApplication.objects.create(
             requester=self.admin,
             emp_record=self.employee,
@@ -106,6 +108,19 @@ class OperationsApiTestCase(TestCase):
             allocated_house=house,
             allocated_at=timezone.now(),
             allocated_by=self.admin,
+        )
+        from .models import Allocation
+        Allocation.objects.create(
+            application=app,
+            house=house,
+            emp_record=self.employee,
+            employee_id=self.employee.employee_id,
+            employee_name=self.employee.full_name,
+            status=Allocation.Status.ACTIVE,
+            occupancy_status=Allocation.Occupancy.OCCUPIED,
+            allocated_at=app.allocated_at,
+            allocated_by=self.admin,
+            created_by=self.admin,
         )
         return app
 
@@ -454,3 +469,145 @@ class HouseModelDamageTests(TestCase):
             damaged_door=True, damaged_water=True, created_by=user,
         )
         self.assertEqual(house.damaged_items, ["door", "water"])
+
+
+class ConflictResolutionTests(OperationsApiTestCase):
+    """Explicit, audited conflict remediation via the resolve endpoint."""
+
+    def _make_app(self, status, employee_id=None, house=None, allocated=None,
+                  national_id=None):
+        from .models import Allocation
+        employee_id = employee_id or self.employee.employee_id
+        app = HouseApplication.objects.create(
+            requester=self.admin,
+            emp_record=self.employee,
+            employee_id=employee_id,
+            employee_name=self.employee.full_name,
+            national_id=national_id or f"NID-CR-{allocated or status}",
+            gender="Male",
+            job_position="Operator",
+            job_grade="12",
+            position_type="Permanent",
+            marital_status="Single",
+            requested_house_category=house.house_type if house else "A",
+            status=status,
+            submitted_at=timezone.now() - timedelta(days=10),
+            allocated_house=house if status == HouseApplication.Status.ALLOCATED else None,
+            allocated_at=allocated,
+            allocated_by=self.admin if allocated else None,
+        )
+        if allocated:
+            Allocation.objects.create(
+                application=app,
+                house=house,
+                emp_record=self.employee,
+                employee_id=app.employee_id,
+                employee_name=app.employee_name,
+                status=Allocation.Status.ACTIVE,
+                occupancy_status=Allocation.Occupancy.OCCUPIED,
+                allocated_at=allocated,
+                allocated_by=self.admin,
+                created_by=self.admin,
+            )
+        return app
+
+    def test_orphaned_allocation_resolved_to_queue(self):
+        app = self._make_app(HouseApplication.Status.ALLOCATED, allocated=None)
+        response = self.post(
+            "/api/houses/analytics/conflicts/resolve/",
+            {"conflict_type": "orphaned_allocation", "target_id": str(app.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        app.refresh_from_db()
+        self.assertEqual(app.status, HouseApplication.Status.WAITING_FOR_ALLOCATION)
+        self.assertIsNone(app.allocated_house)
+        self.assertIn(
+            "Orphaned allocation fixed",
+            AllocationLog.objects.filter(application=app).latest("created_at").notes,
+        )
+        remaining = [c for c in response.json()["data"]["conflicts"]
+                     if c["type"] == "orphaned_allocation"]
+        self.assertTrue(all(
+            str(a["id"]) != str(app.id)
+            for c in remaining for a in c.get("applications", [])
+        ))
+
+    def test_capacity_breach_frees_overflow(self):
+        from .models import Allocation
+        house = House.objects.create(
+            location="Overflow", house_type="C", status="Active",
+            capacity=1, created_by=self.admin,
+        )
+        now = timezone.now()
+        keep = self._make_app(HouseApplication.Status.ALLOCATED, house=house, allocated=now - timedelta(days=20))
+        overflow = self._make_app(
+            HouseApplication.Status.ALLOCATED, house=house, allocated=now - timedelta(days=5),
+            national_id="NID-CR-OVERFLOW",
+        )
+        response = self.post(
+            "/api/houses/analytics/conflicts/resolve/",
+            {"conflict_type": "capacity_breach", "target_id": str(house.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIn(overflow.application_no, response.json()["data"]["resolved"]["freed"])
+        overflow.refresh_from_db()
+        self.assertEqual(overflow.status, HouseApplication.Status.WAITING_FOR_ALLOCATION)
+        self.assertIsNone(overflow.allocated_house)
+        self.assertEqual(Allocation.objects.get(application=overflow).status, Allocation.Status.TERMINATED)
+        keep.refresh_from_db()
+        self.assertEqual(keep.status, HouseApplication.Status.ALLOCATED)
+
+    def test_duplicate_applications_returned_keeping_winner(self):
+        winner = self._make_app(HouseApplication.Status.WAITING_FOR_ALLOCATION, national_id="NID-CR-KEEP")
+        loser = self._make_app(
+            HouseApplication.Status.SUBMITTED, national_id="NID-CR-LOSE",
+        )
+        response = self.post(
+            "/api/houses/analytics/conflicts/resolve/",
+            {"conflict_type": "duplicate_application", "target_id": str(winner.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["data"]["resolved"]["kept"], winner.application_no)
+        self.assertIn(loser.application_no, response.json()["data"]["resolved"]["returned"])
+        winner.refresh_from_db()
+        loser.refresh_from_db()
+        self.assertEqual(winner.status, HouseApplication.Status.WAITING_FOR_ALLOCATION)
+        self.assertEqual(loser.status, HouseApplication.Status.RETURNED)
+
+    def test_already_allocated_returns_extra_app(self):
+        self._make_app(
+            HouseApplication.Status.ALLOCATED, house=self.house, allocated=timezone.now(),
+        )
+        extra = self._make_app(
+            HouseApplication.Status.VERIFIED, national_id="NID-CR-EXTRA",
+        )
+        response = self.post(
+            "/api/houses/analytics/conflicts/resolve/",
+            {"conflict_type": "already_allocated", "target_id": str(extra.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        extra.refresh_from_db()
+        self.assertEqual(extra.status, HouseApplication.Status.RETURNED)
+
+    def test_unsupported_conflict_type_rejected(self):
+        response = self.post(
+            "/api/houses/analytics/conflicts/resolve/",
+            {"conflict_type": "overlapping_contract", "target_id": str(self.house.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not auto-resolvable", response.json()["message"])
+
+    def test_requires_admin(self):
+        response = self.client.post(
+            "/api/houses/analytics/conflicts/resolve/",
+            data={"conflict_type": "orphaned_allocation", "target_id": str(self.house.id)},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=self.requester_auth["HTTP_AUTHORIZATION"],
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 403)

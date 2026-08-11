@@ -9,10 +9,16 @@ from .views import (
     ScoringConfigListCreateView, ScoringConfigDetailView,
     EligibilityRuleListCreateView, EligibilityRuleDetailView,
     AllocationLogListView,
+    ReviewOverviewView,
+    HouseOpportunityListView, ApplicationOpportunitiesView,
+    GenerateOpportunitiesView, RankOpportunitiesView,
+    AllocationListView, AllocationDetailView,
+    AllocateView, TerminateAllocationView,
+    ApplicationAuditView,
 )
 from .operations_views import (
     HousingAnalyticsView, AvailableHousesView, ConflictDetectionView,
-    RecommendationsView, OccupancyView,
+    ResolveConflictView, RecommendationsView, OccupancyView,
     InspectionListCreateView, InspectionDetailView, InspectionCompleteView,
     MaintenanceListCreateView, MaintenanceDetailView, MaintenanceStatusView,
     TransferListCreateView, TransferDetailView, TransferDecideView, TransferCompleteView,
@@ -41,6 +47,24 @@ urlpatterns = [
     path("manual-allocate/",           ManualAllocateView.as_view(),                 name="manual_allocate"),
     path("deallocate/",                DeallocateView.as_view(),                     name="deallocate"),
 
+    # ── Review queue overview ──────────────────────────────────────────
+    path("review/overview/",           ReviewOverviewView.as_view(),                 name="review_overview"),
+
+    # ── House opportunities (house_opp) ────────────────────────────────
+    path("opportunities/",             HouseOpportunityListView.as_view(),           name="opportunity_list"),
+    path("applications/<uuid:id>/opportunities/", ApplicationOpportunitiesView.as_view(), name="application_opportunities"),
+    path("applications/<uuid:id>/opportunities/generate/", GenerateOpportunitiesView.as_view(), name="application_opportunities_generate"),
+    path("applications/<uuid:id>/opportunities/rank/", RankOpportunitiesView.as_view(), name="application_opportunities_rank"),
+
+    # ── Allocations (Allocated House module) ───────────────────────────
+    path("allocations/",               AllocationListView.as_view(),                 name="allocation_list"),
+    path("allocations/<uuid:id>/",     AllocationDetailView.as_view(),               name="allocation_detail"),
+    path("allocate/",                  AllocateView.as_view(),                       name="allocate"),
+    path("allocations/<uuid:id>/terminate/", TerminateAllocationView.as_view(),      name="allocation_terminate"),
+
+    # ── Audit timeline ─────────────────────────────────────────────────
+    path("applications/<uuid:id>/audit/", ApplicationAuditView.as_view(),            name="application_audit"),
+
     # ── Scoring configuration ──────────────────────────────────────────
     path("scoring-config/",            ScoringConfigListCreateView.as_view(),        name="scoring_config_list"),
     path("scoring-config/<uuid:pk>/",  ScoringConfigDetailView.as_view(),            name="scoring_config_detail"),
@@ -56,6 +80,7 @@ urlpatterns = [
     path("analytics/",                 HousingAnalyticsView.as_view(),               name="housing_analytics"),
     path("analytics/available/",       AvailableHousesView.as_view(),                name="housing_available"),
     path("analytics/conflicts/",       ConflictDetectionView.as_view(),              name="housing_conflicts"),
+    path("analytics/conflicts/resolve/", ResolveConflictView.as_view(),             name="housing_conflicts_resolve"),
     path("analytics/recommendations/", RecommendationsView.as_view(),                name="housing_recommendations"),
     path("occupancy/",                 OccupancyView.as_view(),                      name="housing_occupancy"),
 

@@ -49,8 +49,11 @@ import ReportDetails from "./pages/ReportDetails";
 import QRCodeDetails from "./pages/QRCodeDetails";
 import Employees from "./pages/Employees";
 import HouseOpp from "./pages/HouseOpp";
+import AllocatedHouses from "./pages/AllocatedHouses";
 import HouseCommandCenter from "./pages/HouseCommandCenter";
 import HouseOperations from "./pages/HouseOperations";
+import SmartAllocationConsole from "./pages/SmartAllocationConsole";
+import AllocationHistory from "./pages/AllocationHistory";
 import HouseQueuePage from "./pages/HouseQueuePage";
 import HouseQueueReview from "./pages/HouseQueueReview";
 import ScoringConfigPage from "./pages/ScoringConfigPage";
@@ -386,6 +389,30 @@ const App = () => (
               element={
                 <RequireView page="houses">
                   <HouseCommandCenter />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/houses/allocations"
+              element={
+                <RequireView page="houses">
+                  <AllocatedHouses />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/houses/allocate"
+              element={
+                <RequireView page="houses">
+                  <SmartAllocationConsole />
+                </RequireView>
+              }
+            />
+            <Route
+              path="/houses/allocations/history"
+              element={
+                <RequireView page="houses">
+                  <AllocationHistory />
                 </RequireView>
               }
             />

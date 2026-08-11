@@ -385,6 +385,31 @@ export async function getConflicts(): Promise<ConflictItem[]> {
   return readList<ConflictItem>("/houses/analytics/conflicts/");
 }
 
+export type ConflictResolutionResult = {
+  action: string;
+  application_no?: string;
+  status?: string;
+  house_id?: string;
+  freed?: string[];
+  kept?: string;
+  returned?: string[];
+};
+
+export async function resolveConflict(
+  conflictType: ConflictItem["type"],
+  targetId: string,
+): Promise<{ resolved: ConflictResolutionResult; conflicts: ConflictItem[] }> {
+  const res = await djangoRequest<any>("/houses/analytics/conflicts/resolve/", {
+    method: "POST",
+    body: JSON.stringify({ conflict_type: conflictType, target_id: targetId }),
+  });
+  if (res.success) {
+    invalidateCache("houses:analytics");
+    return res.data;
+  }
+  throw new Error(res.message || "Failed to resolve conflict");
+}
+
 export async function getRecommendations(limit?: number): Promise<Recommendation[]> {
   return readList<Recommendation>("/houses/analytics/recommendations/", limit ? { limit: String(limit) } : undefined);
 }

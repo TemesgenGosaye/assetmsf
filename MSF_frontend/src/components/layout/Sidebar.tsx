@@ -29,12 +29,15 @@ import {
   UserCheck,
   Home,
   CalendarClock,
+  KeyRound,
   ChevronDown,
   ArrowRightLeft,
   TrendingUp,
   Wrench,
   ArrowRight,
   ExternalLink,
+  Sparkles,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SheetClose } from "@/components/ui/sheet";
@@ -88,6 +91,9 @@ const baseNav: NavItem[] = [
   { name: "Residential Hub", href: "/residential-hub", icon: Building2 },
   { name: "House Opp", href: "/house-opp", icon: Home },
   { name: "Command Center", href: "/houses/command-center", icon: Activity },
+  { name: "Allocated Houses", href: "/houses/allocations", icon: KeyRound },
+  { name: "Allocation Console", href: "/houses/allocate", icon: Sparkles },
+  { name: "Allocation History", href: "/houses/allocations/history", icon: History },
   { name: "Operations", href: "/houses/operations", icon: Wrench },
   { name: "New Application", href: "/house-application/new", icon: FilePlus },
   { name: "My Applications", href: "/house-application/my", icon: Files },
@@ -122,7 +128,7 @@ const badgeToneClasses: Record<BadgeTone, string> = {
 
 const navGroupBlueprint: Array<{ key: string; title: string; items: string[] }> = [
   { key: "workspace", title: "Workspace", items: ["Dashboard", "Assets", "Properties", "Employees", "Residential Hub", "Scan QR"] },
-  { key: "operations", title: "Operations", items: ["House Opp", "Command Center", "Operations", "Approvals", "Tickets", "Help Center", "QR Codes", "Newsletter"] },
+  { key: "operations", title: "Operations", items: ["House Opp", "Command Center", "Allocated Houses", "Allocation Console", "Allocation History", "Operations", "Approvals", "Tickets", "Help Center", "QR Codes", "Newsletter"] },
   { key: "house_application", title: "House Application", items: ["New Application", "My Applications", "Application Status"] },
   { key: "insights", title: "Insights", items: ["Reports", "Audit"] },
   { key: "administration", title: "Administration", items: ["Users", "Settings", "System Status"] },
@@ -136,6 +142,9 @@ const pageNameToKey: Record<string, PageKey | null> = {
   "Residential Hub": "residential_hub",
   "House Opp": "houses",
   "Command Center": "houses",
+  "Allocated Houses": "houses",
+  "Allocation Console": "houses",
+  "Allocation History": "houses",
   "Operations": "houses",
   "QR Codes": "qrcodes",
   Approvals: null,

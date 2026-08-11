@@ -305,20 +305,30 @@ export interface BatchAllocateResult {
   skip_reason?: string | null;
 }
 
-export async function batchAllocateAll(): Promise<{
+export interface BatchAllocateResponse {
   allocated: BatchAllocateResult[];
   skipped: BatchAllocateResult[];
   total_houses: number;
-}> {
+  dry_run?: boolean;
+}
+
+export async function batchAllocateAll(options?: { dryRun?: boolean }): Promise<BatchAllocateResponse> {
   const res = await djangoRequest<any>("/houses/batch-allocate/", {
     method: "POST",
+    body: JSON.stringify(options?.dryRun ? { dry_run: true } : {}),
   });
   if (res.success) {
-    invalidateCache("applications:list");
-    invalidateCache("houses:list");
+    if (!options?.dryRun) {
+      invalidateCache("applications:list");
+      invalidateCache("houses:list");
+    }
     return res.data;
   }
   throw new Error(res.message || "Failed to batch allocate houses");
+}
+
+export async function batchAllocatePreview(): Promise<BatchAllocateResponse> {
+  return batchAllocateAll({ dryRun: true });
 }
 
 export async function recalculateApplicationScore(applicationId: string): Promise<HouseApplication> {

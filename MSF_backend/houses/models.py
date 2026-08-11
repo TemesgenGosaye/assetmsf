@@ -143,9 +143,10 @@ class House(BaseModel):
 
     @property
     def current_occupancy(self):
-        # A house is occupied by live "Allocated" applications only.
-        # (Deallocated applications have allocated_house=None and never count.)
-        return self.allocations.filter(status="Allocated", is_active=True).count()
+        # A house is occupied by live Allocation records only — the single
+        # authoritative source of truth for occupancy. Historical/terminated
+        # allocations never count towards capacity.
+        return self.allocation_records.filter(status=Allocation.Status.ACTIVE).count()
 
     @property
     def vacant(self):
@@ -358,6 +359,19 @@ class HouseApplication(BaseModel):
     priority_score = models.DecimalField(_("priority score"), max_digits=8, decimal_places=4, default=0)
     queue_position = models.PositiveIntegerField(_("queue position"), null=True, blank=True)
     score_breakdown = models.JSONField(_("score breakdown (XAI)"), default=dict, blank=True)
+    eligibility_analysis = models.JSONField(
+        _("eligibility analysis (XAI)"),
+        default=list,
+        blank=True,
+        help_text=_("Per-rule eligibility breakdown: {rule, house_type, passed, reason}."),
+    )
+    allocation_confidence = models.DecimalField(
+        _("allocation confidence"),
+        max_digits=6,
+        decimal_places=4,
+        default=0,
+        help_text=_("Confidence (0-100) of the current/last allocation recommendation."),
+    )
 
     # ── allocation ────────────────────────────────────────────────────────
     allocated_house     = models.ForeignKey(House, on_delete=models.SET_NULL, null=True, blank=True, related_name="allocations")
@@ -673,3 +687,231 @@ class RentalPayment(BaseModel):
         total_paid = inv.payments.aggregate(total=Sum('amount_paid'))['total'] or Decimal('0.00')
         inv.paid_amount = total_paid
         inv.save()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE OPPORTUNITY  (house_opp)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class HouseOpportunity(BaseModel):
+    """
+    A candidate house matched against an application by the allocation engine.
+
+    Each opportunity records WHY the house is a fit (compatibility score +
+    match reasons) and WHERE it stands in the applicant's ranked shortlist,
+    giving the review workspace a transparent, explainable house_opp pipeline:
+
+        Generated → Eligible → Ranked → Recommended → Selected → Allocated
+                                  (└→ Rejected / Expired / Unavailable)
+    """
+
+    class Status(models.TextChoices):
+        GENERATED   = "Generated",   _("Generated")
+        ELIGIBLE    = "Eligible",    _("Eligible")
+        RANKED      = "Ranked",      _("Ranked")
+        RECOMMENDED = "Recommended", _("Recommended")
+        SELECTED    = "Selected",    _("Selected")
+        ALLOCATED   = "Allocated",   _("Allocated")
+        REJECTED    = "Rejected",    _("Rejected")
+        EXPIRED     = "Expired",     _("Expired")
+        UNAVAILABLE = "Unavailable", _("Unavailable")
+
+    class Recommendation(models.TextChoices):
+        RECOMMENDED  = "Recommended",  _("Recommended")
+        ALTERNATIVE  = "Alternative",  _("Alternative")
+        NOT_SUITABLE = "Not Suitable", _("Not Suitable")
+
+    application = models.ForeignKey(HouseApplication, on_delete=models.CASCADE, related_name="opportunities")
+    house       = models.ForeignKey(House, on_delete=models.CASCADE, related_name="opportunities")
+
+    eligible_category   = models.CharField(_("eligible category"), max_length=10, blank=True, default="")
+    compatibility_score = models.DecimalField(_("compatibility score"), max_digits=8, decimal_places=4, default=0)
+    priority_score      = models.DecimalField(_("applicant priority score"), max_digits=8, decimal_places=4, default=0)
+    match_reasons       = models.JSONField(_("match reasons (XAI)"), default=list, blank=True)
+    recommendation      = models.CharField(_("recommendation"), max_length=20, choices=Recommendation.choices, default=Recommendation.ALTERNATIVE, db_index=True)
+    recommendation_reason = models.TextField(_("recommendation reason"), blank=True, default="")
+    status              = models.CharField(_("status"), max_length=20, choices=Status.choices, default=Status.GENERATED, db_index=True)
+    rank                = models.PositiveIntegerField(_("rank in shortlist"), null=True, blank=True)
+    notes               = models.TextField(_("notes"), blank=True, default="")
+
+    class Meta:
+        db_table = "house_opportunities"
+        verbose_name = _("house opportunity")
+        verbose_name_plural = _("house opportunities")
+        ordering = ["rank", "-compatibility_score", "house__house_id"]
+        indexes = [
+            models.Index(fields=["application", "status"]),
+            models.Index(fields=["house", "status"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["application", "house"], name="uniq_application_house_opportunity"),
+        ]
+
+    def __str__(self):
+        return f"{self.application.application_no} → {self.house.house_id} ({self.compatibility_score})"
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ALLOCATION  (Allocated House — authoritative allocation record)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class Allocation(BaseModel):
+    """
+    Authoritative record of a completed house allocation. The Allocated House
+    module is powered by these records; occupancy, availability and audit all
+    flow from here (single source of truth).
+
+    `HouseApplication.allocated_house` is kept as a convenience projection of
+    the current ACTIVE allocation only — it is synced by the allocation engine
+    and never treated as an independent source of truth.
+    """
+
+    class AllocationType(models.TextChoices):
+        AUTO     = "Auto",     _("Auto")
+        MANUAL   = "Manual",   _("Manual")
+        OVERRIDE = "Override", _("Override")
+
+    class Status(models.TextChoices):
+        ACTIVE      = "Active",      _("Active")
+        TERMINATED  = "Terminated",  _("Terminated")
+        REALLOCATED = "Reallocated", _("Reallocated")
+
+    class Occupancy(models.TextChoices):
+        PENDING  = "Pending",  _("Pending")
+        OCCUPIED = "Occupied", _("Occupied")
+        VACATED  = "Vacated",  _("Vacated")
+
+    allocation_no = models.CharField(_("allocation number"), max_length=20, unique=True, blank=True, db_index=True)
+    application   = models.ForeignKey(HouseApplication, on_delete=models.PROTECT, related_name="allocation_records")
+    house         = models.ForeignKey(House, on_delete=models.PROTECT, related_name="allocation_records")
+    emp_record    = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name="house_allocations")
+
+    # ── snapshots (immutable at allocation time) ──────────────────────────
+    employee_id   = models.CharField(_("employee ID"), max_length=50)
+    employee_name = models.CharField(_("employee name"), max_length=255)
+
+    allocation_type      = models.CharField(_("allocation type"), max_length=20, choices=AllocationType.choices, default=AllocationType.MANUAL, db_index=True)
+    priority_score       = models.DecimalField(_("priority score"), max_digits=8, decimal_places=4, default=0)
+    recommendation_score = models.DecimalField(_("house compatibility score"), max_digits=8, decimal_places=4, default=0)
+    confidence           = models.DecimalField(_("allocation confidence"), max_digits=6, decimal_places=4, default=0)
+    recommendation_reason = models.TextField(_("recommendation reason"), blank=True, default="")
+
+    status           = models.CharField(_("status"), max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+    occupancy_status = models.CharField(_("occupancy status"), max_length=20, choices=Occupancy.choices, default=Occupancy.PENDING)
+
+    allocated_at  = models.DateTimeField(_("allocated at"), default=timezone.now)
+    effective_date = models.DateField(_("effective date"), null=True, blank=True)
+    allocated_by  = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="allocation_records")
+
+    override_reason = models.TextField(_("override reason"), blank=True, default="")
+    notes           = models.TextField(_("notes"), blank=True, default="")
+
+    previous_allocation = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="successors")
+
+    terminated_at  = models.DateTimeField(_("terminated at"), null=True, blank=True)
+    terminated_by  = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="terminated_allocation_records")
+    termination_reason = models.TextField(_("termination reason"), blank=True, default="")
+
+    class Meta:
+        db_table = "allocations"
+        verbose_name = _("allocation")
+        verbose_name_plural = _("allocations")
+        ordering = ["-allocated_at"]
+        indexes = [
+            models.Index(fields=["house", "status"]),
+            models.Index(fields=["application", "status"]),
+            models.Index(fields=["employee_id", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.allocation_no} – {self.employee_name} → {self.house.house_id} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if not self.allocation_no:
+            last = Allocation.objects.filter(allocation_no__startswith="ALLOC-").order_by("-allocation_no").first()
+            num = int(last.allocation_no.split("-")[1]) + 1 if last else 1
+            self.allocation_no = f"ALLOC-{num:04d}"
+        super().save(*args, **kwargs)
+
+    def sync_application(self):
+        """Project this allocation onto the owning application's convenience fields."""
+        app = self.application
+        if self.status == self.Status.ACTIVE:
+            app.status = HouseApplication.Status.ALLOCATED
+            app.allocated_house = self.house
+            app.allocated_at = self.allocated_at
+            app.allocated_by = self.allocated_by
+            app.allocation_notes = self.notes
+            app.allocation_confidence = self.confidence
+            app.save(update_fields=[
+                "status", "allocated_house", "allocated_at", "allocated_by",
+                "allocation_notes", "allocation_confidence", "updated_at",
+            ])
+        elif app.allocated_house_id == self.house_id:
+            app.status = HouseApplication.Status.WAITING_FOR_ALLOCATION
+            app.allocated_house = None
+            app.allocated_at = None
+            app.allocated_by = None
+            app.allocation_notes = self.notes or ""
+            app.allocation_confidence = 0
+            app.deallocation_reason = self.termination_reason
+            app.save(update_fields=[
+                "status", "allocated_house", "allocated_at", "allocated_by",
+                "allocation_notes", "allocation_confidence", "deallocation_reason",
+                "updated_at",
+            ])
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE AUDIT TRAIL  (generic workflow audit)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class HouseAuditTrail(BaseModel):
+    """Immutable timeline entry for every meaningful housing workflow event.
+
+    Complements `AllocationLog` (allocation-lifecycle specific) with a broader
+    audit covering reviews, scoring, opportunity generation/ranking, status
+    transitions and allocation actions — powering the per-application timeline.
+    """
+
+    class Action(models.TextChoices):
+        CREATED                 = "Created",                  _("Created")
+        SUBMITTED               = "Submitted",                _("Submitted")
+        REVIEW_STARTED          = "Review Started",           _("Review Started")
+        VERIFIED                = "Verified",                 _("Verified")
+        REJECTED                = "Rejected",                 _("Rejected")
+        RETURNED                = "Returned",                 _("Returned")
+        SCORE_RECALCULATED      = "Score Recalculated",       _("Score Recalculated")
+        OPPORTUNITIES_GENERATED = "Opportunities Generated",  _("Opportunities Generated")
+        OPPORTUNITIES_RANKED    = "Opportunities Ranked",     _("Opportunities Ranked")
+        AUTO_ALLOCATED          = "Auto-Allocated",           _("Auto-Allocated")
+        MANUAL_ALLOCATED        = "Manually Allocated",       _("Manually Allocated")
+        OVERRIDE_ALLOCATED      = "Override Allocated",       _("Override Allocated")
+        DEALLOCATED             = "Deallocated",              _("Deallocated")
+        TERMINATED              = "Allocation Terminated",    _("Allocation Terminated")
+        REALLOCATED             = "Reallocated",              _("Reallocated")
+        TRANSFERRED             = "Transferred",              _("Transferred")
+        STATUS_CHANGED          = "Status Changed",           _("Status Changed")
+
+    application = models.ForeignKey(HouseApplication, on_delete=models.CASCADE, related_name="audit_trail")
+    action      = models.CharField(_("action"), max_length=40, choices=Action.choices, db_index=True)
+    actor       = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="house_audit_entries")
+    actor_name  = models.CharField(_("actor name"), max_length=255, blank=True, default="")
+    old_status  = models.CharField(_("old status"), max_length=30, blank=True, default="")
+    new_status  = models.CharField(_("new status"), max_length=30, blank=True, default="")
+    detail      = models.JSONField(_("detail"), default=dict, blank=True)
+    note        = models.TextField(_("note"), blank=True, default="")
+    ip_address  = models.GenericIPAddressField(_("IP address"), null=True, blank=True)
+
+    class Meta:
+        db_table = "house_audit_trail"
+        verbose_name = _("house audit entry")
+        verbose_name_plural = _("house audit trail")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["application", "-created_at"]),
+            models.Index(fields=["action"]),
+        ]
+
+    def __str__(self):
+        return f"{self.action}: {self.application.application_no} ({self.actor_name})"

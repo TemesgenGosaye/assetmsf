@@ -6,6 +6,7 @@ from .models import (
     House, HouseApplication, HouseInspection, MaintenanceRequest,
     HouseTransfer, RentalContract, RentalInvoice, RentalPayment,
     ScoringConfig, EligibilityRule, AllocationLog,
+    HouseOpportunity, Allocation, HouseAuditTrail,
 )
 from employees.models import Employee
 
@@ -40,20 +41,20 @@ class HouseSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "house_id", "house_number", "created_at", "updated_at", "is_active"]
 
     def get_allocation_status(self, obj):
-        app = obj.allocations.filter(is_active=True, status="Allocated").first()
-        return "Assigned" if app else "Unassigned"
+        alloc = obj.allocation_records.filter(status=Allocation.Status.ACTIVE).first()
+        return "Assigned" if alloc else "Unassigned"
 
     def get_assigned_employee_id(self, obj):
-        app = obj.allocations.filter(is_active=True, status="Allocated").first()
-        return app.employee_id if app else None
+        alloc = obj.allocation_records.filter(status=Allocation.Status.ACTIVE).first()
+        return alloc.employee_id if alloc else None
 
     def get_assigned_employee_name(self, obj):
-        app = obj.allocations.filter(is_active=True, status="Allocated").first()
-        return app.employee_name if app else None
+        alloc = obj.allocation_records.filter(status=Allocation.Status.ACTIVE).first()
+        return alloc.employee_name if alloc else None
 
     def get_assigned_application_no(self, obj):
-        app = obj.allocations.filter(is_active=True, status="Allocated").first()
-        return app.application_no if app else None
+        alloc = obj.allocation_records.filter(status=Allocation.Status.ACTIVE).first()
+        return alloc.application.application_no if alloc else None
 
     def get_damaged_items(self, obj):
         if obj.status != "Inactive":
@@ -69,7 +70,7 @@ class HouseSerializer(serializers.ModelSerializer):
 
     def get_current_occupancy(self, obj):
         try:
-            return obj.allocations.filter(status="Allocated", is_active=True).count()
+            return obj.allocation_records.filter(status=Allocation.Status.ACTIVE).count()
         except Exception:
             return 0
 
@@ -141,6 +142,7 @@ class HouseApplicationListSerializer(serializers.ModelSerializer):
             "requested_house_category", "eligible_house_category",
             "reason_for_request", "preferred_location", "supporting_document",
             "priority_score", "queue_position", "score_breakdown",
+            "eligibility_analysis", "allocation_confidence",
             "allocated_house_id", "allocated_at", "allocated_by_name",
             "allocation_notes", "status", "submitted_at", "created_at", "updated_at",
         ]
@@ -164,6 +166,7 @@ class HouseApplicationDetailSerializer(serializers.ModelSerializer):
             "requested_house_category", "eligible_house_category",
             "reason_for_request", "preferred_location", "supporting_document",
             "priority_score", "queue_position", "score_breakdown",
+            "eligibility_analysis", "allocation_confidence",
             "allocated_house", "allocated_house_id", "allocated_at",
             "allocated_by", "allocated_by_name", "allocation_notes", "deallocation_reason",
             "status", "submitted_at", "reviewed_at", "reviewed_by", "reviewed_by_name",
@@ -280,6 +283,105 @@ class AllocationLogSerializer(serializers.ModelSerializer):
             "priority_score", "eligible_category",
             "score_breakdown", "recommendation_reason",
             "notes", "performed_by", "performed_by_name", "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE OPPORTUNITY  (house_opp)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class HouseOpportunitySerializer(serializers.ModelSerializer):
+    house_id = serializers.CharField(source="house.house_id", read_only=True, default="")
+    house_number = serializers.CharField(source="house.house_number", read_only=True, default="")
+    house_type = serializers.CharField(source="house.house_type", read_only=True, default="")
+    house_location = serializers.CharField(source="house.location", read_only=True, default="")
+    house_status = serializers.CharField(source="house.status", read_only=True, default="")
+    house_capacity = serializers.IntegerField(source="house.capacity", read_only=True, default=0)
+    house_occupancy = serializers.IntegerField(read_only=True, default=0)
+    house_vacant = serializers.IntegerField(read_only=True, default=0)
+    house_available = serializers.BooleanField(read_only=True, default=False)
+    application_no = serializers.CharField(source="application.application_no", read_only=True, default="")
+
+    class Meta:
+        model = HouseOpportunity
+        fields = [
+            "id", "application", "application_no",
+            "house", "house_id", "house_number", "house_type", "house_location",
+            "house_status", "house_capacity", "house_occupancy", "house_vacant",
+            "house_available",
+            "eligible_category", "compatibility_score", "priority_score",
+            "match_reasons", "recommendation", "recommendation_reason",
+            "status", "rank", "notes",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_house_occupancy(self, obj):
+        return obj.house.current_occupancy
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ALLOCATION  (Allocated House)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class AllocationSerializer(serializers.ModelSerializer):
+    application_no = serializers.CharField(source="application.application_no", read_only=True, default="")
+    house_id = serializers.CharField(source="house.house_id", read_only=True, default="")
+    house_number = serializers.CharField(source="house.house_number", read_only=True, default="")
+    house_type = serializers.CharField(source="house.house_type", read_only=True, default="")
+    house_location = serializers.CharField(source="house.location", read_only=True, default="")
+    employee = serializers.SerializerMethodField()
+    allocated_by_name = serializers.CharField(source="allocated_by.name", read_only=True, default="")
+    terminated_by_name = serializers.CharField(source="terminated_by.name", read_only=True, default="")
+    opportunity_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Allocation
+        fields = [
+            "id", "allocation_no",
+            "application", "application_no",
+            "house", "house_id", "house_number", "house_type", "house_location",
+            "employee", "employee_id", "employee_name",
+            "allocation_type", "priority_score", "recommendation_score",
+            "confidence", "recommendation_reason",
+            "status", "occupancy_status",
+            "allocated_at", "effective_date", "allocated_by", "allocated_by_name",
+            "override_reason", "notes", "previous_allocation",
+            "terminated_at", "terminated_by", "terminated_by_name", "termination_reason",
+            "opportunity_id",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = ["id", "allocation_no", "created_at", "updated_at", "is_active"]
+
+    def get_employee(self, obj):
+        if obj.employee_id:
+            return {
+                "id": obj.employee_id,
+                "name": obj.employee_name,
+            }
+        return None
+
+    def get_opportunity_id(self, obj):
+        try:
+            return str(obj.application.opportunities.get(house=obj.house).id)
+        except HouseOpportunity.DoesNotExist:
+            return None
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE AUDIT TRAIL
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class HouseAuditTrailSerializer(serializers.ModelSerializer):
+    actor_name = serializers.CharField(read_only=True, default="")
+
+    class Meta:
+        model = HouseAuditTrail
+        fields = [
+            "id", "application", "action", "actor", "actor_name",
+            "old_status", "new_status", "detail", "note", "ip_address",
+            "created_at",
         ]
         read_only_fields = ["id", "created_at"]
 

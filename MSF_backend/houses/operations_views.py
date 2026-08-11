@@ -63,6 +63,38 @@ class ConflictDetectionView(APIView):
         )
 
 
+class ResolveConflictView(APIView):
+    """
+    Explicit, audited conflict remediation.
+    Payload: {conflict_type, target_id}
+      * orphaned_allocation → target_id = application id (reset to queue)
+      * capacity_breach     → target_id = house id (free the overflow)
+      * duplicate_application → target_id = application id to KEEP (others returned)
+      * already_allocated   → target_id = application id to return
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        conflict_type = request.data.get("conflict_type")
+        target_id = request.data.get("target_id")
+        if not conflict_type or not target_id:
+            return StandardResponse.error(
+                "conflict_type and target_id are required",
+                status_code=400,
+            )
+        try:
+            result = analytics_service.resolve_conflict(conflict_type, target_id, request.user)
+        except ValueError as exc:
+            return StandardResponse.error(str(exc), status_code=400)
+        return StandardResponse.success(
+            {
+                "resolved": result,
+                "conflicts": analytics_service.detect_conflicts(user=request.user),
+            },
+            "Conflict resolved",
+        )
+
+
 class RecommendationsView(APIView):
     """Transparent 'what the engine would do' suggestions for vacant houses."""
     permission_classes = [IsAuthenticated, IsAdminOrManager]
