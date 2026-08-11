@@ -39,30 +39,31 @@ export function DataTablePagination({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 border-t border-border bg-muted/40 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between",
+        "flex flex-col gap-2.5 border-t-2 border-border bg-muted/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between [font-variant-numeric:tabular-nums]",
         className,
       )}
     >
-      <p className="text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {selectedCount > 0 && (
-          <span className="mr-1.5 font-semibold text-foreground">
+          <span className="inline-flex items-center gap-1 rounded-md bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
             {selectedCount} selected
-            <span aria-hidden> · </span>
           </span>
         )}
-        Showing{" "}
-        <span className="font-medium text-foreground/80">
-          {start}–{end}
-        </span>{" "}
-        of{" "}
-        <span className="font-medium text-foreground/80">{total}</span>
-      </p>
+        <span>
+          Showing{" "}
+          <span className="font-semibold text-foreground">
+            {start}–{end}
+          </span>{" "}
+          of{" "}
+          <span className="font-semibold text-foreground">{total}</span>
+        </span>
+      </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <label
             id={rowsLabelId}
-            className="text-xs text-muted-foreground"
+            className="text-xs font-medium text-muted-foreground"
           >
             Rows per page:
           </label>
@@ -70,7 +71,7 @@ export function DataTablePagination({
             aria-labelledby={rowsLabelId}
             value={pageSize}
             onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="h-8 rounded-full border border-border bg-background pl-3 pr-7 text-xs font-medium text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer"
           >
             {pageSizeOptions.map((size) => (
               <option key={size} value={size}>
@@ -84,7 +85,7 @@ export function DataTablePagination({
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-full"
+            className="h-8 w-8 rounded-lg border-border"
             onClick={() => onPageChange(1)}
             disabled={currentPage === 1}
             aria-label="First page"
@@ -94,16 +95,16 @@ export function DataTablePagination({
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-full"
+            className="h-8 w-8 rounded-lg border-border"
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
             aria-label="Previous page"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-[5.5rem] text-center text-xs text-muted-foreground">
+          <span className="min-w-[5.5rem] text-center text-xs font-medium text-muted-foreground">
             Page{" "}
-            <span className="font-medium text-foreground/80">
+            <span className="font-bold text-foreground">
               {currentPage}
             </span>{" "}
             of {Math.max(totalPages, 1)}
@@ -111,7 +112,7 @@ export function DataTablePagination({
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-full"
+            className="h-8 w-8 rounded-lg border-border"
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage >= totalPages || totalPages === 0}
             aria-label="Next page"
@@ -121,7 +122,7 @@ export function DataTablePagination({
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-full"
+            className="h-8 w-8 rounded-lg border-border"
             onClick={() => onPageChange(totalPages)}
             disabled={currentPage >= totalPages || totalPages === 0}
             aria-label="Last page"
@@ -133,3 +134,4 @@ export function DataTablePagination({
     </div>
   );
 }
+

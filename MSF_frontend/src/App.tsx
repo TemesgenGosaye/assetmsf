@@ -378,6 +378,10 @@ const App = () => (
               }
             />
             <Route
+              path="/houses"
+              element={<Navigate to="/house-opp" replace />}
+            />
+            <Route
               path="/houses/command-center"
               element={
                 <RequireView page="houses">

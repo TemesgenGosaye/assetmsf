@@ -400,3 +400,67 @@ All colors MUST be HSL.
 [data-sonner-toaster][data-theme="dark"] .sams-toaster [data-sonner-toast][data-type="error"] [data-icon]   { background: hsl(var(--destructive) / 0.2); }
 [data-sonner-toaster][data-theme="dark"] .sams-toaster [data-sonner-toast][data-type="warning"] [data-icon] { background: hsl(var(--warning) / 0.2); }
 [data-sonner-toaster][data-theme="dark"] .sams-toaster [data-sonner-toast][data-type="info"] [data-icon]    { background: hsl(var(--info) / 0.2); }
+
+/* ── Enterprise Table Design System & Solid Grid Styling ──────────────────── */
+@layer components {
+  /* Solid Grid Table Container */
+  .table-enterprise-container {
+    @apply relative w-full overflow-auto rounded-xl border border-border bg-card shadow-sm transition-all duration-200;
+  }
+
+  /* Table base with crisp spacing */
+  .table-enterprise {
+    @apply w-full caption-bottom border-separate border-spacing-0 text-sm align-middle;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Solid borders for table headers & cells */
+  .table-enterprise th,
+  .table-enterprise td {
+    @apply border-r border-b border-border/80 last:border-r-0;
+  }
+
+  /* Enterprise Table Header */
+  .table-enterprise thead th {
+    @apply bg-muted/90 font-bold uppercase tracking-wider text-[11px] text-muted-foreground border-b-2 border-border select-none backdrop-blur-sm;
+  }
+
+  /* Enterprise Row Hover State - subtle theme brand glow */
+  .table-enterprise tbody tr {
+    @apply bg-card transition-colors duration-150 ease-in-out;
+  }
+
+  .table-enterprise tbody tr:hover {
+    background-color: hsl(var(--primary) / 0.05) !important;
+  }
+
+  .dark .table-enterprise tbody tr:hover {
+    background-color: hsl(var(--primary) / 0.1) !important;
+  }
+
+  /* Selected Row Highlight */
+  .table-enterprise tbody tr[data-state="selected"],
+  .table-enterprise tbody tr.is-selected {
+    background-color: hsl(var(--primary) / 0.12) !important;
+  }
+
+  .dark .table-enterprise tbody tr[data-state="selected"],
+  .dark .table-enterprise tbody tr.is-selected {
+    background-color: hsl(var(--primary) / 0.22) !important;
+  }
+
+  /* Subtle Zebra Striping */
+  .table-striped tbody tr:nth-child(even) {
+    background-color: hsl(var(--muted) / 0.4);
+  }
+
+  /* Active Cell Focus/Hover Highlight */
+  .table-enterprise td:hover {
+    background-color: hsl(var(--primary) / 0.08);
+  }
+
+  .dark .table-enterprise td:hover {
+    background-color: hsl(var(--primary) / 0.16);
+  }
+}
+

@@ -77,13 +77,13 @@ export function DataTableToolbar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2.5 border-b border-border bg-muted/40 px-4 py-2.5 lg:flex-row lg:items-center lg:justify-between",
+        "flex flex-col gap-2.5 border-b-2 border-border bg-muted/60 px-4 py-3 lg:flex-row lg:items-center lg:justify-between",
         className,
       )}
     >
       <div className="flex flex-1 flex-wrap items-center gap-2">
         {title && (
-          <h3 className="mr-1 text-sm font-semibold text-foreground">
+          <h3 className="mr-1.5 text-sm font-bold tracking-tight text-foreground">
             {title}
           </h3>
         )}
@@ -95,13 +95,13 @@ export function DataTableToolbar({
               value={search}
               onChange={(e) => onSearch(e.target.value)}
               placeholder={searchPlaceholder}
-              className="h-8 w-full max-w-xs rounded-full border-border bg-background pl-9 pr-8 text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-ring/40"
+              className="h-8.5 w-full max-w-xs rounded-lg border-border bg-background pl-9 pr-8 text-xs font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-ring/40"
               aria-label="Search table"
             />
             {search && (
               <button
                 onClick={() => onSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 aria-label="Clear search"
               >
                 <X className="h-3.5 w-3.5" />

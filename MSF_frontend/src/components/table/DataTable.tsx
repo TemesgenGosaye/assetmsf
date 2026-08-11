@@ -5,8 +5,7 @@
  * filters, global search highlight, status badges, centralized row actions,
  * totals footer, export to CSV.
  */
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import type * as React from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect, Fragment } from "react";
 import {
   ChevronUp,
   ChevronDown,
@@ -152,6 +151,8 @@ export function DataTable<T>({
   onRowDoubleClick,
   recordDetail,
   expandable,
+  striped = false,
+  gridLines = true,
 }: DataTableProps<T>) {
   // ── Prefs (dense, hidden cols) ─────────────────────────────────────────
   const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs(tableKey));
@@ -420,15 +421,18 @@ export function DataTable<T>({
       )}
 
       {/* ── Table ───────────────────────────────────────────────────── */}
-      <div className="overflow-auto [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80 [&::-webkit-scrollbar-track]:bg-transparent">
-        <table className="w-full caption-bottom border-separate border-spacing-0">
-          <thead className="sticky top-0 z-10 bg-muted">
+      <div className="relative overflow-auto [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80 [&::-webkit-scrollbar-track]:bg-transparent">
+        <table className={cn(
+          "w-full caption-bottom border-separate border-spacing-0 [font-variant-numeric:tabular-nums]",
+          striped && "[&_tbody_tr:nth-child(even)]:bg-muted/30",
+        )}>
+          <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm select-none border-b-2 border-border">
             <tr>
               {selectable && (
                 <th
                   scope="col"
                   className={cn(
-                    "w-10 border-b-2 border-r border-border bg-muted pl-4 pr-2",
+                    "w-10 border-b-2 border-r border-border/80 bg-muted/90 pl-4 pr-2 text-muted-foreground",
                     rowHeight,
                   )}
                 >
@@ -448,7 +452,7 @@ export function DataTable<T>({
                  <th
                    scope="col"
                    className={cn(
-                     "w-10 border-b-2 border-r border-border bg-muted",
+                     "w-10 border-b-2 border-r border-border/80 bg-muted/90",
                      rowHeight,
                    )}
                  />
@@ -467,7 +471,7 @@ export function DataTable<T>({
                        : undefined
                    }
                    className={cn(
-                     "select-none whitespace-nowrap border-b-2 border-r border-border bg-muted align-middle text-[11px] font-bold uppercase tracking-wider text-muted-foreground last:border-r-0",
+                     "select-none whitespace-nowrap border-b-2 border-r border-border/80 bg-muted/90 align-middle text-[11px] font-bold uppercase tracking-wider text-muted-foreground last:border-r-0 transition-colors",
                      rowHeight,
                      px,
                      col.align === "right"
@@ -476,7 +480,7 @@ export function DataTable<T>({
                          ? "text-center"
                          : "text-left",
                      col.sortable &&
-                       "cursor-pointer transition-colors hover:bg-blue-50 dark:hover:bg-blue-500/10 hover:text-foreground",
+                       "cursor-pointer hover:bg-primary/[0.08] dark:hover:bg-primary/[0.15] hover:text-foreground",
                      col.width,
                      i === 0 && !selectable && !hasExpandable && "pl-4",
                      i === visibleColumns.length - 1 && "pr-4",
@@ -491,9 +495,9 @@ export function DataTable<T>({
                        {col.header}
                        {activeSortKey === col.key ? (
                          activeSortDir === "asc" ? (
-                           <ChevronUp className="h-3 w-3 shrink-0 text-primary" />
+                           <ChevronUp className="h-3.5 w-3.5 shrink-0 text-primary font-bold" />
                          ) : activeSortDir === "desc" ? (
-                           <ChevronDown className="h-3 w-3 shrink-0 text-primary" />
+                           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-primary font-bold" />
                          ) : (
                            <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40" />
                          )
@@ -512,7 +516,7 @@ export function DataTable<T>({
                  <th
                    scope="col"
                    className={cn(
-                     "border-b-2 border-l border-border bg-muted pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground",
+                     "border-b-2 border-l border-border/80 bg-muted/90 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground",
                      rowHeight,
                    )}
                  >
@@ -522,7 +526,7 @@ export function DataTable<T>({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-border/80">
             {loading && loadingVariant === "spinner" ? (
               <tr>
                 <td
@@ -530,21 +534,21 @@ export function DataTable<T>({
                   className="py-20 text-center"
                 >
                   <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                    <Loader2 className="h-7 w-7 animate-spin text-primary/70" />
-                    <p className="text-sm">Loading…</p>
+                    <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                    <p className="text-sm font-medium">Loading records…</p>
                   </div>
                 </td>
               </tr>
             ) : loading ? (
               Array.from({ length: 6 }).map((_, ri) => (
-                <tr key={`skeleton-${ri}`} className="bg-background">
+                <tr key={`skeleton-${ri}`} className="bg-card">
                   {selectable && (
-                    <td className={cn("w-10 border-r border-border pl-4 pr-2", rowHeight)}>
+                    <td key={`skeleton-select-${ri}`} className={cn("w-10 border-r border-b border-border/70 pl-4 pr-2", rowHeight)}>
                       <div className="h-4 w-4 animate-pulse rounded bg-muted" />
                     </td>
                   )}
                   {visibleColumns.map((col, ci) => (
-                    <td key={col.key} className={cn(textSize, rowHeight, px, col.align === "right" ? "text-right" : "text-left", col.width, "border-r border-border last:border-r-0")}>
+                    <td key={`skeleton-cell-${ri}-${col.key}`} className={cn(textSize, rowHeight, px, col.align === "right" ? "text-right" : "text-left", col.width, "border-r border-b border-border/70 last:border-r-0")}>
                       <div
                         className={cn(
                           "h-3.5 animate-pulse rounded-full bg-muted",
@@ -554,7 +558,7 @@ export function DataTable<T>({
                     </td>
                   ))}
                   {hasRowActions && (
-                    <td className={cn("border-l border-border pr-3 text-right", rowHeight)}>
+                    <td key={`skeleton-actions-${ri}`} className={cn("border-l border-b border-border/70 pr-3 text-right", rowHeight)}>
                       <div className="ml-auto h-8 w-8 animate-pulse rounded-full bg-muted" />
                     </td>
                   )}
@@ -564,7 +568,7 @@ export function DataTable<T>({
               <tr>
                 <td colSpan={cellCount} className="px-4 py-16 text-center">
                   <div className="mx-auto flex max-w-sm flex-col items-center gap-3 text-muted-foreground">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/70">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/70 shadow-inner">
                       {resolvedEmptyState.icon}
                     </div>
                     <p className="text-sm font-semibold text-foreground">
@@ -587,9 +591,8 @@ export function DataTable<T>({
                  const isExpanded = expandedRows.has(id);
                  
                  return (
-                   <>
+                   <Fragment key={id}>
                      <tr
-                       key={id}
                        onClick={(e) => handleRowClick(row, e)}
                        onDoubleClick={() => {
                          if (recordDetail) {
@@ -614,16 +617,16 @@ export function DataTable<T>({
                        }
                        data-state={isSelected ? "selected" : undefined}
                        className={cn(
-                         "group transition-colors duration-100",
-                         "bg-background",
+                         "group transition-colors duration-150 ease-in-out border-b border-border/70",
+                         "bg-card text-card-foreground",
                          isSelected
-                           ? "bg-blue-100/70 dark:bg-blue-500/20 hover:bg-blue-100/80 dark:hover:bg-blue-500/25"
-                           : "hover:bg-blue-50 dark:hover:bg-blue-500/15",
+                           ? "bg-primary/[0.12] dark:bg-primary/[0.22] hover:bg-primary/[0.16] dark:hover:bg-primary/[0.26]"
+                           : "hover:bg-primary/[0.05] dark:hover:bg-primary/[0.12]",
                          interactiveRow && "cursor-pointer",
                        )}
                      >
                        {hasExpandable && (
-                         <td className={cn("w-10 border-r border-border", rowHeight)}>
+                         <td className={cn("w-10 border-r border-b border-border/70", rowHeight)}>
                            <button
                              type="button"
                              onClick={(e) => {
@@ -634,7 +637,7 @@ export function DataTable<T>({
                              aria-label={isExpanded ? "Collapse row" : "Expand row"}
                            >
                              {isExpanded ? (
-                               <ChevronUp className="h-4 w-4 shrink-0" />
+                               <ChevronUp className="h-4 w-4 shrink-0 text-primary" />
                              ) : (
                                <ChevronDown className="h-4 w-4 shrink-0" />
                              )}
@@ -642,7 +645,7 @@ export function DataTable<T>({
                          </td>
                        )}
                        {selectable && (
-                         <td className={cn("w-10 border-r border-border pl-4 pr-2", rowHeight)}>
+                         <td className={cn("w-10 border-r border-b border-border/70 pl-4 pr-2", rowHeight)}>
                            <Checkbox
                              checked={isSelected}
                              onCheckedChange={() => toggleRow(id, row)}
@@ -658,7 +661,7 @@ export function DataTable<T>({
                              textSize,
                              rowHeight,
                              px,
-                             "border-r border-border align-middle text-foreground/90 last:border-r-0",
+                             "border-r border-b border-border/70 align-middle text-foreground/90 last:border-r-0 transition-colors group-hover:text-foreground",
                              col.align === "right"
                                ? "text-right"
                                : col.align === "center"
@@ -692,7 +695,7 @@ export function DataTable<T>({
                          </td>
                        ))}
                        {hasRowActions && (
-                         <td className={cn("border-l border-border pr-3 text-right", rowHeight)}>
+                         <td className={cn("border-l border-b border-border/70 pr-3 text-right", rowHeight)}>
                            {actions && actions.length > 0 && (
                              <RowActionsMenu row={row} actions={actions} />
                            )}
@@ -700,49 +703,50 @@ export function DataTable<T>({
                        )}
                      </tr>
                      {hasExpandable && isExpanded && (
-                       <tr key={`${id}-expanded`} className="bg-muted/50">
+                       <tr key={`${id}-expanded`} className="bg-muted/40 border-b border-border/80">
                          <td colSpan={cellCount} className="p-4">
                            {expandable.expandableContent(row)}
                          </td>
                        </tr>
                      )}
-                   </>
+                   </Fragment>
                  );
                })
              )}
           </tbody>
 
-          {hasTotals && !loading && filtered.length > 0 && (
-            <tfoot className="bg-muted/40">
-              <tr>
-                {selectable && (
-                  <td className={cn("w-10 border-r border-border pl-4 pr-2", rowHeight)} />
-                )}
-                {visibleColumns.map((col, i) => (
-                  <td
-                    key={col.key}
-                    className={cn(
-                      "border-t-2 border-r border-border font-semibold text-foreground last:border-r-0",
-                      textSize,
-                      rowHeight,
-                      px,
-                      col.align === "right"
-                        ? "text-right"
-                        : col.align === "center"
-                          ? "text-center"
-                          : "text-left",
-                      i === 0 && !selectable && "pl-4",
-                    )}
-                  >
-                    {col.footer ? col.footer(filtered) : ""}
-                  </td>
-                ))}
-                {hasRowActions && (
-                  <td className={cn("border-l border-border pr-3", rowHeight)} />
-                )}
-              </tr>
-            </tfoot>
-          )}
+           {hasTotals && !loading && filtered.length > 0 && (
+             <tfoot className="bg-muted/60 font-semibold border-t-2 border-border">
+               <tr>
+                 {selectable && (
+                   <td key="footer-select" className={cn("w-10 border-r border-border/80 pl-4 pr-2", rowHeight)} />
+                 )}
+                 {visibleColumns.map((col, i) => (
+                   <td
+                     key={`footer-${col.key}`}
+                     className={cn(
+                       "border-t-2 border-r border-border/80 font-semibold text-foreground last:border-r-0",
+                       textSize,
+                       rowHeight,
+                       px,
+                       col.align === "right"
+                         ? "text-right"
+                         : col.align === "center"
+                           ? "text-center"
+                           : "text-left",
+                       i === 0 && !selectable && "pl-4",
+                     )}
+                   >
+                     {col.footer ? col.footer(filtered) : ""}
+                   </td>
+                 ))}
+                 {hasRowActions && (
+
+                   <td key="footer-actions" className={cn("border-l border-border pr-3", rowHeight)} />
+                 )}
+               </tr>
+             </tfoot>
+           )}
         </table>
       </div>
 

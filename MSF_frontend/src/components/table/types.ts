@@ -135,4 +135,9 @@ export type DataTableProps<T = any> = {
      /** Initial expanded row IDs (optional) */
      defaultExpanded?: string[];
    };
+  /** Enable subtle zebra striping on alternating rows */
+  striped?: boolean;
+  /** Force solid grid lines between cells (defaults to true for enterprise layout) */
+  gridLines?: boolean;
 };
+

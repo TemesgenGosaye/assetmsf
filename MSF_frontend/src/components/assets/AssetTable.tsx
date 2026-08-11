@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
 import { Package, ShieldCheck, Users, ChevronRight, ChevronDown } from "lucide-react";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
@@ -170,6 +170,40 @@ function depMethodLabel(v?: string) {
   return DEP_METHOD_LABELS[v] || v.replace(/_/g, " ");
 }
 
+function formatDateShort(v?: string | null) {
+  if (!v) return "-";
+  try {
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch { return "-"; }
+}
+
+function timeAgo(v?: string | null) {
+  if (!v) return "-";
+  try {
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return "-";
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
+    if (diff < 0) return "future";
+    if (diff < 60) return `${diff}s`;
+    const mins = Math.floor(diff / 60);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d`;
+    const months = Math.floor(days / 30);
+    const years = Math.floor(months / 12);
+    if (years > 0) {
+      const remMonths = months % 12;
+      return remMonths > 0 ? `${years}y ${remMonths}m` : `${years}y`;
+    }
+    return `${months}m`;
+  } catch { return "-"; }
+}
+
 export default function AssetTable({
   dense,
   isVisible,
@@ -310,6 +344,12 @@ export default function AssetTable({
                 {isVisible("serial") && <TableHead>Serial</TableHead>}
                 {isVisible("description") && (
                   <TableHead>Description</TableHead>
+                )}
+                {isVisible("addedDate") && (
+                  <TableHead>Add Asset</TableHead>
+                )}
+                {isVisible("onAsset") && (
+                  <TableHead>On Asset</TableHead>
                 )}
                 {isVisible("actions") && (
                   <TableHead className="text-right">Actions</TableHead>
@@ -496,6 +536,12 @@ export default function AssetTable({
                         )}
                         {isVisible("description") && (
                           <TableCell className="truncate max-w-[240px]">{rep.description || "-"}</TableCell>
+                        )}
+                        {isVisible("addedDate") && (
+                          <TableCell className="whitespace-nowrap text-xs">{formatDateShort(rep.created_at)}</TableCell>
+                        )}
+                        {isVisible("onAsset") && (
+                          <TableCell className="whitespace-nowrap text-xs font-medium text-muted-foreground">{timeAgo(rep.created_at)}</TableCell>
                         )}
                         {isVisible("actions") && (
                           <TableCell className="text-right">
@@ -703,6 +749,12 @@ export default function AssetTable({
                                   <TableCell className="truncate max-w-[240px]">
                                     {asset.description || "-"}
                                   </TableCell>
+                                )}
+                                {isVisible("addedDate") && (
+                                  <TableCell className="whitespace-nowrap text-xs">{formatDateShort(asset.created_at)}</TableCell>
+                                )}
+                                {isVisible("onAsset") && (
+                                  <TableCell className="whitespace-nowrap text-xs font-medium text-muted-foreground">{timeAgo(asset.created_at)}</TableCell>
                                 )}
                                 {isVisible("actions") && (
                                   <TableCell className="text-right">

@@ -194,6 +194,8 @@ export default function Assets() {
       ? ([{ key: "createdBy", label: "Created By" }] as ColumnDef[])
       : []),
     { key: "description", label: "Description" },
+    { key: "addedDate", label: "Add Asset" },
+    { key: "onAsset", label: "On Asset" },
     { key: "actions", label: "Actions", always: true },
   ];
   // Always-on columns set (cannot be hidden)

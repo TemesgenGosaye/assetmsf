@@ -17,7 +17,8 @@ try {
   const accent = ACCENT_COLORS.find(c => c.id === storedAccent) || ACCENT_COLORS[0];
   
   root.style.setProperty('--primary', accent.value);
-  // We can set other accent vars here if needed for the preloader
+  root.style.setProperty('--primary-hover', accent.hover);
+  root.style.setProperty('--accent', accent.light);
   
   // 3. Dark Level (Background)
   let bgValue = '0 0% 100%';
