@@ -1,6 +1,8 @@
 """
 URL Configuration for SAMS Backend.
 """
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
 # from drf_spectacular.views import (
@@ -90,3 +92,7 @@ urlpatterns = [
     path('api/final-approvers/set/', set_final_approver_props_for_user, name='compat_final_approver_set'),
     path('api/final-approvers/set-by-email/', set_final_approver_by_email, name='compat_final_approver_set_email'),
 ]
+
+# Serve user-uploaded media in development (e.g. house application documents).
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

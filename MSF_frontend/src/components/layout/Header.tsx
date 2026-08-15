@@ -674,14 +674,14 @@ export function Header({ onMenuClick }: HeaderProps) {
                     </span>
 
                     {/* Greeting text */}
-                    <span className="flex items-baseline gap-1.5 leading-none">
-                      <span className="text-xs text-muted-foreground font-normal whitespace-nowrap">
-                        {hour < 12 ? "Good morning," : hour < 18 ? "Good afternoon," : "Good evening,"}
+                    <span className="flex items-center gap-1.5 leading-none px-1">
+                      <span className="text-xs font-semibold text-muted-foreground/90 tracking-normal font-sans">
+                        {hour < 12 ? "Good Morning" : hour < 18 ? "Good Afternoon" : "Good Evening"}
                       </span>
-                      <span className="text-sm font-semibold text-foreground tracking-tight whitespace-nowrap">
-                        Tsegaye Alemu
+                      <span className="text-muted-foreground/40 font-light">•</span>
+                      <span className="text-xs font-semibold text-foreground tracking-normal font-sans">
+                        {firstName || fullName || "Administrator"}
                       </span>
-                      <span className="inline-block origin-[70%_70%] animate-wave text-sm select-none">👋</span>
                     </span>
                   </div>
                 )}

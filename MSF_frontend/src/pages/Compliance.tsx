@@ -94,6 +94,7 @@ export default function Compliance() {
       <PageHeader
         icon={ShieldCheck}
         title="Compliance & Contracts"
+        amharicTitle="የንብረት አስተዳደር"
         description="Warranty and Annual Maintenance Contract (AMC) expiry tracking with proactive alerts."
         actions={
           <>

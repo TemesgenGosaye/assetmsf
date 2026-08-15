@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { ColDef, FilterDef } from "./types";
+import { ReportExportMenu, ReportExportMenuProps } from "./ReportExportMenu";
 
 export interface DataTableToolbarProps {
   title?: string;
@@ -43,7 +44,8 @@ export interface DataTableToolbarProps {
   onToggleColumn: (key: string) => void;
   onResetColumns: () => void;
   exportFileName?: string;
-  onExport: () => void;
+  onExport?: () => void;
+  exportProps?: ReportExportMenuProps;
   className?: string;
 }
 
@@ -67,6 +69,7 @@ export function DataTableToolbar({
   onResetColumns,
   exportFileName,
   onExport,
+  exportProps,
   className,
 }: DataTableToolbarProps) {
   const hasColumnControls = columns.length > 1;
@@ -249,7 +252,9 @@ export function DataTableToolbar({
           </DropdownMenu>
         )}
 
-        {exportFileName && (
+        {exportProps ? (
+          <ReportExportMenu {...exportProps} />
+        ) : exportFileName && onExport ? (
           <Button
             variant="outline"
             size="sm"
@@ -261,7 +266,7 @@ export function DataTableToolbar({
             <Download className="h-3.5 w-3.5" />
             <span className="hidden lg:inline">Export</span>
           </Button>
-        )}
+        ) : null}
       </div>
     </div>
   );

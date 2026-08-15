@@ -223,7 +223,7 @@ class Asset(BaseModel):
         ]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(quantity__gte=1),
+                condition=models.Q(quantity__gte=1),
                 name='check_quantity_positive'
             ),
         ]

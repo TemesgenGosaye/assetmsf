@@ -22,6 +22,7 @@ import {
   getApplication, updateApplicationStatus, autoAllocateHouse,
   deallocateHouse, listAllocationLogs, recalculateApplicationScore,
   batchAllocateAll,
+  determineAllocationMode, allocationModeLabel,
   type BatchAllocateResult, type ApplicationStatus,
   type HouseApplication, type AllocationLog,
   type ScoreBreakdown, type CriterionContribution,
@@ -486,12 +487,16 @@ export default function HouseQueueReview() {
   useEffect(() => { void fetchDetail(); }, [fetchDetail]);
 
   const handleAutoAllocate = async (houseId: string) => {
-    if (!id) return;
+    if (!id || !detail) return;
     try {
       setAllocating(true);
-      const u = await autoAllocateHouse(houseId, id);
+      const mode = detail.allocation_mode || determineAllocationMode(detail);
+      const house = availableHouses.find((h) => h.id === houseId);
+      const roomLabel =
+        mode === "ROOM_ALLOCATION" ? (house?.available_rooms?.[0] ?? undefined) : undefined;
+      const u = await autoAllocateHouse(houseId, id, roomLabel);
       setDetail(u);
-      toast.success("House allocated successfully");
+      toast.success(mode === "ROOM_ALLOCATION" ? "Room allocated successfully" : "House allocated successfully");
       void fetchDetail();
     } catch (err: any) { toast.error(err?.message || "Allocation failed"); }
     finally { setAllocating(false); }
@@ -606,6 +611,8 @@ export default function HouseQueueReview() {
   const initials = (detail.employee_name || detail.requester_name || "?")
     .split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   const canAllocate = detail.status === "Waiting for Allocation" || detail.status === "Verified";
+  const appMode = detail.allocation_mode || determineAllocationMode(detail);
+  const isRoomMode = appMode === "ROOM_ALLOCATION";
   const scoreTotal = Number(detail.priority_score) || 0;
   const matchReasons = topHouse ? [
     topHouse.house_type === detail.eligible_house_category
@@ -656,6 +663,17 @@ export default function HouseQueueReview() {
                     <Award className="h-3 w-3" /> Eligible: Type {detail.eligible_house_category}
                   </span>
                 )}
+                {(detail.allocation_mode || determineAllocationMode(detail)) && (
+                  <span className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold",
+                    (detail.allocation_mode || determineAllocationMode(detail)) === "ROOM_ALLOCATION"
+                      ? "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-400"
+                      : "border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-400",
+                  )}>
+                    <KeyRound className="h-3 w-3" />
+                    {allocationModeLabel(detail.allocation_mode || determineAllocationMode(detail))}
+                  </span>
+                )}
                 {detail.has_disability && (
                   <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
                     <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> Disability flagged
@@ -696,7 +714,11 @@ export default function HouseQueueReview() {
               </div>
               <div>
                 <p className="text-sm font-bold text-foreground">
-                  Allocated to House <span className="font-mono text-emerald-600 dark:text-emerald-400">{detail.allocated_house_id}</span>
+                  Allocated to{" "}
+                  <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                    {detail.allocated_house_id}
+                    {detail.allocated_room_label ? ` — Room ${detail.allocated_room_label}` : ""}
+                  </span>
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {fmt(detail.allocated_at)} · {fmtTime(detail.allocated_at)}
@@ -817,7 +839,11 @@ export default function HouseQueueReview() {
                           <div>
                             <p className="text-sm font-bold text-foreground">Recommended house</p>
                             <p className="font-mono text-xs text-muted-foreground">
-                              {topHouse.house_number || topHouse.house_id} · {topHouse.location || "Unknown"} · Type {topHouse.house_type}
+                              {topHouse.house_number || topHouse.house_id}
+                              {isRoomMode && topHouse.available_rooms?.length
+                                ? ` — Room ${topHouse.available_rooms[0]}`
+                                : ""}{" "}
+                              · {topHouse.location || "Unknown"} · Type {topHouse.house_type}
                             </p>
                           </div>
                         </div>
@@ -885,7 +911,7 @@ export default function HouseQueueReview() {
                             {batchResult.allocated.map((r, i) => (
                               <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
                                 <p className="min-w-0 truncate text-xs font-semibold text-foreground">{r.application_no || "—"}</p>
-                                <p className="shrink-0 font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">→ {r.house_number || r.house_id}</p>
+                                <p className="shrink-0 font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">→ {r.resource ?? r.house_number ?? r.house_id}</p>
                               </div>
                             ))}
                             {batchResult.skipped.map((r, i) => (
@@ -1059,7 +1085,11 @@ export default function HouseQueueReview() {
                       <div>
                         <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">Allocation Complete</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          House <strong className="font-mono">{detail.allocated_house_id}</strong> assigned.
+                          <strong className="font-mono">
+                            {detail.allocated_house_id}
+                            {detail.allocated_room_label ? ` — Room ${detail.allocated_room_label}` : ""}
+                          </strong>{" "}
+                          assigned.
                         </p>
                       </div>
                     </div>
@@ -1161,7 +1191,7 @@ export default function HouseQueueReview() {
                               <p className="text-[10px] text-muted-foreground">
                                 {fmt(log.created_at)} · {fmtTime(log.created_at)}
                                 {log.performed_by_name && <> · {log.performed_by_name}</>}
-                                {log.house_id && <> · <span className="font-mono">{log.house_id}</span></>}
+                                {log.house_id && <> · <span className="font-mono">{log.house_id}{log.room_label ? ` — Room ${log.room_label}` : ""}</span></>}
                               </p>
                             </div>
                           </div>
@@ -1182,7 +1212,11 @@ export default function HouseQueueReview() {
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Confirm Allocation</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              Assign <strong className="text-foreground">House {selectedHouse ? houseRef(selectedHouse) : "…"}</strong> to{" "}
+              Assign <strong className="text-foreground">House {selectedHouse ? houseRef(selectedHouse) : "…"}</strong>
+              {isRoomMode && selectedHouse?.available_rooms?.length
+                ? <> · <strong className="text-foreground">Room {selectedHouse.available_rooms[0]}</strong></>
+                : ""}{" "}
+              to{" "}
               <strong className="text-foreground">{detail.employee_name || detail.requester_name}</strong>.
             </DialogDescription>
           </DialogHeader>

@@ -1,4 +1,5 @@
 const viteEnv = (typeof import.meta !== 'undefined' && (import.meta as any).env) || {};
+const procEnv = (typeof process !== 'undefined' && (process as any).env) || {};
 
 // Dynamically resolve the backend host from the browser's current hostname.
 // This means:
@@ -7,7 +8,7 @@ const viteEnv = (typeof import.meta !== 'undefined' && (import.meta as any).env)
 //   - Opening via any other LAN IP → http://<that-ip>:8000/api
 // An explicit VITE_API_BASE_URL in .env still takes priority if set.
 function resolveApiBaseUrl(): string {
-  const explicit = viteEnv.VITE_API_BASE_URL || process.env.VITE_API_BASE_URL || process.env.API_BASE_URL;
+  const explicit = viteEnv.VITE_API_BASE_URL || procEnv.VITE_API_BASE_URL || procEnv.API_BASE_URL;
   if (explicit) return explicit;
   if (typeof window !== 'undefined') {
     const { protocol, hostname } = window.location;

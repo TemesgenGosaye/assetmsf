@@ -88,7 +88,7 @@ export default function Status() {
                System Health Monitor
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
-              System Status
+              System Status | የስርዓቱ ሁኔታ
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl">
               Real-time operational metrics and service health.

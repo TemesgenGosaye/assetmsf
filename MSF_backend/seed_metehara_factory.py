@@ -114,27 +114,27 @@ ASSETS = [
 ]
 
 EMPLOYEES = [
-    # (national_id, full_name, job_position, job_grade, dept_name, hire_date, family_size, marital_status, has_disability, status)
-    ("NID-MSF-0001", "Ayele Tadesse",         "General Manager",          "Grade-6", "General Management",           date(2008, 6, 15),  6, "Married", False, "Active"),
-    ("NID-MSF-0002", "Bekele Alemayehu",      "Deputy General Manager",   "Grade-6", "General Management",           date(2010, 2, 1),   5, "Married", False, "Active"),
-    ("NID-MSF-0003", "Tigist Worku",          "Sugar Process Engineer",   "Grade-5", "Sugar Production",             date(2015, 8, 20),  4, "Married", False, "Active"),
-    ("NID-MSF-0004", "Getachew Lemma",        "Chief Mechanic",           "Grade-4", "Engineering & Maintenance",    date(2012, 4, 11),  5, "Married", False, "Active"),
-    ("NID-MSF-0005", "Selamawit Hailu",       "Laboratory Chemist",       "Grade-4", "Quality Control & Laboratory", date(2017, 1, 9),   3, "Single",  False, "Active"),
-    ("NID-MSF-0006", "Tesfaye Mekonnen",      "Boiler Operator",          "Grade-3", "Sugar Production",             date(2014, 7, 25),  6, "Married", False, "Active"),
-    ("NID-MSF-0007", "Muluken Girma",         "Electrician",              "Grade-3", "Engineering & Maintenance",    date(2016, 3, 14),  4, "Married", False, "Active"),
-    ("NID-MSF-0008", "Azeb Assefa",           "Senior Accountant",        "Grade-4", "Finance & Accounts",           date(2013, 9, 30),  3, "Married", False, "Active"),
-    ("NID-MSF-0009", "Worku Dibaba",          "Tractor Operator",         "Grade-2", "Agriculture & Plantation",     date(2018, 5, 22),  5, "Married", False, "Active"),
-    ("NID-MSF-0010", "Etsegenet Bekele",      "HR Officer",               "Grade-3", "Human Resources",              date(2019, 2, 18),  2, "Single",  False, "Active"),
-    ("NID-MSF-0011", "Dawit Kebede",          "Procurement Officer",      "Grade-4", "Procurement & Logistics",      date(2015, 11, 5),  4, "Married", False, "Active"),
-    ("NID-MSF-0012", "Meseret Alemu",         "Factory Nurse",            "Grade-3", "Medical Services",             date(2018, 6, 11),  2, "Single",  False, "Active"),
-    ("NID-MSF-0013", "Solomon Demissie",      "Security Supervisor",      "Grade-2", "General Management",           date(2016, 12, 1),  5, "Married", False, "Active"),
-    ("NID-MSF-0014", "Hiwot Getahun",         "IT Specialist",            "Grade-4", "Information Technology",       date(2019, 4, 8),   3, "Single",  False, "Active"),
-    ("NID-MSF-0015", "Alemu Shiferaw",        "Cane Development Officer", "Grade-4", "Agriculture & Plantation",     date(2013, 10, 16), 6, "Married", False, "Active"),
-    ("NID-MSF-0016", "Rahel Teshome",         "Receptionist",             "Grade-1", "General Management",           date(2021, 8, 2),   1, "Single",  False, "Active"),
-    ("NID-MSF-0017", "Girma Belachew",        "Store Keeper",             "Grade-2", "Procurement & Logistics",      date(2017, 2, 27),  4, "Married", False, "Active"),
-    ("NID-MSF-0018", "Frehiwot Girma",        "Data Entry Clerk",         "Grade-1", "Information Technology",       date(2022, 1, 17),  1, "Single",  False, "Active"),
-    ("NID-MSF-0019", "Kebede Woldemichael",   "Field Supervisor",         "Grade-3", "Agriculture & Plantation",     date(2014, 5, 28),  5, "Married", True,  "Active"),
-    ("NID-MSF-0020", "Aster Fikre",           "Quality Control Officer",  "Grade-3", "Quality Control & Laboratory", date(2020, 7, 13),  2, "Married", False, "Active"),
+    # (employee_id, national_id, full_name, job_position, job_grade, dept_name, hire_date, family_size, marital_status, has_disability, status)
+    ("EMP-00001", "NID-MSF-0001", "Ayele Tadesse",         "General Manager",          "Grade-6", "General Management",           date(2008, 6, 15),  6, "Married", False, "Active"),
+    ("EMP-00002", "NID-MSF-0002", "Bekele Alemayehu",      "Deputy General Manager",   "Grade-6", "General Management",           date(2010, 2, 1),   5, "Married", False, "Active"),
+    ("EMP-00003", "NID-MSF-0003", "Tigist Worku",          "Sugar Process Engineer",   "Grade-5", "Sugar Production",             date(2015, 8, 20),  4, "Married", False, "Active"),
+    ("EMP-00004", "NID-MSF-0004", "Getachew Lemma",        "Chief Mechanic",           "Grade-4", "Engineering & Maintenance",    date(2012, 4, 11),  5, "Married", False, "Active"),
+    ("EMP-00005", "NID-MSF-0005", "Selamawit Hailu",       "Laboratory Chemist",       "Grade-4", "Quality Control & Laboratory", date(2017, 1, 9),   3, "Single",  False, "Active"),
+    ("EMP-00006", "NID-MSF-0006", "Tesfaye Mekonnen",      "Boiler Operator",          "Grade-3", "Sugar Production",             date(2014, 7, 25),  6, "Married", False, "Active"),
+    ("EMP-00007", "NID-MSF-0007", "Muluken Girma",         "Electrician",              "Grade-3", "Engineering & Maintenance",    date(2016, 3, 14),  4, "Married", False, "Active"),
+    ("EMP-00008", "NID-MSF-0008", "Azeb Assefa",           "Senior Accountant",        "Grade-4", "Finance & Accounts",           date(2013, 9, 30),  3, "Married", False, "Active"),
+    ("EMP-00009", "NID-MSF-0009", "Worku Dibaba",          "Tractor Operator",         "Grade-2", "Agriculture & Plantation",     date(2018, 5, 22),  5, "Married", False, "Active"),
+    ("EMP-00010", "NID-MSF-0010", "Etsegenet Bekele",      "HR Officer",               "Grade-3", "Human Resources",              date(2019, 2, 18),  2, "Single",  False, "Active"),
+    ("EMP-00011", "NID-MSF-0011", "Dawit Kebede",          "Procurement Officer",      "Grade-4", "Procurement & Logistics",      date(2015, 11, 5),  4, "Married", False, "Active"),
+    ("EMP-00012", "NID-MSF-0012", "Meseret Alemu",         "Factory Nurse",            "Grade-3", "Medical Services",             date(2018, 6, 11),  2, "Single",  False, "Active"),
+    ("EMP-00013", "NID-MSF-0013", "Solomon Demissie",      "Security Supervisor",      "Grade-2", "General Management",           date(2016, 12, 1),  5, "Married", False, "Active"),
+    ("EMP-00014", "NID-MSF-0014", "Hiwot Getahun",         "IT Specialist",            "Grade-4", "Information Technology",       date(2019, 4, 8),   3, "Single",  False, "Active"),
+    ("EMP-00015", "NID-MSF-0015", "Alemu Shiferaw",        "Cane Development Officer", "Grade-4", "Agriculture & Plantation",     date(2013, 10, 16), 6, "Married", False, "Active"),
+    ("EMP-00016", "NID-MSF-0016", "Rahel Teshome",         "Receptionist",             "Grade-1", "General Management",           date(2021, 8, 2),   1, "Single",  False, "Active"),
+    ("EMP-00017", "NID-MSF-0017", "Girma Belachew",        "Store Keeper",             "Grade-2", "Procurement & Logistics",      date(2017, 2, 27),  4, "Married", False, "Active"),
+    ("EMP-00018", "NID-MSF-0018", "Frehiwot Girma",        "Data Entry Clerk",         "Grade-1", "Information Technology",       date(2022, 1, 17),  1, "Single",  False, "Active"),
+    ("EMP-00019", "NID-MSF-0019", "Kebede Woldemichael",   "Field Supervisor",         "Grade-3", "Agriculture & Plantation",     date(2014, 5, 28),  5, "Married", True,  "Active"),
+    ("EMP-00020", "NID-MSF-0020", "Aster Fikre",           "Quality Control Officer",  "Grade-3", "Quality Control & Laboratory", date(2020, 7, 13),  2, "Married", False, "Active"),
 ]
 
 HOUSES = [
@@ -356,11 +356,12 @@ def seed_metehara_factory():
         _log("assets", asset, created)
 
     # --- Employees ---
-    for (national_id, full_name, job_position, job_grade, dept_name,
+    for (employee_id, national_id, full_name, job_position, job_grade, dept_name,
          hire_date, family_size, marital, disability, emp_status) in EMPLOYEES:
         emp, created = Employee.objects.get_or_create(
             national_id=national_id,
             defaults={
+                "employee_id": employee_id,
                 "full_name": full_name,
                 "job_position": job_position,
                 "job_grade": job_grade,

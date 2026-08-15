@@ -144,6 +144,7 @@ export default function AssetAnalytics() {
       <PageHeader
         icon={Activity}
         title="Asset Analytics"
+        amharicTitle="የንብረት አስተዳደር"
         description="Enterprise-wide portfolio intelligence, lifecycle health, and financial projection."
         actions={
           <>

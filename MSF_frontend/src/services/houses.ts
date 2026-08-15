@@ -7,6 +7,26 @@ import { invalidateCache, setCachedValue, peekCachedValue, getCachedValue } from
 export type HouseType = "Staff" | "A" | "B" | "C" | "D" | "E";
 export type HouseStatus = "Active" | "Inactive";
 export type AllocationCategory = "R" | "G";
+export type RoomStatus = "Vacant" | "Occupied" | "Reserved" | "Maintenance" | "";
+
+export type RoomDetail = {
+  label: string;
+  index: number;
+  status: RoomStatus;
+  occupant_name: string;
+  occupant_id: string;
+  notes: string;
+};
+
+export type RoomsSummary = {
+  total: number;
+  occupied: number;
+  vacant: number;
+  reserved: number;
+  maintenance: number;
+  labels: string[];
+  details: RoomDetail[];
+};
 
 export type DamagedItemKey = "damaged_door" | "damaged_windows" | "damaged_walls" | "damaged_switch" | "damaged_bulb" | "damaged_water";
 
@@ -35,6 +55,25 @@ export type House = {
   current_occupancy?: number;
   vacant?: number;
   is_available?: boolean;
+  room_vacant_count?: number;
+  available_rooms?: string[];
+  is_fully_vacant?: boolean;
+  room_count: number;
+  room_labels: string[];
+  r1_status: RoomStatus;
+  r1_occupant_name: string;
+  r1_occupant_id: string;
+  r1_notes: string;
+  r2_status: RoomStatus;
+  r2_occupant_name: string;
+  r2_occupant_id: string;
+  r2_notes: string;
+  r3_status: RoomStatus;
+  r3_occupant_name: string;
+  r3_occupant_id: string;
+  r3_notes: string;
+  rooms: RoomDetail[];
+  rooms_summary: RoomsSummary;
   created_at?: string;
   updated_at?: string;
   is_active?: boolean;
@@ -54,6 +93,18 @@ export type HouseFormData = {
   description: string;
   capacity: number;
   allocation_category: AllocationCategory;
+  r1_status?: RoomStatus;
+  r1_occupant_name?: string;
+  r1_occupant_id?: string;
+  r1_notes?: string;
+  r2_status?: RoomStatus;
+  r2_occupant_name?: string;
+  r2_occupant_id?: string;
+  r2_notes?: string;
+  r3_status?: RoomStatus;
+  r3_occupant_name?: string;
+  r3_occupant_id?: string;
+  r3_notes?: string;
 };
 
 const CACHE_KEY = "houses:list";
@@ -84,6 +135,25 @@ function fromDjango(row: any): House {
     current_occupancy: row.current_occupancy ?? 0,
     vacant: row.vacant ?? row.capacity ?? 1,
     is_available: row.is_available ?? (row.status === "Active"),
+    room_vacant_count: row.room_vacant_count ?? row.vacant ?? 0,
+    available_rooms: row.available_rooms ?? [],
+    is_fully_vacant: row.is_fully_vacant ?? false,
+    room_count: row.room_count ?? 1,
+    room_labels: row.room_labels ?? ["R1"],
+    r1_status: row.r1_status ?? "Vacant",
+    r1_occupant_name: row.r1_occupant_name ?? "",
+    r1_occupant_id: row.r1_occupant_id ?? "",
+    r1_notes: row.r1_notes ?? "",
+    r2_status: row.r2_status ?? "Vacant",
+    r2_occupant_name: row.r2_occupant_name ?? "",
+    r2_occupant_id: row.r2_occupant_id ?? "",
+    r2_notes: row.r2_notes ?? "",
+    r3_status: row.r3_status ?? "Vacant",
+    r3_occupant_name: row.r3_occupant_name ?? "",
+    r3_occupant_id: row.r3_occupant_id ?? "",
+    r3_notes: row.r3_notes ?? "",
+    rooms: row.rooms ?? [],
+    rooms_summary: row.rooms_summary ?? { total: 1, occupied: 0, vacant: 1, reserved: 0, maintenance: 0, labels: ["R1"], details: [] },
     created_at:     row.created_at,
     updated_at:     row.updated_at,
     is_active:      row.is_active,
@@ -167,10 +237,33 @@ export async function deleteHouse(id: string): Promise<void> {
 
 export const HOUSE_TYPES: HouseType[] = ["Staff", "A", "B", "C", "D", "E"];
 export const HOUSE_STATUSES: HouseStatus[] = ["Active", "Inactive"];
+export const ROOM_STATUSES: RoomStatus[] = ["Vacant", "Occupied", "Reserved", "Maintenance"];
 export const ALLOCATION_CATEGORY_OPTIONS: { value: AllocationCategory; label: string }[] = [
   { value: "R", label: "Regular" },
   { value: "G", label: "Guest" },
 ];
+export const HOUSE_TYPE_ROOMS: Record<HouseType, number> = {
+  Staff: 3,
+  A: 3,
+  B: 3,
+  C: 2,
+  D: 1,
+  E: 1,
+};
+export const HOUSE_TYPE_ROOM_LABELS: Record<HouseType, string[]> = {
+  Staff: ["R1", "R2", "R3"],
+  A:     ["R1", "R2", "R3"],
+  B:     ["R1", "R2", "R3"],
+  C:     ["R1", "R2"],
+  D:     ["R1"],
+  E:     ["R1"],
+};
+export const ROOM_STATUS_STYLES: Record<string, string> = {
+  Vacant:   "border-emerald-300/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-800/60 dark:text-emerald-400",
+  Occupied: "border-rose-300/40 bg-rose-500/10 text-rose-700 dark:border-rose-800/60 dark:text-rose-400",
+  Reserved: "border-amber-300/40 bg-amber-500/10 text-amber-700 dark:border-amber-800/60 dark:text-amber-400",
+  Maintenance: "border-slate-300/40 bg-slate-500/10 text-slate-700 dark:border-slate-800/60 dark:text-slate-400",
+};
 export const DAMAGE_OPTIONS: { key: DamagedItemKey; label: string }[] = [
   { key: "damaged_door",    label: "Door" },
   { key: "damaged_windows", label: "Windows" },

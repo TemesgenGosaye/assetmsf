@@ -48,7 +48,12 @@ def seed_50_house_applications():
             full_name = f"{fn} {ln} {i}"
             nid = f"NID-SEED-{i:03d}"
             if not Employee.objects.filter(national_id=nid).exists():
+                existing_emp_ids = set(Employee.objects.values_list("employee_id", flat=True))
+                idx = i
+                while f"EMP-{idx:05d}" in existing_emp_ids:
+                    idx += 1
                 emp = Employee.objects.create(
+                    employee_id=f"EMP-{idx:05d}",
                     full_name=full_name,
                     national_id=nid,
                     job_position=random.choice(positions),

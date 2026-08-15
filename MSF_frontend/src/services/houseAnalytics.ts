@@ -92,6 +92,9 @@ export type AvailableCandidate = {
   employee_id: string;
   employee_name: string;
   eligible_category: string;
+  allocation_mode?: string;
+  room_label?: string;
+  resource?: string;
   score: number;
   closeness: number;
   constraint_ok: boolean;
@@ -108,6 +111,9 @@ export type AvailableHouse = {
   capacity: number;
   current_occupancy: number;
   vacant: number;
+  room_count?: number;
+  room_vacant_count?: number;
+  available_rooms?: string[];
   allocation_category: string;
   damaged_items: string[];
   recommended_candidate: AvailableCandidate | null;
@@ -118,6 +124,9 @@ export type OccupantInfo = {
   application_no: string;
   employee_id: string;
   employee_name: string;
+  allocation_mode?: string;
+  room_label?: string;
+  resource?: string;
   allocated_at: string | null;
   allocated_by: string | null;
 };
@@ -131,6 +140,7 @@ export type OccupancyRow = {
   allocation_category: string;
   status: string;
   capacity: number;
+  room_count?: number;
   current_occupancy: number;
   vacant: number;
   occupants: OccupantInfo[];

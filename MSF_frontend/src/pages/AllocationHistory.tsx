@@ -132,11 +132,25 @@ export default function AllocationHistory() {
       },
       {
         key: "house_id",
-        header: "House",
-        width: "w-28",
+        header: "Unit",
+        width: "min-w-[140px]",
         sortable: true,
         value: (r) => r.house_id ?? "",
-        cell: (r) => <span className="text-muted-foreground">{r.house_id || "—"}</span>,
+        cell: (r) => (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">
+              {r.resource || (r.room_label ? `${r.house_id || ""} — Room ${r.room_label}` : (r.house_id || "—"))}
+            </span>
+            {r.allocation_unit_type === "ROOM_ALLOCATION" && (
+              <Badge
+                variant="outline"
+                className="border-sky-300 text-[10px] text-sky-700 dark:border-sky-500/40 dark:text-sky-400"
+              >
+                Room
+              </Badge>
+            )}
+          </div>
+        ),
       },
       {
         key: "priority_score",
@@ -192,6 +206,7 @@ export default function AllocationHistory() {
       <PageHeader
         icon={History}
         title="Allocation History"
+        amharicTitle="የቤቶች አስተዳደር"
         description="Immutable audit trail of every allocation action across the housing program."
         actions={
           <>

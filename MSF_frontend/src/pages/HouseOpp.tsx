@@ -107,11 +107,16 @@ import {
   HOUSE_STATUSES,
   ALLOCATION_CATEGORY_OPTIONS,
   DAMAGE_OPTIONS,
+  HOUSE_TYPE_ROOMS,
+  HOUSE_TYPE_ROOM_LABELS,
+  ROOM_STATUS_STYLES,
+  ROOM_STATUSES,
   type House,
   type HouseFormData,
   type HouseType,
   type HouseStatus,
   type AllocationCategory,
+  type RoomStatus,
 } from "@/services/houses";
 import {
   listApplications,
@@ -140,6 +145,18 @@ const EMPTY_FORM: HouseFormData = {
   description: "",
   capacity: 1,
   allocation_category: "R",
+  r1_status: "Vacant",
+  r1_occupant_name: "",
+  r1_occupant_id: "",
+  r1_notes: "",
+  r2_status: "Vacant",
+  r2_occupant_name: "",
+  r2_occupant_id: "",
+  r2_notes: "",
+  r3_status: "Vacant",
+  r3_occupant_name: "",
+  r3_occupant_id: "",
+  r3_notes: "",
 };
 
 const TYPE_STYLES: Record<HouseType, string> = {
@@ -1085,6 +1102,15 @@ export default function HouseOpp() {
 
   const damagedCount = (h: House) => h.damaged_items.length;
 
+  const maxRooms = useMemo(() => {
+    let max = 1;
+    for (const h of houses) {
+      const n = h.room_count || HOUSE_TYPE_ROOMS[h.house_type] || 1;
+      if (n > max) max = n;
+    }
+    return max;
+  }, [houses]);
+
   const columns = useMemo(
     (): ColDef<House>[] => [
       {
@@ -1143,6 +1169,78 @@ export default function HouseOpp() {
           </span>
         ),
       },
+      ...Array.from({ length: maxRooms }, (_, i) => {
+        const roomIndex = i + 1;
+        const roomLabel = (h: House) =>
+          (h.room_labels && h.room_labels[roomIndex - 1]) ||
+          HOUSE_TYPE_ROOM_LABELS[h.house_type]?.[roomIndex - 1] ||
+          `R${roomIndex}`;
+        const roomName = (h: House) =>
+          `${h.house_number || ""}${roomLabel(h)}`;
+        const roomStatus = (h: House): RoomStatus =>
+          ((h as unknown as Record<string, RoomStatus>)[`r${roomIndex}_status`]) ||
+          "Vacant";
+        const occupant = (h: House) =>
+          (h as unknown as Record<string, string>)[`r${roomIndex}_occupant_name`] ||
+          "";
+        const occupantId = (h: House) =>
+          (h as unknown as Record<string, string>)[`r${roomIndex}_occupant_id`] ||
+          "";
+        const roomDetail = (h: House) => {
+          const occ = occupant(h);
+          const occId = occupantId(h);
+          const status = roomStatus(h);
+          return occ
+            ? `${roomName(h)} · ${status} · ${occ}${occId ? ` (${occId})` : ""}`
+            : `${roomName(h)} · ${status}`;
+        };
+        return {
+          key: `room_${roomIndex}`,
+          header: `Room ${roomIndex}`,
+          sortable: true,
+          width: "min-w-[130px]",
+          value: (h: House) => roomDetail(h),
+          cell: (h: House) => {
+            const status = roomStatus(h);
+            const occ = occupant(h);
+            const occId = occupantId(h);
+            const letter =
+              status === "Vacant"     ? "V"
+              : status === "Occupied"  ? "O"
+              : status === "Reserved"  ? "R"
+              : status === "Maintenance" ? "M"
+              : "V";
+            return (
+              <div
+                className="flex min-w-[118px] flex-col gap-1 py-0.5"
+                title={roomDetail(h)}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-[11px] font-bold tracking-wide text-foreground/90">
+                    {roomName(h)}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex h-5 min-w-5 items-center justify-center rounded-full border px-1.5 text-[10px] font-bold",
+                      ROOM_STATUS_STYLES[status] || ROOM_STATUS_STYLES["Vacant"],
+                    )}
+                  >
+                    {letter}
+                  </span>
+                </div>
+                {occ && (
+                  <span className="max-w-[130px] truncate text-[11px] leading-tight text-muted-foreground">
+                    {occ}
+                    {occId && (
+                      <span className="text-[10px] opacity-70"> ({occId})</span>
+                    )}
+                  </span>
+                )}
+              </div>
+            );
+          },
+        };
+      }),
       {
         key: "location",
         header: "Location",
@@ -1307,7 +1405,7 @@ export default function HouseOpp() {
           ]
         : []),
     ],
-    [isAdmin],
+    [isAdmin, maxRooms],
   );
 
   return (
@@ -1322,7 +1420,7 @@ export default function HouseOpp() {
           </span>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              House Operations
+              House Management | የቤቶች አስተዳደር
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Manage housing units, track occupancy, and log damage assessments.

@@ -15,6 +15,7 @@ import {
 export type AllocationStatus = "Active" | "Terminated" | "Reallocated";
 export type OccupancyStatus = "Pending" | "Occupied" | "Vacated";
 export type AllocationType = "Auto" | "Manual" | "Override";
+export type AllocationUnitType = "ROOM_ALLOCATION" | "HOUSE_ALLOCATION";
 
 export type AllocationEmployee = { id: string; name: string } | null;
 
@@ -32,6 +33,13 @@ export type HouseAllocation = {
   employee_id: string;
   employee_name: string;
   allocation_type: AllocationType;
+  allocation_unit_type: AllocationUnitType;
+  room_label: string;
+  room_number: string;
+  room_status: string;
+  marital_status: string;
+  family_size: number;
+  resource: string;
   priority_score: number;
   recommendation_score: number;
   confidence: number;
@@ -69,6 +77,7 @@ export type AllocatePayload = {
   allocation_type?: AllocationType;
   notes?: string;
   override_reason?: string;
+  room_label?: string;
 };
 
 const CACHE_KEY = "houses:allocations";
@@ -88,6 +97,13 @@ function fromDjango(row: any): HouseAllocation {
     employee_id: row.employee_id ?? "",
     employee_name: row.employee_name ?? "",
     allocation_type: row.allocation_type ?? "Manual",
+    allocation_unit_type: row.allocation_unit_type ?? "HOUSE_ALLOCATION",
+    room_label: row.room_label ?? "",
+    room_number: row.room_number ?? "",
+    room_status: row.room_status ?? "",
+    marital_status: row.marital_status ?? "",
+    family_size: Number(row.family_size ?? 1),
+    resource: row.resource ?? "",
     priority_score: Number(row.priority_score ?? 0),
     recommendation_score: Number(row.recommendation_score ?? 0),
     confidence: Number(row.confidence ?? 0),
@@ -215,3 +231,20 @@ export const OCCUPANCY_STATUS_OPTIONS: { value: OccupancyStatus; label: string }
   { value: "Occupied", label: "Occupied" },
   { value: "Vacated", label: "Vacated" },
 ];
+
+export const ALLOCATION_UNIT_TYPE_OPTIONS: { value: AllocationUnitType; label: string }[] = [
+  { value: "HOUSE_ALLOCATION", label: "Whole house (family)" },
+  { value: "ROOM_ALLOCATION", label: "Room (single applicant)" },
+];
+
+export function allocationUnitLabel(unit?: AllocationUnitType | string | null): string {
+  if (unit === "ROOM_ALLOCATION") return "Room";
+  if (unit === "HOUSE_ALLOCATION") return "House";
+  return "—";
+}
+
+export function allocationUnitTypeLabel(unit?: AllocationUnitType | string | null): string {
+  if (unit === "ROOM_ALLOCATION") return "Room (single)";
+  if (unit === "HOUSE_ALLOCATION") return "Whole house (family)";
+  return "Whole house (family)";
+}

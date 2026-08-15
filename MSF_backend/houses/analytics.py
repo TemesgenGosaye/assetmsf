@@ -26,7 +26,8 @@ from .models import (
 from .allocation_engine import (
     determine_eligible_category, compute_mcda_score, topsis_rank,
     check_allocation_constraints, terminate_allocation, record_audit,
-    CATEGORY_ORDER,
+    determine_allocation_mode, resource_label,
+    ALLOCATION_MODE_ROOM, CATEGORY_ORDER,
 )
 from .serializers import HouseApplicationDetailSerializer
 
@@ -64,7 +65,8 @@ def _parse_grade(app):
 # ── occupancy & availability ──────────────────────────────────────────────
 
 def _occupancy_by_type(houses):
-    """Per house-type: total, active, capacity, occupied, vacant, rate."""
+    """Per house-type: total, active, capacity, occupied, vacant, rate.
+    Capacity and vacancy are expressed at the room level (physical truth)."""
     rows = {}
     for htype in HOUSE_TYPES:
         pool = [h for h in houses if h.house_type == htype]
@@ -74,14 +76,15 @@ def _occupancy_by_type(houses):
                 "vacant": 0, "occupancy_rate": 0.0,
             }
             continue
-        capacity = sum(h.capacity for h in pool)
+        capacity = sum(h.room_count for h in pool)
         occupied = sum(h.current_occupancy for h in pool)
+        vacant = sum(h.room_vacant_count for h in pool)
         rows[htype] = {
             "total": len(pool),
             "active": sum(1 for h in pool if h.status == House.Status.ACTIVE),
             "capacity": capacity,
             "occupied": occupied,
-            "vacant": max(capacity - occupied, 0),
+            "vacant": vacant,
             "occupancy_rate": round((occupied / capacity * 100) if capacity else 0.0, 1),
         }
     return rows
@@ -394,13 +397,22 @@ def available_house_insights():
         best = None
         if ranked:
             top_app, top_score, top_breakdown, top_reasons, top_cc = ranked[0]
-            ok, constraint_reason = check_allocation_constraints(top_app, house)
+            mode, _ = determine_allocation_mode(top_app)
+            room = None
+            if mode == ALLOCATION_MODE_ROOM:
+                room = house.available_rooms[0] if house.available_rooms else None
+            ok, constraint_reason = check_allocation_constraints(
+                top_app, house, room=room, allocation_mode=mode,
+            )
             best = {
                 "application_id": str(top_app.id),
                 "application_no": top_app.application_no,
                 "employee_id": top_app.employee_id,
                 "employee_name": top_app.employee_name,
                 "eligible_category": top_app.eligible_house_category,
+                "allocation_mode": mode,
+                "room_label": room["label"] if room else "",
+                "resource": resource_label(house, room["label"] if room else ""),
                 "score": round(_num(top_score), 2),
                 "closeness": round(_num(top_cc), 4),
                 "constraint_ok": ok,
@@ -416,6 +428,9 @@ def available_house_insights():
             "capacity": house.capacity,
             "current_occupancy": house.current_occupancy,
             "vacant": house.vacant,
+            "room_count": house.room_count,
+            "room_vacant_count": house.room_vacant_count,
+            "available_rooms": [r["label"] for r in house.available_rooms],
             "allocation_category": house.allocation_category,
             "damaged_items": house.damaged_items if house.status == House.Status.INACTIVE else [],
             "recommended_candidate": best,
@@ -462,17 +477,20 @@ def detect_conflicts(user=None):
                 "applications": [{"id": str(app.id), "no": app.application_no, "status": app.status}],
             })
 
-    # 3. Capacity breach: more live allocations than capacity.
+    # 3. Capacity breach: more live allocations than allocatable rooms.
     houses = list(House.objects.filter(is_active=True))
     for house in houses:
-        live = house.allocations.filter(status="Allocated", is_active=True).count()
-        if live > house.capacity:
+        live = Allocation.objects.filter(
+            house=house, status=Allocation.Status.ACTIVE, is_active=True,
+        ).count()
+        ceiling = max(house.capacity, house.room_count)
+        if live > ceiling:
             conflicts.append({
                 "type": "capacity_breach",
                 "severity": "critical",
                 "house_id": str(house.id),
                 "hid": house.house_id,
-                "detail": f"House has {live} allocations but capacity is {house.capacity}.",
+                "detail": f"House has {live} allocations but only {ceiling} allocatable units (rooms).",
             })
 
     # 4. Active rental contract overlapping another on the same house.
@@ -749,9 +767,15 @@ def recommend_allocations(limit=None):
         for app in waiting:
             cat, total, breakdown, reasons = scored[app.id]
             if CATEGORY_ORDER.get(house.house_type, 0) <= CATEGORY_ORDER.get(cat, 0):
-                ok, constraint_reason = check_allocation_constraints(app, house)
+                mode, _ = determine_allocation_mode(app)
+                room = house.available_rooms[0] if (
+                    mode == ALLOCATION_MODE_ROOM and house.available_rooms
+                ) else None
+                ok, constraint_reason = check_allocation_constraints(
+                    app, house, room=room, allocation_mode=mode,
+                )
                 if ok:  # Only consider candidates satisfying all hard constraints
-                    candidates.append((app, total, breakdown, reasons, ok, constraint_reason))
+                    candidates.append((app, total, breakdown, reasons, ok, constraint_reason, mode, room))
         if not candidates:
             recommendations.append({
                 "house_id": str(house.id),
@@ -766,7 +790,7 @@ def recommend_allocations(limit=None):
 
         candidates.sort(key=lambda c: c[1], reverse=True)
         top = candidates[0]
-        app, total, breakdown, reasons, ok, constraint_reason = top
+        app, total, breakdown, reasons, ok, constraint_reason, mode, room = top
         reasons_text = "; ".join(reasons) if reasons else "Highest weighted priority score."
         recommendations.append({
             "house_id": str(house.id),
@@ -780,6 +804,9 @@ def recommend_allocations(limit=None):
                 "employee_id": app.employee_id,
                 "employee_name": app.employee_name,
                 "eligible_category": app.eligible_house_category or scored[app.id][0],
+                "allocation_mode": mode,
+                "room_label": room["label"] if room else "",
+                "resource": resource_label(house, room["label"] if room else ""),
                 "score": round(_num(total), 2),
                 "waiting_days": app.waiting_days,
                 "has_disability": app.has_disability,
@@ -814,14 +841,18 @@ def occupant_register():
             "allocation_category": house.allocation_category,
             "status": house.status,
             "capacity": house.capacity,
+            "room_count": house.room_count,
             "current_occupancy": len(occupants),
-            "vacant": max(house.capacity - len(occupants), 0),
+            "vacant": house.room_vacant_count,
             "occupants": [
                 {
                     "application_id": str(o.id),
                     "application_no": o.application_no,
                     "employee_id": o.employee_id,
                     "employee_name": o.employee_name,
+                    "allocation_mode": o.allocation_mode or "",
+                    "room_label": o.allocated_room_label or "",
+                    "resource": resource_label(house, o.allocated_room_label or ""),
                     "allocated_at": o.allocated_at.isoformat() if o.allocated_at else None,
                     "allocated_by": o.allocated_by.get_full_name() if o.allocated_by else None,
                 }

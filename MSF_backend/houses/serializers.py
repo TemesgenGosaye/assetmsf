@@ -25,6 +25,11 @@ class HouseSerializer(serializers.ModelSerializer):
     current_occupancy = serializers.IntegerField(read_only=True, default=0)
     vacant = serializers.IntegerField(read_only=True, default=0)
     is_available = serializers.BooleanField(read_only=True, default=True)
+    is_fully_vacant = serializers.BooleanField(read_only=True, default=False)
+    room_vacant_count = serializers.IntegerField(read_only=True, default=0)
+    available_rooms = serializers.SerializerMethodField()
+    rooms = serializers.SerializerMethodField()
+    rooms_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = House
@@ -34,12 +39,18 @@ class HouseSerializer(serializers.ModelSerializer):
             "damaged_switch", "damaged_bulb", "damaged_water",
             "damaged_items", "inside_items", "description", "capacity",
             "allocation_category",
+            "room_count", "room_labels",
+            "r1_status", "r1_occupant_name", "r1_occupant_id", "r1_notes",
+            "r2_status", "r2_occupant_name", "r2_occupant_id", "r2_notes",
+            "r3_status", "r3_occupant_name", "r3_occupant_id", "r3_notes",
+            "rooms", "rooms_summary",
             "allocation_status", "assigned_employee_id",
             "assigned_employee_name", "assigned_application_no",
-            "current_occupancy", "vacant", "is_available",
+            "current_occupancy", "vacant", "is_available", "is_fully_vacant",
+            "room_vacant_count", "available_rooms",
             "created_at", "updated_at", "is_active",
         ]
-        read_only_fields = ["id", "house_id", "house_number", "created_at", "updated_at", "is_active"]
+        read_only_fields = ["id", "house_id", "house_number", "room_count", "room_labels", "created_at", "updated_at", "is_active"]
 
     def get_allocation_status(self, obj):
         alloc = obj.allocation_records.filter(status=Allocation.Status.ACTIVE).first()
@@ -76,11 +87,19 @@ class HouseSerializer(serializers.ModelSerializer):
             return 0
 
     def get_vacant(self, obj):
-        occ = self.get_current_occupancy(obj)
-        return max(obj.capacity - occ, 0)
+        return obj.room_vacant_count
 
     def get_is_available(self, obj):
-        return obj.status == "Active" and self.get_vacant(obj) > 0
+        return obj.status == "Active" and obj.room_vacant_count > 0
+
+    def get_available_rooms(self, obj):
+        return [r["label"] for r in obj.available_rooms]
+
+    def get_rooms(self, obj):
+        return obj.rooms
+
+    def get_rooms_summary(self, obj):
+        return obj.rooms_summary
 
 
 class HouseCreateUpdateSerializer(serializers.ModelSerializer):
@@ -94,6 +113,9 @@ class HouseCreateUpdateSerializer(serializers.ModelSerializer):
             "damaged_switch", "damaged_bulb", "damaged_water",
             "inside_items", "description", "capacity",
             "allocation_category", "populate_items",
+            "r1_status", "r1_occupant_name", "r1_occupant_id", "r1_notes",
+            "r2_status", "r2_occupant_name", "r2_occupant_id", "r2_notes",
+            "r3_status", "r3_occupant_name", "r3_occupant_id", "r3_notes",
         ]
 
     def validate_location(self, value):
@@ -131,6 +153,7 @@ class HouseApplicationListSerializer(serializers.ModelSerializer):
     allocated_house_id = serializers.CharField(source="allocated_house.house_id", read_only=True, default=None)
     allocated_at = serializers.DateTimeField(read_only=True, default=None)
     allocated_by_name = serializers.CharField(source="allocated_by.name", read_only=True, default=None)
+    allocated_resource = serializers.SerializerMethodField()
 
     class Meta:
         model = HouseApplication
@@ -140,13 +163,22 @@ class HouseApplicationListSerializer(serializers.ModelSerializer):
             "job_position", "job_grade", "job_type", "position_type",
             "years_of_service",
             "marital_status", "has_disability", "family_size", "number_of_children",
-            "requested_house_category", "eligible_house_category",
+            "requested_house_category", "eligible_house_category", "allocation_mode",
             "reason_for_request", "preferred_location", "supporting_document",
             "priority_score", "queue_position", "score_breakdown",
             "eligibility_analysis", "allocation_confidence",
-            "allocated_house_id", "allocated_at", "allocated_by_name",
+            "allocated_house_id", "allocated_room_label", "allocated_room_number",
+            "allocated_resource", "allocated_at", "allocated_by_name",
             "allocation_notes", "status", "submitted_at", "created_at", "updated_at",
         ]
+
+    def get_allocated_resource(self, obj):
+        if not obj.allocated_house_id:
+            return None
+        base = obj.allocated_house.house_number or obj.allocated_house.house_id
+        if obj.allocation_mode == "ROOM_ALLOCATION" and obj.allocated_room_label:
+            return f"{base} — Room {obj.allocated_room_label}"
+        return base
 
 
 class HouseApplicationDetailSerializer(serializers.ModelSerializer):
@@ -155,6 +187,7 @@ class HouseApplicationDetailSerializer(serializers.ModelSerializer):
     eligible_house_category = serializers.CharField(read_only=True, default="")
     allocated_house_id = serializers.CharField(source="allocated_house.house_id", read_only=True, default=None)
     allocated_by_name = serializers.CharField(source="allocated_by.name", read_only=True, default=None)
+    allocated_resource = serializers.SerializerMethodField()
 
     class Meta:
         model = HouseApplication
@@ -164,11 +197,12 @@ class HouseApplicationDetailSerializer(serializers.ModelSerializer):
             "job_position", "job_grade", "job_type", "position_type",
             "years_of_service",
             "marital_status", "has_disability", "family_size", "number_of_children",
-            "requested_house_category", "eligible_house_category",
+            "requested_house_category", "eligible_house_category", "allocation_mode",
             "reason_for_request", "preferred_location", "supporting_document",
             "priority_score", "queue_position", "score_breakdown",
             "eligibility_analysis", "allocation_confidence",
-            "allocated_house", "allocated_house_id", "allocated_at",
+            "allocated_house", "allocated_house_id", "allocated_room_label",
+            "allocated_room_number", "allocated_resource", "allocated_at",
             "allocated_by", "allocated_by_name", "allocation_notes", "deallocation_reason",
             "status", "submitted_at", "reviewed_at", "reviewed_by", "reviewed_by_name",
             "rejection_reason", "returned_reason", "created_at", "updated_at", "is_active",
@@ -179,6 +213,14 @@ class HouseApplicationDetailSerializer(serializers.ModelSerializer):
             "allocated_at", "allocated_by", "allocated_by_name",
             "created_at", "updated_at", "is_active",
         ]
+
+    def get_allocated_resource(self, obj):
+        if not obj.allocated_house_id:
+            return None
+        base = obj.allocated_house.house_number or obj.allocated_house.house_id
+        if obj.allocation_mode == "ROOM_ALLOCATION" and obj.allocated_room_label:
+            return f"{base} — Room {obj.allocated_room_label}"
+        return base
 
 
 class HouseApplicationCreateSerializer(serializers.ModelSerializer):
@@ -287,6 +329,7 @@ class EligibilityRuleSerializer(serializers.ModelSerializer):
 
 class AllocationLogSerializer(serializers.ModelSerializer):
     performed_by_name = serializers.CharField(read_only=True, default="")
+    resource = serializers.SerializerMethodField()
 
     class Meta:
         model = AllocationLog
@@ -294,12 +337,19 @@ class AllocationLogSerializer(serializers.ModelSerializer):
             "id", "application", "application_no",
             "employee_name", "employee_id",
             "house", "house_hid",
+            "allocation_unit_type", "room_label", "room_number", "resource",
             "action", "old_status", "new_status",
             "priority_score", "eligible_category",
             "score_breakdown", "recommendation_reason",
             "notes", "performed_by", "performed_by_name", "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+    def get_resource(self, obj):
+        base = obj.house_hid or (obj.house.house_id if obj.house else "")
+        if obj.allocation_unit_type == "ROOM_ALLOCATION" and obj.room_label:
+            return f"{base} — Room {obj.room_label}"
+        return base
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -317,6 +367,7 @@ class HouseOpportunitySerializer(serializers.ModelSerializer):
     house_vacant = serializers.IntegerField(read_only=True, default=0)
     house_available = serializers.BooleanField(read_only=True, default=False)
     application_no = serializers.CharField(source="application.application_no", read_only=True, default="")
+    resource_label = serializers.CharField(read_only=True, default="")
 
     class Meta:
         model = HouseOpportunity
@@ -325,6 +376,7 @@ class HouseOpportunitySerializer(serializers.ModelSerializer):
             "house", "house_id", "house_number", "house_type", "house_location",
             "house_status", "house_capacity", "house_occupancy", "house_vacant",
             "house_available",
+            "allocation_mode", "room_label", "room_number", "resource_label",
             "eligible_category", "compatibility_score", "priority_score",
             "match_reasons", "recommendation", "recommendation_reason",
             "status", "rank", "notes",
@@ -350,6 +402,7 @@ class AllocationSerializer(serializers.ModelSerializer):
     allocated_by_name = serializers.CharField(source="allocated_by.name", read_only=True, default="")
     terminated_by_name = serializers.CharField(source="terminated_by.name", read_only=True, default="")
     opportunity_id = serializers.SerializerMethodField()
+    resource = serializers.CharField(read_only=True, default="")
 
     class Meta:
         model = Allocation
@@ -358,6 +411,8 @@ class AllocationSerializer(serializers.ModelSerializer):
             "application", "application_no",
             "house", "house_id", "house_number", "house_type", "house_location",
             "employee", "employee_id", "employee_name",
+            "allocation_unit_type", "room_label", "room_number", "room_status",
+            "marital_status", "family_size", "resource",
             "allocation_type", "priority_score", "recommendation_score",
             "confidence", "recommendation_reason",
             "status", "occupancy_status",

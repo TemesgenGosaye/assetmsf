@@ -15,6 +15,7 @@ import { trackActivity } from "@/services/notifications";
 import { isDemoMode } from "@/lib/demo";
 import { cn } from "@/lib/utils";
 import MetricCard from "@/components/ui/metric-card";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 
 export default function Newsletter() {
   const confirm = useConfirm();
@@ -277,6 +278,32 @@ export default function Newsletter() {
                     ))}
                   </div>
                 ) : null}
+                <ReportExportMenu
+                  title="Announcements & Newsletter Report"
+                  fileName="newsletter_announcements"
+                  columns={[
+                    { header: "Post ID", key: "id" },
+                    { header: "Title", key: "title" },
+                    { header: "Category", key: "category" },
+                    { header: "Status", key: "published" },
+                    { header: "Author", key: "author" },
+                    { header: "Created At", key: "created_at" },
+                  ]}
+                  getRows={() => (filtered || []).map((p) => [
+                    p.id,
+                    p.title || "",
+                    p.category || "",
+                    p.published ? "Published" : "Draft",
+                    p.author || "",
+                    p.created_at ? new Date(p.created_at).toLocaleString() : "",
+                  ])}
+                  totalCount={(filtered || []).length}
+                  filters={[
+                    query ? `Search: "${query}"` : "",
+                    selectedCategory !== "all" ? `Category: ${selectedCategory}` : "",
+                    statusFilter !== "all" ? `Status: ${statusFilter}` : "",
+                  ].filter(Boolean).join(", ") || undefined}
+                />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

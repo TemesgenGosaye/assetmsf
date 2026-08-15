@@ -1,0 +1,63 @@
+/* Print Styles for Report Exports */
+@media print {
+  /* Hide UI elements that shouldn't be printed */
+  #root > :not(.print-container) {
+    display: none !important;
+  }
+  
+  .no-print, 
+  nav, 
+  aside, 
+  header,
+  footer,
+  .sidebar, 
+  .toolbar, 
+  .btn, 
+  button, 
+  a,
+  .dialog-content,
+  .toaster {
+    display: none !important;
+  }
+
+  /* Reset page styling for print */
+  body, html {
+    background-color: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 10pt;
+  }
+
+  /* Ensure table prints nicely */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  th, td {
+    border: 1px solid #ccc !important;
+    padding: 6px !important;
+    text-align: left;
+    color: black !important;
+    background-color: white !important;
+  }
+
+  th {
+    background-color: #f2f2f2 !important;
+    font-weight: bold !important;
+  }
+
+  /* Disable shadows and rounding */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    border-radius: 0 !important;
+  }
+}

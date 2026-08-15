@@ -37,6 +37,75 @@ GRADE_ORDER = {
 
 CATEGORY_ORDER = {"Staff": 6, "A": 5, "B": 4, "C": 3, "D": 2, "E": 1}
 
+ALLOCATION_MODE_ROOM = "ROOM_ALLOCATION"
+ALLOCATION_MODE_HOUSE = "HOUSE_ALLOCATION"
+
+ALLOCATION_MODE_LABELS = {
+    ALLOCATION_MODE_ROOM: "Room (single applicant)",
+    ALLOCATION_MODE_HOUSE: "Whole house (family)",
+}
+
+
+def determine_allocation_mode(application):
+    """
+    Auto-detect the allocation unit for an application:
+      * Single applicants with family size ≤ 1 → ROOM_ALLOCATION
+        (recommend/allocate House Number + Room Number).
+      * Married (or family size ≥ 2)          → HOUSE_ALLOCATION
+        (recommend/allocate the whole house).
+
+    Returns (mode, reason).
+    """
+    try:
+        family_size = int(application.family_size or 1)
+    except (TypeError, ValueError):
+        family_size = 1
+    marital = str(application.marital_status or "").strip()
+
+    if marital.lower() == "single" and family_size <= 1:
+        mode = ALLOCATION_MODE_ROOM
+        reason = (
+            f"Single applicant ({marital or 'Single'}) with family size {family_size} "
+            "— allocate a single room within a house."
+        )
+    else:
+        mode = ALLOCATION_MODE_HOUSE
+        reason = (
+            f"{marital or 'Unknown'} with family size {family_size} "
+            "— allocate the whole house."
+        )
+    return mode, reason
+
+
+def resource_label(house, room_label=""):
+    """Human-readable resource string, e.g. 'S2 — Room R2' or 'A1'."""
+    base = house.house_number or house.house_id
+    if room_label:
+        return f"{base} — Room {room_label}"
+    return base
+
+
+def room_available(house, room, exclude_allocation_id=None):
+    """
+    A room is allocatable when it is physically Vacant, the house is not held
+    by an active whole-house allocation, and the room carries no active
+    room-level allocation.
+    """
+    if not room:
+        return False
+    if room.get("status") != House.RoomStatus.VACANT:
+        return False
+    active = house.allocation_records.filter(status=Allocation.Status.ACTIVE)
+    if active.filter(allocation_unit_type=ALLOCATION_MODE_HOUSE).exists():
+        return False
+    room_qs = active.filter(
+        allocation_unit_type=ALLOCATION_MODE_ROOM,
+        room_label=room["label"],
+    )
+    if exclude_allocation_id:
+        room_qs = room_qs.exclude(id=exclude_allocation_id)
+    return not room_qs.exists()
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  AUDIT HELPER
@@ -127,11 +196,16 @@ def determine_eligible_category(application):
     return cat, f"Eligible for {cat} based on job grade {grade}"
 
 
-def check_allocation_constraints(application, house, allow_existing=False):
+def check_allocation_constraints(application, house, room=None, allocation_mode=None,
+                                 allow_existing=False):
     """
     Verify hard constraints before allocation.
+    `room` is a room dict {label, index, status, ...} required for ROOM_ALLOCATION.
     Returns (ok: bool, reason: str).
     """
+    if allocation_mode is None:
+        allocation_mode, _ = determine_allocation_mode(application)
+
     reasons = []
 
     if application.status == HouseApplication.Status.ALLOCATED and not allow_existing:
@@ -141,9 +215,33 @@ def check_allocation_constraints(application, house, allow_existing=False):
         reasons.append(f"House {house.house_id} is inactive (needs repair)")
 
     # Authoritative occupancy from live Allocation records only.
-    active_allocations = house.allocation_records.filter(status=Allocation.Status.ACTIVE).count()
-    if active_allocations >= house.capacity:
-        reasons.append(f"House {house.house_id} is already allocated/occupied")
+    active_allocations = house.allocation_records.filter(status=Allocation.Status.ACTIVE)
+
+    if allocation_mode == ALLOCATION_MODE_ROOM:
+        if room is None:
+            room = house.available_rooms[0] if house.available_rooms else None
+        if room is None:
+            reasons.append(f"House {house.house_id} has no available rooms")
+        else:
+            if room.get("status") != House.RoomStatus.VACANT:
+                reasons.append(
+                    f"Room {room['label']} in {house.house_id} is {room.get('status') or 'unavailable'}"
+                )
+            if active_allocations.filter(allocation_unit_type=ALLOCATION_MODE_HOUSE).exists():
+                reasons.append(f"House {house.house_id} is held by a whole-house allocation")
+            if active_allocations.filter(
+                allocation_unit_type=ALLOCATION_MODE_ROOM,
+                room_label=room["label"],
+            ).exists():
+                reasons.append(f"Room {room['label']} in {house.house_id} is already allocated")
+    else:
+        active_count = active_allocations.count()
+        if active_count >= max(house.capacity, 1):
+            reasons.append(f"House {house.house_id} is already allocated/occupied")
+        if active_count > 0:
+            reasons.append(
+                f"House {house.house_id} is partially occupied and cannot be allocated as a whole house"
+            )
 
     eligible_cat, _ = determine_eligible_category(application)
     if CATEGORY_ORDER.get(house.house_type, 0) > CATEGORY_ORDER.get(eligible_cat, 0):
@@ -369,10 +467,14 @@ def topsis_rank(applications, config=None):
 #  4. HOUSE COMPATIBILITY  (house_opp scoring)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def compute_house_compatibility(application, house, config=None, eligible_category=None):
+def compute_house_compatibility(application, house, config=None, eligible_category=None,
+                                room=None, allocation_mode=None):
     """
     Score how well a house fits an application (0–100), with explainable
     reasons. Used to generate/rank HouseOpportunity (house_opp) records.
+
+    `room` (dict) is required for ROOM_ALLOCATION — availability is then
+    evaluated at the room level and the reason includes the specific room.
 
     Factors:
       · category proximity    (0–40)
@@ -385,6 +487,9 @@ def compute_house_compatibility(application, house, config=None, eligible_catego
     """
     if eligible_category is None:
         eligible_category, _ = determine_eligible_category(application)
+
+    if allocation_mode is None:
+        allocation_mode, _ = determine_allocation_mode(application)
 
     if house.allocation_category == House.AllocationCategory.GUEST:
         return 0.0, ["Guest house excluded from regular allocation"]
@@ -435,11 +540,26 @@ def compute_house_compatibility(application, house, config=None, eligible_catego
         reasons.append(f"Capacity {capacity} below family size {application.family_size}")
 
     # Availability (0–15)
-    if house.status == House.Status.ACTIVE and house.current_occupancy < capacity:
-        score += 15
-        reasons.append("House is vacant and active")
+    if allocation_mode == ALLOCATION_MODE_ROOM:
+        if room is None:
+            room = house.available_rooms[0] if house.available_rooms else None
+        if room is not None and room_available(house, room):
+            score += 15
+            reasons.append(
+                f"Room {room['label']} in {house.house_id} is vacant and available"
+            )
+        else:
+            label = room["label"] if room else "—"
+            reasons.append(f"Room {label} in {house.house_id} is currently unavailable")
     else:
-        reasons.append("House is currently full or inactive")
+        if house.status == House.Status.ACTIVE and house.is_fully_vacant:
+            score += 15
+            reasons.append("House is vacant and active")
+        else:
+            reasons.append("House is currently full, partially occupied or inactive")
+
+    if allocation_mode == ALLOCATION_MODE_ROOM and room is not None:
+        reasons.append(f"Unit: {resource_label(house, room['label'])}")
 
     return round(min(score, 100.0), 4), reasons
 
@@ -462,9 +582,15 @@ def generate_opportunities(application, user=None):
     """
     Materialise HouseOpportunity rows for every active, non-guest house the
     applicant could plausibly be matched to. Idempotent per (application, house).
+
+    Allocation mode decides the granularity:
+      * HOUSE_ALLOCATION → one opportunity per house (room_label = "").
+      * ROOM_ALLOCATION  → one opportunity per available room (room_label = label).
+
     Returns number of new opportunities created.
     """
     eligible_cat, _ = determine_eligible_category(application)
+    mode, _ = determine_allocation_mode(application)
     candidate_houses = House.objects.filter(
         is_active=True,
         status=House.Status.ACTIVE,
@@ -473,41 +599,86 @@ def generate_opportunities(application, user=None):
     created = 0
     with transaction.atomic():
         for house in candidate_houses:
-            compat, reasons = compute_house_compatibility(
-                application, house, eligible_category=eligible_cat,
-            )
-            if compat <= 0:
-                continue
-            opp, was_created = HouseOpportunity.objects.get_or_create(
-                application=application,
-                house=house,
-                defaults={
-                    "eligible_category": eligible_cat,
-                    "compatibility_score": Decimal(str(compat)),
-                    "priority_score": application.priority_score,
-                    "match_reasons": reasons,
-                    "status": HouseOpportunity.Status.ELIGIBLE,
-                    "created_by": user,
-                },
-            )
-            if was_created:
-                created += 1
+            if mode == ALLOCATION_MODE_ROOM:
+                rooms = house.available_rooms
+                for room in rooms:
+                    compat, reasons = compute_house_compatibility(
+                        application, house, eligible_category=eligible_cat,
+                        room=room, allocation_mode=mode,
+                    )
+                    if compat <= 0:
+                        continue
+                    opp, was_created = HouseOpportunity.objects.get_or_create(
+                        application=application,
+                        house=house,
+                        room_label=room["label"],
+                        defaults={
+                            "allocation_mode": mode,
+                            "room_label": room["label"],
+                            "room_number": room["label"],
+                            "eligible_category": eligible_cat,
+                            "compatibility_score": Decimal(str(compat)),
+                            "priority_score": application.priority_score,
+                            "match_reasons": reasons,
+                            "status": HouseOpportunity.Status.ELIGIBLE,
+                            "created_by": user,
+                        },
+                    )
+                    if was_created:
+                        created += 1
+                    else:
+                        opp.allocation_mode = mode
+                        opp.room_number = room["label"]
+                        opp.compatibility_score = Decimal(str(compat))
+                        opp.priority_score = application.priority_score
+                        opp.match_reasons = reasons
+                        opp.eligible_category = eligible_cat
+                        opp.updated_by = user
+                        opp.save(update_fields=[
+                            "allocation_mode", "room_number",
+                            "compatibility_score", "priority_score", "match_reasons",
+                            "eligible_category", "updated_at",
+                        ])
             else:
-                opp.compatibility_score = Decimal(str(compat))
-                opp.priority_score = application.priority_score
-                opp.match_reasons = reasons
-                opp.eligible_category = eligible_cat
-                opp.updated_by = user
-                opp.save(update_fields=[
-                    "compatibility_score", "priority_score", "match_reasons",
-                    "eligible_category", "updated_at",
-                ])
+                compat, reasons = compute_house_compatibility(
+                    application, house, eligible_category=eligible_cat,
+                    allocation_mode=mode,
+                )
+                if compat <= 0:
+                    continue
+                opp, was_created = HouseOpportunity.objects.get_or_create(
+                    application=application,
+                    house=house,
+                    room_label="",
+                    defaults={
+                        "allocation_mode": mode,
+                        "eligible_category": eligible_cat,
+                        "compatibility_score": Decimal(str(compat)),
+                        "priority_score": application.priority_score,
+                        "match_reasons": reasons,
+                        "status": HouseOpportunity.Status.ELIGIBLE,
+                        "created_by": user,
+                    },
+                )
+                if was_created:
+                    created += 1
+                else:
+                    opp.allocation_mode = mode
+                    opp.compatibility_score = Decimal(str(compat))
+                    opp.priority_score = application.priority_score
+                    opp.match_reasons = reasons
+                    opp.eligible_category = eligible_cat
+                    opp.updated_by = user
+                    opp.save(update_fields=[
+                        "allocation_mode", "compatibility_score", "priority_score",
+                        "match_reasons", "eligible_category", "updated_at",
+                    ])
 
     record_audit(
         application, HouseAuditTrail.Action.OPPORTUNITIES_GENERATED, user,
         new_status=application.status,
-        detail={"created": created, "eligible_category": eligible_cat},
-        note=f"Generated {created} house opportunities",
+        detail={"created": created, "eligible_category": eligible_cat, "allocation_mode": mode},
+        note=f"Generated {created} opportunities ({ALLOCATION_MODE_LABELS.get(mode, mode)})",
     )
     return created
 
@@ -516,16 +687,25 @@ def rank_opportunities(application, user=None):
     """
     Recompute compatibility for every opportunity of an application, order the
     shortlist, and label each opportunity Recommended / Alternative / Not Suitable.
+    Respects the application's allocation mode (room vs whole house).
     Returns number of ranked opportunities.
     """
+    mode, _ = determine_allocation_mode(application)
     opps = list(application.opportunities.select_related("house"))
     if not opps:
         return 0
 
     scored = []
     for opp in opps:
+        # Reject stale opportunities generated for the opposite unit.
+        if opp.allocation_mode and opp.allocation_mode != mode:
+            continue
+        room = None
+        if mode == ALLOCATION_MODE_ROOM:
+            room = opp.house.room_for_label(opp.room_label) if opp.room_label else None
         compat, reasons = compute_house_compatibility(
             application, opp.house, eligible_category=opp.eligible_category,
+            room=room, allocation_mode=mode,
         )
         scored.append((opp, compat, reasons))
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -535,6 +715,7 @@ def rank_opportunities(application, user=None):
             opp.rank = idx
             opp.compatibility_score = Decimal(str(compat))
             opp.match_reasons = reasons
+            opp.allocation_mode = mode
             opp.status = HouseOpportunity.Status.RANKED
             if idx == 1 and compat >= 50:
                 opp.recommendation = HouseOpportunity.Recommendation.RECOMMENDED
@@ -548,14 +729,15 @@ def rank_opportunities(application, user=None):
             opp.updated_by = user
             opp.save(update_fields=[
                 "rank", "compatibility_score", "match_reasons", "status",
-                "recommendation", "recommendation_reason", "updated_at",
+                "recommendation", "recommendation_reason", "allocation_mode",
+                "updated_at",
             ])
 
     record_audit(
         application, HouseAuditTrail.Action.OPPORTUNITIES_RANKED, user,
         new_status=application.status,
-        detail={"ranked": len(scored)},
-        note=f"Ranked {len(scored)} house opportunities",
+        detail={"ranked": len(scored), "allocation_mode": mode},
+        note=f"Ranked {len(scored)} opportunities ({ALLOCATION_MODE_LABELS.get(mode, mode)})",
     )
     return len(scored)
 
@@ -566,7 +748,7 @@ def rank_opportunities(application, user=None):
 
 def _execute_allocation(application, house, user, allocation_type,
                         override_reason="", notes="", opportunity=None,
-                        allow_existing=False):
+                        allow_existing=False, room=None, room_label=""):
     """
     Atomic allocation primitive. Locks both the house and application rows,
     re-validates every constraint, then writes:
@@ -577,9 +759,15 @@ def _execute_allocation(application, house, user, allocation_type,
 
     `allow_existing=True` is used for transfers/reallocations where the
     application is already marked allocated.
+    `room` (dict) and/or `room_label` are used for ROOM_ALLOCATION.
     """
     if allocation_type not in ("Auto", "Manual", "Override"):
         raise ValueError("allocation_type must be 'Auto', 'Manual' or 'Override'")
+
+    allocation_mode, _ = determine_allocation_mode(application)
+    if allocation_mode == ALLOCATION_MODE_HOUSE:
+        room = None
+        room_label = ""
 
     old_status = application.status
 
@@ -587,8 +775,17 @@ def _execute_allocation(application, house, user, allocation_type,
         house = House.objects.select_for_update().get(id=house.id)
         application = HouseApplication.objects.select_for_update().get(id=application.id)
 
+        if allocation_mode == ALLOCATION_MODE_ROOM:
+            if room is None and room_label:
+                room = house.room_for_label(room_label)
+            if room is None:
+                room = house.available_rooms[0] if house.available_rooms else None
+            if room is not None:
+                room_label = room["label"]
+
         ok, constraint_reason = check_allocation_constraints(
-            application, house, allow_existing=allow_existing,
+            application, house, room=room, allocation_mode=allocation_mode,
+            allow_existing=allow_existing,
         )
         if not ok:
             raise ValueError(f"Constraint violation: {constraint_reason}")
@@ -596,6 +793,7 @@ def _execute_allocation(application, house, user, allocation_type,
         eligible_cat, _ = determine_eligible_category(application)
         compat, compat_reasons = compute_house_compatibility(
             application, house, eligible_category=eligible_cat,
+            room=room, allocation_mode=allocation_mode,
         )
         confidence = compute_allocation_confidence(application.priority_score, compat)
 
@@ -606,6 +804,13 @@ def _execute_allocation(application, house, user, allocation_type,
             employee_id=application.employee_id,
             employee_name=application.employee_name,
             allocation_type=allocation_type,
+            allocation_unit_type=allocation_mode,
+            room_label=room_label,
+            room_index=room["index"] if room else None,
+            room_number=room["label"] if room else "",
+            room_status=room.get("status", "") if room else "",
+            marital_status=application.marital_status,
+            family_size=application.family_size or 1,
             priority_score=application.priority_score,
             recommendation_score=Decimal(str(compat)),
             confidence=Decimal(str(confidence)),
@@ -621,21 +826,40 @@ def _execute_allocation(application, house, user, allocation_type,
             created_by=user,
         )
 
+        # ── claim the physical room(s) ────────────────────────────────────
+        if allocation_mode == ALLOCATION_MODE_HOUSE:
+            house.claim_all_rooms(
+                occupant_name=application.employee_name,
+                occupant_id=application.employee_id,
+            )
+        elif room is not None:
+            house.set_room_status(
+                room_label, House.RoomStatus.OCCUPIED,
+                occupant_name=application.employee_name,
+                occupant_id=application.employee_id,
+            )
+        house.save()
+
         # ── sync application projection ───────────────────────────────────
         application.status = HouseApplication.Status.ALLOCATED
         application.allocated_house = house
+        application.allocated_room_label = room_label
+        application.allocated_room_number = room["label"] if room else ""
         application.allocated_at = allocation.allocated_at
         application.allocated_by = user
         application.allocation_notes = notes
         application.eligible_house_category = eligible_cat
         application.allocation_confidence = allocation.confidence
+        application.allocation_mode = allocation_mode
         application.deallocation_reason = ""
         application.save()
 
         # ── house_opp lifecycle ───────────────────────────────────────────
         if opportunity is None:
             try:
-                opportunity = HouseOpportunity.objects.get(application=application, house=house)
+                opportunity = HouseOpportunity.objects.get(
+                    application=application, house=house, room_label=room_label,
+                )
             except HouseOpportunity.DoesNotExist:
                 opportunity = None
 
@@ -644,10 +868,13 @@ def _execute_allocation(application, house, user, allocation_type,
             opportunity.recommendation = HouseOpportunity.Recommendation.RECOMMENDED
             opportunity.recommendation_reason = f"Allocated ({allocation_type})"
             opportunity.compatibility_score = Decimal(str(compat))
+            opportunity.allocation_mode = allocation_mode
+            opportunity.room_label = room_label
             opportunity.updated_by = user
             opportunity.save(update_fields=[
                 "status", "recommendation", "recommendation_reason",
-                "compatibility_score", "updated_at",
+                "compatibility_score", "allocation_mode", "room_label",
+                "updated_at",
             ])
             HouseOpportunity.objects.filter(application=application).exclude(id=opportunity.id).update(
                 status=HouseOpportunity.Status.REJECTED,
@@ -667,6 +894,9 @@ def _execute_allocation(application, house, user, allocation_type,
             employee_id=application.employee_id,
             house=house,
             house_hid=house.house_id,
+            allocation_unit_type=allocation_mode,
+            room_label=room_label,
+            room_number=room["label"] if room else "",
             action={
                 Allocation.AllocationType.AUTO: AllocationLog.Action.AUTO_ALLOCATED,
                 Allocation.AllocationType.MANUAL: AllocationLog.Action.ALLOCATED,
@@ -697,6 +927,9 @@ def _execute_allocation(application, house, user, allocation_type,
             detail={
                 "allocation_no": allocation.allocation_no,
                 "house_id": house.house_id,
+                "room_label": room_label or None,
+                "allocation_mode": allocation_mode,
+                "resource": resource_label(house, room_label),
                 "compatibility": float(compat),
                 "confidence": float(confidence),
                 "override_reason": override_reason or None,
@@ -708,11 +941,13 @@ def _execute_allocation(application, house, user, allocation_type,
 
 
 def allocate_application(application, house, user=None, allocation_type="Manual",
-                         override_reason="", notes="", allow_existing=False):
+                         override_reason="", notes="", allow_existing=False,
+                         room=None, room_label=""):
     """Public entry point for a single allocation (auto / manual / override)."""
     return _execute_allocation(application, house, user, allocation_type,
                                override_reason=override_reason, notes=notes,
-                               allow_existing=allow_existing)
+                               allow_existing=allow_existing, room=room,
+                               room_label=room_label)
 
 
 def terminate_allocation(allocation, user=None, reason="", move_to_queue=True):
@@ -742,10 +977,20 @@ def terminate_allocation(allocation, user=None, reason="", move_to_queue=True):
             "termination_reason", "updated_at",
         ])
 
+        # ── release the physical room(s) ──────────────────────────────────
+        house = allocation.house
+        if allocation.allocation_unit_type == Allocation.AllocationUnit.HOUSE:
+            house.free_all_rooms()
+        elif allocation.room_label:
+            house.free_room(allocation.room_label)
+        house.save()
+
         if move_to_queue:
             application = HouseApplication.objects.select_for_update().get(id=application.id)
             application.status = HouseApplication.Status.WAITING_FOR_ALLOCATION
             application.allocated_house = None
+            application.allocated_room_label = ""
+            application.allocated_room_number = ""
             application.allocated_at = None
             application.allocated_by = None
             application.allocation_notes = ""
@@ -760,6 +1005,9 @@ def terminate_allocation(allocation, user=None, reason="", move_to_queue=True):
             employee_id=application.employee_id,
             house=allocation.house,
             house_hid=allocation.house.house_id,
+            allocation_unit_type=allocation.allocation_unit_type,
+            room_label=allocation.room_label,
+            room_number=allocation.room_number,
             action=AllocationLog.Action.DEALLOCATED,
             old_status=old_status,
             new_status=application.status,
@@ -781,6 +1029,8 @@ def terminate_allocation(allocation, user=None, reason="", move_to_queue=True):
             detail={
                 "allocation_no": allocation.allocation_no,
                 "house_id": allocation.house.house_id,
+                "room_label": allocation.room_label or None,
+                "allocation_unit_type": allocation.allocation_unit_type,
                 "move_to_queue": move_to_queue,
             },
             note=reason,
@@ -793,10 +1043,12 @@ def terminate_allocation(allocation, user=None, reason="", move_to_queue=True):
 #  7. SINGLE AUTO-ALLOCATE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def auto_allocate_single(house, target_application=None, user=None):
+def auto_allocate_single(house, target_application=None, user=None, room_label=""):
     """
-    Auto-allocate a single house to the best eligible applicant.
+    Auto-allocate a house (or a room within it) to the best eligible applicant.
     If target_application is provided, allocate that specific application.
+    Room-mode (single) applicants are assigned the first available room, unless
+    `room_label` is given (then that specific room is used when allocatable).
     Returns (application, breakdown, reasons) or raises ValueError.
     """
     if not house.is_available:
@@ -837,7 +1089,20 @@ def auto_allocate_single(house, target_application=None, user=None):
         "priority_score", "score_breakdown", "eligible_house_category", "updated_at",
     ])
 
-    allocate_application(best_app, house, user, "Auto", notes="; ".join(best_reasons))
+    mode, _ = determine_allocation_mode(best_app)
+    room = None
+    if mode == ALLOCATION_MODE_ROOM:
+        if room_label:
+            room = house.room_for_label(room_label)
+            if room is None:
+                raise ValueError(f"Room {room_label} not found in house {house.house_id}")
+        else:
+            room = house.available_rooms[0] if house.available_rooms else None
+        if room is None:
+            raise ValueError(f"House {house.house_id} has no available room for a single applicant")
+
+    allocate_application(best_app, house, user, "Auto", notes="; ".join(best_reasons),
+                         room=room, room_label=room["label"] if room else "")
 
     return best_app, best_breakdown, best_reasons
 
@@ -846,13 +1111,15 @@ def auto_allocate_single(house, target_application=None, user=None):
 #  8. MANUAL ALLOCATE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def manual_allocate(house, application, user=None, notes=""):
+def manual_allocate(house, application, user=None, notes="", room=None, room_label=""):
     """Manual allocation (reviewer-driven) with optional justification."""
-    allocate_application(application, house, user, "Manual", notes=notes)
+    allocate_application(application, house, user, "Manual", notes=notes,
+                         room=room, room_label=room_label)
     return application
 
 
-def override_allocate(house, application, user=None, reason="", notes=""):
+def override_allocate(house, application, user=None, reason="", notes="",
+                      room=None, room_label=""):
     """
     Manual override allocation — requires an explicit, audited override reason.
     """
@@ -861,6 +1128,7 @@ def override_allocate(house, application, user=None, reason="", notes=""):
     return _execute_allocation(
         application, house, user, "Override",
         override_reason=reason.strip(), notes=notes,
+        room=room, room_label=room_label,
     )
 
 
@@ -881,14 +1149,53 @@ def deallocate(application, user=None, reason=""):
 #  10. BATCH ALLOCATION ENGINE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+class _AllocationResource:
+    """Uniform resource object for the Hungarian assigner — a whole house
+    (HOUSE_ALLOCATION) or a single room within a house (ROOM_ALLOCATION)."""
+
+    def __init__(self, house, room, allocation_mode):
+        self.house = house
+        self.room = room
+        self.allocation_mode = allocation_mode
+        self.key = f"{house.id}:{room['label']}" if room else house.house_id
+
+    @property
+    def is_available(self):
+        if self.allocation_mode == ALLOCATION_MODE_HOUSE:
+            return self.house.is_fully_vacant
+        return room_available(self.house, self.room)
+
+    @property
+    def house_id(self):
+        return self.house.house_id
+
+    @property
+    def house_number(self):
+        return self.house.house_number or self.house.house_id
+
+    @property
+    def house_type(self):
+        return self.house.house_type
+
+    @property
+    def room_label(self):
+        return self.room["label"] if self.room else ""
+
+    @property
+    def label(self):
+        return resource_label(self.house, self.room["label"] if self.room else "")
+
+
 def run_batch_allocation(user=None, dry_run=False):
     """
     Run full allocation pipeline:
     1. Collect all waiting applications
-    2. Determine eligibility for each
+    2. Determine eligibility + allocation mode for each
     3. Compute MCDA scores
     4. Apply TOPSIS ranking
     5. Use Hungarian assignment for optimal matching
+       — whole-house resources for family (HOUSE_ALLOCATION) applicants,
+         per-room resources for single (ROOM_ALLOCATION) applicants
     6. Execute allocations atomically (Allocation records + audit)
     Returns dict with allocated/skipped results.
 
@@ -926,57 +1233,88 @@ def run_batch_allocation(user=None, dry_run=False):
 
     config = ScoringConfig.objects.filter(is_active=True).first()
 
-    # Step 1: Compute scores and eligibility (persisted unless dry-run)
+    # Step 1: Compute scores, eligibility and allocation mode (persisted unless dry-run)
     for app in waiting:
         cat, cat_reason = determine_eligible_category(app)
+        mode, _ = determine_allocation_mode(app)
         total, breakdown, reasons = compute_mcda_score(app, config)
         app.eligible_house_category = cat
+        app.allocation_mode = mode
         app.priority_score = total
         app.score_breakdown = breakdown
         if not dry_run:
-            app.save(update_fields=["eligible_house_category", "priority_score", "score_breakdown", "updated_at"])
+            app.save(update_fields=[
+                "eligible_house_category", "allocation_mode", "priority_score",
+                "score_breakdown", "updated_at",
+            ])
 
     # Step 2: TOPSIS ranking
     ranked = topsis_rank(waiting, config)
+    ranked_apps = [r[0] for r in ranked]
 
-    # Step 3: Available houses (active, non-guest, with capacity)
-    available_houses = [
+    # Split applicants by allocation unit so each group competes for its own
+    # resource pool (whole houses vs individual rooms).
+    house_apps = [a for a in ranked_apps if a.allocation_mode == ALLOCATION_MODE_HOUSE]
+    room_apps = [a for a in ranked_apps if a.allocation_mode == ALLOCATION_MODE_ROOM]
+
+    active_houses = [
         h for h in House.objects.filter(
             status=House.Status.ACTIVE,
             is_active=True,
         ).exclude(allocation_category=House.AllocationCategory.GUEST)
-        if h.is_available
     ]
 
-    # Step 4: Hungarian optimal assignment
-    ranked_apps = [r[0] for r in ranked]
-    assignments = hungarian_assign(ranked_apps, available_houses)
+    # Step 3: Available resources
+    house_resources = [
+        _AllocationResource(h, None, ALLOCATION_MODE_HOUSE)
+        for h in active_houses if h.is_fully_vacant
+    ]
+    room_resources = [
+        _AllocationResource(h, room, ALLOCATION_MODE_ROOM)
+        for h in active_houses
+        for room in h.available_rooms
+        if room_available(h, room)
+    ]
+    all_resources = house_resources + room_resources
+    by_key = {r.key: r for r in all_resources}
+
+    # Step 4: Hungarian optimal assignment (per unit)
+    assignments = {}
+    assignments.update(hungarian_assign(house_apps, house_resources))
+    assignments.update(hungarian_assign(room_apps, room_resources))
 
     allocated = []
     skipped = []
 
     # Step 5: dry-run preview — same constraint checks, zero side effects.
     if dry_run:
-        by_hid = {h.house_id: h for h in available_houses}
-        for house_id, (app, score) in assignments.items():
-            house = by_hid.get(house_id)
+        for key, (app, score) in assignments.items():
+            res = by_key.get(key)
             ok, reason = (True, None)
-            if house is not None:
-                ok, reason = check_allocation_constraints(app, house)
+            if res is not None:
+                ok, reason = check_allocation_constraints(
+                    app, res.house, room=res.room, allocation_mode=res.allocation_mode,
+                )
             if ok:
                 allocated.append({
-                    "house_id": house_id,
-                    "house_number": house_id,
-                    "house_type": house.house_type if house else "",
+                    "house_id": res.house_id if res else key,
+                    "house_number": res.house_number if res else key,
+                    "house_type": res.house_type if res else "",
+                    "room_label": res.room_label if res else "",
+                    "allocation_unit_type": res.allocation_mode if res else "",
+                    "resource": res.label if res else key,
                     "allocated_to": app.employee_name,
                     "application_no": app.application_no,
                     "score": str(score),
                 })
             else:
                 skipped.append({
-                    "house_id": house_id,
-                    "house_number": house_id,
-                    "house_type": house.house_type if house else "",
+                    "house_id": res.house_id if res else key,
+                    "house_number": res.house_number if res else key,
+                    "house_type": res.house_type if res else "",
+                    "room_label": res.room_label if res else "",
+                    "allocation_unit_type": res.allocation_mode if res else "",
+                    "resource": res.label if res else key,
                     "allocated_to": None,
                     "application_no": app.application_no,
                     "score": str(score),
@@ -985,21 +1323,27 @@ def run_batch_allocation(user=None, dry_run=False):
         return {
             "allocated": allocated,
             "skipped": skipped,
-            "total_houses": len(available_houses),
+            "total_houses": len(all_resources),
             "dry_run": True,
         }
 
     # Step 6: Execute allocations atomically (Allocation records + audit)
     with transaction.atomic():
-        for house_id, (app, score) in assignments.items():
+        for key, (app, score) in assignments.items():
             try:
-                house = House.objects.select_for_update().get(house_id=house_id)
-                ok, reason = check_allocation_constraints(app, house)
+                res = by_key[key]
+                house = House.objects.select_for_update().get(id=res.house.id)
+                ok, reason = check_allocation_constraints(
+                    app, house, room=res.room, allocation_mode=res.allocation_mode,
+                )
                 if not ok:
                     skipped.append({
-                        "house_id": house.house_id,
-                        "house_number": house_id,
-                        "house_type": house.house_type,
+                        "house_id": res.house_id,
+                        "house_number": res.house_number,
+                        "house_type": res.house_type,
+                        "room_label": res.room_label,
+                        "allocation_unit_type": res.allocation_mode,
+                        "resource": res.label,
                         "allocated_to": None,
                         "application_no": app.application_no,
                         "score": str(score),
@@ -1007,21 +1351,32 @@ def run_batch_allocation(user=None, dry_run=False):
                     })
                     continue
 
-                allocate_application(app, house, user, "Auto", notes=f"Batch allocation score={score}")
+                allocate_application(
+                    app, house, user, "Auto",
+                    notes=f"Batch allocation score={score}",
+                    room=res.room, room_label=res.room_label,
+                )
 
                 allocated.append({
-                    "house_id": house.house_id,
-                    "house_number": house.house_id,
-                    "house_type": house.house_type,
+                    "house_id": res.house_id,
+                    "house_number": res.house_number,
+                    "house_type": res.house_type,
+                    "room_label": res.room_label,
+                    "allocation_unit_type": res.allocation_mode,
+                    "resource": res.label,
                     "allocated_to": app.employee_name,
                     "application_no": app.application_no,
                     "score": str(score),
                 })
             except Exception as e:
+                res = by_key.get(key)
                 skipped.append({
-                    "house_id": house_id,
-                    "house_number": house_id,
-                    "house_type": "",
+                    "house_id": res.house_id if res else key,
+                    "house_number": res.house_number if res else key,
+                    "house_type": res.house_type if res else "",
+                    "room_label": res.room_label if res else "",
+                    "allocation_unit_type": res.allocation_mode if res else "",
+                    "resource": res.label if res else key,
                     "allocated_to": None,
                     "application_no": getattr(app, "application_no", ""),
                     "score": str(score),
@@ -1031,7 +1386,7 @@ def run_batch_allocation(user=None, dry_run=False):
     return {
         "allocated": allocated,
         "skipped": skipped,
-        "total_houses": len(available_houses),
+        "total_houses": len(all_resources),
     }
 
 
@@ -1100,29 +1455,32 @@ def gale_shapley_match(applications, houses):
 #  12. HUNGARIAN OPTIMAL ASSIGNMENT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def hungarian_assign(applications, houses):
+def hungarian_assign(applications, resources):
     """
     Hungarian algorithm (simplified for rectangular matrices).
     Maximises total score of assignments.
-    Returns dict {house_id: (application, score)}.
+    `resources` are _AllocationResource objects (whole house or single room).
+    Returns dict {resource.key: (application, score)}.
     """
-    available_houses = [h for h in houses if h.is_available]
-    if not available_houses or not applications:
+    available = [r for r in resources if r.is_available]
+    if not available or not applications:
         return {}
 
     n_apps = len(applications)
-    n_houses = len(available_houses)
-    size = max(n_apps, n_houses)
+    n_res = len(available)
+    size = max(n_apps, n_res)
 
     INF = 1e9
     cost = [[INF] * size for _ in range(size)]
 
     for i, app in enumerate(applications):
-        for j, house in enumerate(available_houses):
-            ok, _ = check_allocation_constraints(app, house)
+        for j, res in enumerate(available):
+            ok, _ = check_allocation_constraints(
+                app, res.house, room=res.room, allocation_mode=res.allocation_mode,
+            )
             if ok:
                 cat, _ = determine_eligible_category(app)
-                if house.house_type == cat:
+                if res.house.house_type == cat:
                     cost[i][j] = -float(app.priority_score)
                 else:
                     cost[i][j] = -float(app.priority_score) * 0.5
@@ -1167,14 +1525,16 @@ def hungarian_assign(applications, houses):
 
     result = {}
     for j in range(1, n + 1):
-        if p[j] != 0 and p[j] <= n_apps and j <= n_houses:
+        if p[j] != 0 and p[j] <= n_apps and j <= n_res:
             app_idx = p[j] - 1
-            house_idx = j - 1
+            res_idx = j - 1
             app = applications[app_idx]
-            house = available_houses[house_idx]
-            ok, _ = check_allocation_constraints(app, house)
+            res = available[res_idx]
+            ok, _ = check_allocation_constraints(
+                app, res.house, room=res.room, allocation_mode=res.allocation_mode,
+            )
             if ok:
-                result[house.house_id] = (app, float(app.priority_score))
+                result[res.key] = (app, float(app.priority_score))
 
     return result
 
@@ -1211,14 +1571,16 @@ def get_ranked_queue(category=None, recalculate=False):
     for app in apps_to_score:
         results, best = analyze_eligibility(app)
         cat = best
+        mode, _ = determine_allocation_mode(app)
         total, breakdown, reasons = compute_mcda_score(app, config)
         app.eligible_house_category = cat
         app.eligibility_analysis = results
+        app.allocation_mode = mode
         app.priority_score = total
         app.score_breakdown = breakdown
         app.save(update_fields=[
-            "eligible_house_category", "eligibility_analysis", "priority_score",
-            "score_breakdown", "updated_at",
+            "eligible_house_category", "eligibility_analysis", "allocation_mode",
+            "priority_score", "score_breakdown", "updated_at",
         ])
 
     apps = list(qs)

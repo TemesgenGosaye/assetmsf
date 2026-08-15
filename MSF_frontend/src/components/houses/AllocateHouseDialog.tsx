@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Sparkles, User, Star } from "lucide-react";
+import { Loader2, Sparkles, User, Star, BedDouble } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,10 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { allocateHouse, type AllocationType } from "@/services/houseAllocations";
-import { type HouseApplication } from "@/services/houseApplication";
+import {
+  determineAllocationMode,
+  type HouseApplication,
+} from "@/services/houseApplication";
 import { type AvailableHouse, type AvailableCandidate } from "@/services/houseAnalytics";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +73,7 @@ export function AllocateHouseDialog({
   const [mode, setMode] = useState<AllocateMode>("Auto");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [roomLabel, setRoomLabel] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -95,6 +99,20 @@ export function AllocateHouseDialog({
     [pool, selectedId],
   );
 
+  const activeApp = selected ?? (mode === "Auto" ? pool.find((c) => c.id === resolvedRecommendedId) ?? null : null);
+  const activeMode = activeApp ? determineAllocationMode(activeApp) : null;
+  const vacantRooms = house?.available_rooms ?? [];
+
+  // Default the room to the engine's recommended room, else the first vacant room.
+  useEffect(() => {
+    if (!open || !house) return;
+    const preferred = recommended?.room_label && vacantRooms.includes(recommended.room_label)
+      ? recommended.room_label
+      : (vacantRooms[0] ?? "");
+    setRoomLabel(preferred);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, house?.house_id, recommended?.application_id]);
+
   const handleSubmit = async () => {
     if (!house) return;
     const app = selected ?? (mode === "Auto" ? pool.find((c) => c.id === resolvedRecommendedId) ?? pool[0] : null);
@@ -113,10 +131,14 @@ export function AllocateHouseDialog({
         application_id: app.id,
         allocation_type: mode,
         notes,
+        ...(activeMode === "ROOM_ALLOCATION" && roomLabel ? { room_label: roomLabel } : {}),
         ...(mode === "Override" ? { override_reason: overrideReason } : {}),
       });
-      toast.success(`Allocated ${house.hid} to ${app.employee_name} (${mode})`);
-      onAllocated?.(mode, app.employee_name, house.hid);
+      const unit = activeMode === "ROOM_ALLOCATION" && roomLabel
+        ? `${house.hid} — Room ${roomLabel}`
+        : house.hid;
+      toast.success(`Allocated ${unit} to ${app.employee_name} (${mode})`);
+      onAllocated?.(mode, app.employee_name, unit);
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e?.message || "Failed to allocate house");
@@ -135,7 +157,7 @@ export function AllocateHouseDialog({
           </DialogTitle>
           <DialogDescription>
             {house
-              ? `${house.house_number} · ${house.house_type} · ${house.location} · ${house.vacant} vacancy(ies)`
+              ? `${house.house_number} · ${house.house_type} · ${house.location} · ${vacantRooms.length} vacant room(s)`
               : ""}
           </DialogDescription>
         </DialogHeader>
@@ -196,6 +218,11 @@ export function AllocateHouseDialog({
                 <Badge variant="secondary" className="ml-auto shrink-0">
                   {Math.round(Number(recommended?.closeness ?? 0) * 100)}% fit
                 </Badge>
+                {recommended?.room_label && (
+                  <Badge className="shrink-0 bg-sky-500/10 text-sky-700 dark:text-sky-400">
+                    Room {recommended.room_label}
+                  </Badge>
+                )}
               </button>
             )}
             <Input
@@ -223,8 +250,21 @@ export function AllocateHouseDialog({
                   >
                     <User className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium text-foreground">
-                        {c.employee_name}
+                      <span className="flex items-center gap-2">
+                        <span className="truncate font-medium text-foreground">
+                          {c.employee_name}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "shrink-0 text-[10px]",
+                            determineAllocationMode(c) === "ROOM_ALLOCATION"
+                              ? "border-sky-300 text-sky-700 dark:text-sky-400"
+                              : "border-violet-300 text-violet-700 dark:text-violet-400",
+                          )}
+                        >
+                          {determineAllocationMode(c) === "ROOM_ALLOCATION" ? "Room" : "House"}
+                        </Badge>
                       </span>
                       <span className="block text-xs text-muted-foreground">
                         {c.application_no} · {c.employee_id} · Grade {c.job_grade || "—"}
@@ -243,6 +283,47 @@ export function AllocateHouseDialog({
               </div>
             </ScrollArea>
           </div>
+
+          {/* ── Room selection (single applicants) ──────────────── */}
+          {activeMode === "ROOM_ALLOCATION" && (
+            <div className="space-y-2 rounded-lg border border-sky-200 bg-sky-50/60 p-3 dark:border-sky-500/30 dark:bg-sky-500/5">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-sky-800 dark:text-sky-300">
+                  <BedDouble className="mr-1 inline h-4 w-4" />
+                  Assign Room
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  {activeApp?.employee_name} qualifies for a single room
+                </span>
+              </div>
+              {vacantRooms.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No vacant rooms in this house — switch to Override to force.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {vacantRooms.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setRoomLabel(r)}
+                      className={cn(
+                        "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
+                        roomLabel === r
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background hover:border-primary/50",
+                      )}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Unit: <span className="font-medium">{house?.hid}{roomLabel ? ` — Room ${roomLabel}` : ""}</span>
+              </p>
+            </div>
+          )}
 
           {/* ── Reason / notes ────────────────────────────────────── */}
           <div className="space-y-2">

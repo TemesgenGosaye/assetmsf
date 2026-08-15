@@ -48,35 +48,7 @@ function highlight(text: string, term: string) {
   );
 }
 
-function toCsv(columns: ColDef[], rows: any[]): string {
-  const visibleCols = columns.filter((c) => !c.defaultHidden);
-  const headers = visibleCols
-    .map((c) => `"${c.header.replace(/"/g, '""')}"`)
-    .join(",");
-  const body = rows
-    .map((row) =>
-      visibleCols
-        .map((c) => {
-          const raw = c.value ? c.value(row) : "";
-          const str = raw == null ? "" : String(raw);
-          return `"${str.replace(/"/g, '""')}"`;
-        })
-        .join(","),
-    )
-    .join("\n");
-  return `${headers}\n${body}`;
-}
-
-function downloadCsv(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${filename}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  a.remove();
-}
+// CSV export logic has been moved to exportService.ts
 
 const LS_PREFIX = "dt:";
 
@@ -141,6 +113,7 @@ export function DataTable<T>({
   toolbarLeft,
   toolbarRight,
   exportFileName,
+  reportTitle,
   pageSize = 50,
   hideToolbar = false,
   className,
@@ -386,6 +359,45 @@ export function DataTable<T>({
 
   const hasTotals = columns.some((c) => c.footer);
 
+  const resolvedFileName = exportFileName || (title ? title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") : "report_export");
+  const resolvedTitle = reportTitle || title || "Report Export";
+
+  const exportProps = {
+    title: resolvedTitle,
+    fileName: resolvedFileName,
+    columns: visibleColumns.map(c => ({
+      header: c.header,
+      key: c.key,
+      align: c.align
+    })),
+    getRows: () => filtered.map(row => 
+      visibleColumns.map(c => {
+        if (c.value) return c.value(row);
+        const val = (row as any)[c.key];
+        return val == null ? "" : String(val);
+      })
+    ),
+    getSelectedRows: selectable && selected.size > 0 ? () => filtered.filter(row => selected.has(rowKey(row))).map(row => 
+      visibleColumns.map(c => {
+        if (c.value) return c.value(row);
+        const val = (row as any)[c.key];
+        return val == null ? "" : String(val);
+      })
+    ) : undefined,
+    totalCount: filtered.length,
+    selectedCount: selected.size,
+    filters: [
+      search ? `Search: "${search}"` : "",
+      ...Object.entries(activeFilters)
+        .filter(([, v]) => v)
+        .map(([k, v]) => {
+          const filterDef = filters?.find(f => f.key === k);
+          const opt = filterOptions[k]?.find(o => o.value === v);
+          return `${filterDef?.label || k}: ${opt?.label || v}`;
+        })
+    ].filter(Boolean).join(", ") || undefined
+  };
+
   return (
     <div
       className={cn(
@@ -416,7 +428,7 @@ export function DataTable<T>({
           onToggleColumn={toggleColumn}
           onResetColumns={resetColumns}
           exportFileName={exportFileName}
-          onExport={() => downloadCsv(toCsv(columns, filtered), exportFileName!)}
+          exportProps={exportProps}
         />
       )}
 
@@ -661,7 +673,7 @@ export function DataTable<T>({
                              textSize,
                              rowHeight,
                              px,
-                             "border-r border-b border-border/70 align-middle text-foreground/90 last:border-r-0 transition-colors group-hover:text-foreground",
+                             "whitespace-nowrap border-r border-b border-border/70 align-middle text-foreground/90 last:border-r-0 transition-colors group-hover:text-foreground",
                              col.align === "right"
                                ? "text-right"
                                : col.align === "center"

@@ -22,6 +22,7 @@ import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
 import { listDepartments, type Department } from "@/services/departments";
 import { listProperties, type Property } from "@/services/properties";
 import { verifyAssetViaScan, listMyScansForSession } from "@/services/auditScans";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { BrowserMultiFormatReader } from "@zxing/browser";
@@ -1047,7 +1048,7 @@ export default function Audit() {
           <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div className="max-w-3xl space-y-4">
               <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                Audit Management
+                Audit Management የኦዲት አስተዳደር
               </h1>
               <p className="text-lg text-muted-foreground">
                 Verify assets, track discrepancies, and generate comprehensive reports for your department.
@@ -1354,6 +1355,19 @@ export default function Audit() {
                       Scan
                     </Button>
                   )}
+                  <ReportExportMenu
+                    title="Audit Reconciliation Report"
+                    fileName="audit_reconciliation"
+                    columns={[
+                      { header: "Asset ID", key: "id" },
+                      { header: "Name", key: "name" },
+                      { header: "Status", key: "status" },
+                      { header: "Comments", key: "comment" },
+                    ]}
+                    getRows={() => rows.map((r) => [r.id, r.name, r.status, r.comment || ""])}
+                    totalCount={rows.length}
+                    filters={department ? `Department: ${department}` : undefined}
+                  />
                 </div>
               </div>
               {(() => {

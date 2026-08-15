@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   User, Briefcase, Calendar, Users, FileText, Trash2,
-  Hash, ShieldAlert, Award, Clock, Accessibility
+  Hash, ShieldAlert, Award, Clock, Accessibility, HeartHandshake
 } from "lucide-react";
 import StatusChip from "@/components/ui/status-chip";
 import DetailPage from "@/components/detail/DetailPage";
@@ -104,7 +104,9 @@ breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Employees", to: "/e
           titleIcon: User,
           fields: [
             { icon: Hash, label: "Employee ID", value: <span className="font-mono">{employee.employee_id}</span> },
+            { icon: User, label: "Full Name", value: employee.full_name },
             { icon: ShieldAlert, label: "National ID", value: <span className="font-mono">{employee.national_id}</span> },
+            { icon: HeartHandshake, label: "Marital Status", value: employee.marital_status || "—" },
             { icon: Users, label: "Family Size", value: employee.family_size ? employee.family_size.toString() : "0" },
           ],
         },
@@ -113,7 +115,9 @@ breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Employees", to: "/e
           titleIcon: Briefcase,
           fields: [
             { icon: Briefcase, label: "Department", value: employee.department_name || "—" },
+            { icon: Briefcase, label: "Job Position", value: employee.job_position || "—" },
             { icon: Award, label: "Job Grade", value: employee.job_grade || "—" },
+            { icon: Award, label: "Job Type", value: employee.job_type || "—" },
             { icon: Calendar, label: "Hire Date", value: employee.hire_date ? new Date(employee.hire_date).toLocaleDateString() : "—" },
           ],
         },
@@ -136,7 +140,7 @@ breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Employees", to: "/e
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <span className="text-muted-foreground">Years of Service</span>
               </div>
-              <span className="font-bold text-foreground">{employee.service_years} years</span>
+              <span className="font-bold text-foreground tabular-nums">{employee.service_duration || `${employee.service_years} years`}</span>
             </div>
             <Separator />
             <div className="space-y-2">

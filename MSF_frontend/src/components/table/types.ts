@@ -100,6 +100,8 @@ export type DataTableProps<T = any> = {
   toolbarRight?: React.ReactNode;
   /** CSV export file name (no extension) */
   exportFileName?: string;
+  /** Report title used for exports (PDF, Excel, Print) */
+  reportTitle?: string;
   /** Client-side page size (0 = no pagination) */
   pageSize?: number;
   /** Hide the toolbar entirely */

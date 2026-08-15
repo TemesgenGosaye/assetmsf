@@ -3,6 +3,7 @@ import '@/lib/toast-global'
 import App from './App.tsx'
 import { initNotificationSound } from '@/lib/sound'
 import './index.css'
+import './styles/print.css'
 import { HelmetProvider } from 'react-helmet-async'
 import { ConfirmProvider } from '@/components/ui/confirm-dialog'
 

@@ -8,7 +8,6 @@ export type Employee = {
   id: string;
   employee_id: string;
   full_name: string;
-  names: string;
   national_id: string;
   job_position: string;
   job_grade: string;
@@ -17,6 +16,7 @@ export type Employee = {
   department_name: string | null;
   hire_date: string | null;
   service_years: number;
+  service_duration: string;
   family_size: number;
   marital_status: string;
   has_disability: boolean;
@@ -28,8 +28,8 @@ export type Employee = {
 };
 
 export type EmployeeFormData = {
+  employee_id: string;         // Manually entered by HR, never auto-generated
   full_name: string;
-  names: string;
   national_id: string;
   job_position: string;
   job_grade: string;
@@ -37,6 +37,7 @@ export type EmployeeFormData = {
   department: string | null;  // UUID
   hire_date: string | null;
   family_size: number;
+  marital_status: string;
   has_disability: boolean;
   status: "Active" | "On Leave" | "Terminated";
   cv_file?: File | null;
@@ -57,7 +58,6 @@ function fromDjango(row: any): Employee {
     id: String(row.id),
     employee_id: row.employee_id ?? "",
     full_name: row.full_name ?? "",
-    names: row.names ?? "",
     national_id: row.national_id ?? "",
     job_position: row.job_position ?? "",
     job_grade: row.job_grade ?? "",
@@ -66,6 +66,7 @@ function fromDjango(row: any): Employee {
     department_name: row.department_name ?? null,
     hire_date: row.hire_date ?? null,
     service_years: row.service_years ?? 0,
+    service_duration: row.service_duration ?? "",
     family_size: row.family_size ?? 0,
     marital_status: row.marital_status ?? "Single",
     has_disability: !!row.has_disability,
@@ -80,8 +81,8 @@ function fromDjango(row: any): Employee {
 /** Builds FormData for multipart POST/PUT (supports cv_file upload) */
 function toFormData(data: EmployeeFormData): FormData {
   const fd = new FormData();
+  fd.append("employee_id", data.employee_id);
   fd.append("full_name", data.full_name);
-  fd.append("names", data.names ?? "");
   fd.append("national_id", data.national_id);
   fd.append("job_position", data.job_position);
   fd.append("job_grade", data.job_grade ?? "");
@@ -89,6 +90,7 @@ function toFormData(data: EmployeeFormData): FormData {
   if (data.department) fd.append("department", data.department);
   if (data.hire_date) fd.append("hire_date", data.hire_date);
   fd.append("family_size", String(data.family_size ?? 0));
+  fd.append("marital_status", data.marital_status ?? "Single");
   fd.append("has_disability", data.has_disability ? "true" : "false");
   fd.append("status", data.status);
   if (data.cv_file instanceof File) {
@@ -133,8 +135,8 @@ export async function createEmployee(data: EmployeeFormData): Promise<Employee> 
     // Use JSON for non-file submissions — avoids boolean string parsing issues
     headers["Content-Type"] = "application/json";
     body = JSON.stringify({
+      employee_id: data.employee_id,
       full_name: data.full_name,
-      names: data.names ?? "",
       national_id: data.national_id,
       job_position: data.job_position,
       job_grade: data.job_grade ?? "",
@@ -142,6 +144,7 @@ export async function createEmployee(data: EmployeeFormData): Promise<Employee> 
       department: data.department ?? null,
       hire_date: data.hire_date ?? null,
       family_size: data.family_size ?? 0,
+      marital_status: data.marital_status ?? "Single",
       has_disability: Boolean(data.has_disability),
       status: data.status,
     });
@@ -173,8 +176,8 @@ export async function updateEmployee(id: string, data: EmployeeFormData): Promis
   } else {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify({
+      employee_id: data.employee_id,
       full_name: data.full_name,
-      names: data.names ?? "",
       national_id: data.national_id,
       job_position: data.job_position,
       job_grade: data.job_grade ?? "",
@@ -182,6 +185,7 @@ export async function updateEmployee(id: string, data: EmployeeFormData): Promis
       department: data.department ?? null,
       hire_date: data.hire_date ?? null,
       family_size: data.family_size ?? 0,
+      marital_status: data.marital_status ?? "Single",
       has_disability: Boolean(data.has_disability),
       status: data.status,
     });

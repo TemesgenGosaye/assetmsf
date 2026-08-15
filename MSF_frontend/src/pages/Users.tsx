@@ -1243,7 +1243,7 @@ export default function Users() {
         <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              People & Access
+              People & Access | የተጠቃሚዎች እና መዳረሻ አስተዳደር
             </h1>
             <p className="mt-2 max-w-2xl text-muted-foreground">
               Curate roles, onboarding, and audit trails for everyone using SAMS

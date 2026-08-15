@@ -262,52 +262,104 @@ export default function Login() {
 
   const stepInfo = stepLabels[step];
 
+  // Force body background to match preloader on mount, restore on unmount
+  useEffect(() => {
+    const prev = document.body.style.background;
+    document.body.style.background = "none";
+    document.body.style.backgroundColor = isDark ? "hsl(220, 20%, 10%)" : "#ffffff";
+    return () => {
+      document.body.style.background = prev;
+      document.body.style.backgroundColor = "";
+    };
+  }, [isDark]);
+
+  const loaderBg = isDark
+    ? {
+        backgroundColor: "hsl(220, 20%, 10%)",
+        backgroundImage: [
+          "radial-gradient(120vmax 60vmax at 50% -10%, hsla(16,52%,58%,0.45), transparent 70%)",
+          "radial-gradient(90vmax 60vmax at 100% 100%, hsla(217,91%,60%,0.08), transparent 60%)",
+          "radial-gradient(hsl(16 52% 58% / 0.12) 1px, transparent 1.6px)",
+        ].join(", "),
+        backgroundSize: "auto, auto, 28px 28px",
+        backgroundPosition: "center, center, 0 0",
+      }
+    : {
+        backgroundColor: "#ffffff",
+        backgroundImage: [
+          "radial-gradient(120vmax 60vmax at 50% -10%, hsla(16,52%,58%,0.22), transparent 70%)",
+          "radial-gradient(90vmax 60vmax at 100% 100%, hsla(217,91%,60%,0.08), transparent 60%)",
+          "radial-gradient(hsl(16 52% 58% / 0.08) 1px, transparent 1.6px)",
+        ].join(", "),
+        backgroundSize: "auto, auto, 28px 28px",
+        backgroundPosition: "center, center, 0 0",
+      };
+
   return (
-    <div className="elogin">
+    <div className="elogin" style={loaderBg}>
       <style>{`
         .elogin {
           --el-display: 'Fraunces', Georgia, 'Times New Roman', serif;
           --el-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          --el-brand-glow: hsla(16, 52%, 58%, 0.22);
+          --el-brand-primary: hsl(16, 52%, 58%);
           position: relative;
           min-height: 100dvh;
           width: 100%;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          background: hsl(var(--background));
+          /* Light mode — matches preloader exactly */
+          background-color: #ffffff;
+          background-image:
+            radial-gradient(120vmax 60vmax at 50% -10%, var(--el-brand-glow), transparent 70%),
+            radial-gradient(90vmax 60vmax at 100% 100%, hsla(217, 91%, 60%, 0.08), transparent 60%),
+            radial-gradient(hsl(16 52% 58% / 0.08) 1px, transparent 1.6px);
+          background-size: auto, auto, 28px 28px;
+          background-position: center, center, 0 0;
           color: hsl(var(--foreground));
           font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
 
-        /* ── Minimal backdrop ── */
-        .elogin-bg { position: absolute; inset: 0; z-index: 0; }
+        /* Dark mode — matches preloader dark theme */
+        .dark .elogin,
+        html.dark .elogin {
+          --el-brand-glow: hsla(16, 52%, 58%, 0.45);
+          background-color: hsl(220, 20%, 10%);
+          background-image:
+            radial-gradient(120vmax 60vmax at 50% -10%, var(--el-brand-glow), transparent 70%),
+            radial-gradient(90vmax 60vmax at 100% 100%, hsla(217, 91%, 60%, 0.08), transparent 60%),
+            radial-gradient(hsl(16 52% 58% / 0.12) 1px, transparent 1.6px);
+          background-size: auto, auto, 28px 28px;
+          background-position: center, center, 0 0;
+        }
+
+        /* ── Ambient corner glows (matching preloader ::before / ::after) ── */
+        .elogin-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
         .elogin-glow {
           position: absolute;
           border-radius: 50%;
-          filter: blur(90px);
+          filter: blur(110px);
+          opacity: 0.25;
           pointer-events: none;
+          animation: elogin-pulse 10s infinite alternate ease-in-out;
         }
         .elogin-glow-a {
-          width: 620px; height: 620px;
-          left: 50%; top: -280px;
-          transform: translateX(-50%);
-          background: hsl(16 52% 58% / 0.13);
+          top: -15%; left: -10%;
+          width: 50vmin; height: 50vmin;
+          background: var(--el-brand-primary);
         }
         .elogin-glow-b {
-          width: 560px; height: 560px;
-          right: -200px; bottom: -220px;
-          background: hsl(16 52% 70% / 0.10);
+          bottom: -15%; right: -10%;
+          width: 45vmin; height: 45vmin;
+          background: hsl(217, 91%, 60%);
+          animation-delay: -5s;
         }
-        html.dark .elogin-glow-a { background: hsl(16 52% 58% / 0.10); }
-        html.dark .elogin-glow-b { background: hsl(16 52% 58% / 0.07); }
-        .elogin-grid {
-          position: absolute; inset: 0;
-          pointer-events: none;
-          background-image: radial-gradient(hsl(16 52% 58% / 0.08) 1px, transparent 1.5px);
-          background-size: 28px 28px;
-          -webkit-mask-image: radial-gradient(ellipse 70% 65% at 50% 38%, #000 18%, transparent 78%);
-          mask-image: radial-gradient(ellipse 70% 65% at 50% 38%, #000 18%, transparent 78%);
+        @keyframes elogin-pulse {
+          0% { transform: scale(1) translate(0, 0); }
+          100% { transform: scale(1.2) translate(4%, 4%); }
         }
+        .elogin-grid { display: none; }
 
         /* ── Top bar ── */
         .elogin-top {
@@ -678,7 +730,7 @@ export default function Login() {
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .elogin-card, .elogin-step, .elogin-shake { animation: none !important; }
+          .elogin-card, .elogin-step, .elogin-shake, .elogin-glow { animation: none !important; }
         }
       `}</style>
 

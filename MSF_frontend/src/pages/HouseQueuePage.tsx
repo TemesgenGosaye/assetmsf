@@ -19,7 +19,8 @@ import StatusChip from "@/components/ui/status-chip";
 import { cn } from "@/lib/utils";
 import {
   getRankedQueue, listAllocationLogs, updateApplicationStatus,
-  batchAllocateAll, type BatchAllocateResult,
+  batchAllocateAll, determineAllocationMode, allocationModeLabel,
+  type BatchAllocateResult,
   type HouseApplication, type ApplicationStatus,
   type ScoreBreakdown, type CriterionContribution,
 } from "@/services/houseApplication";
@@ -432,11 +433,39 @@ export default function HouseQueuePage() {
         cell: (app) => app.allocated_house ? (
           <div className="flex items-center gap-1.5">
             <Home className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-            <span className="truncate text-xs font-bold text-emerald-600 dark:text-emerald-300">{app.allocated_house}</span>
+            <span className="truncate text-xs font-bold text-emerald-600 dark:text-emerald-300">
+              {app.allocated_resource
+                ?? `${app.allocated_house}${app.allocated_room_label ? ` — Room ${app.allocated_room_label}` : ""}`}
+            </span>
           </div>
         ) : (
           <span className="text-xs text-slate-600 dark:text-slate-400">\u2014</span>
         ),
+      },
+      {
+        key: "allocation_mode",
+        header: "Unit",
+        width: "w-28",
+        sortable: true,
+        value: (app) => app.allocation_mode || determineAllocationMode(app),
+        cell: (app) => {
+          const mode = app.allocation_mode || determineAllocationMode(app);
+          return mode ? (
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[10px] font-bold px-2 py-0.5",
+                mode === "ROOM_ALLOCATION"
+                  ? "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                  : "border-violet-500/40 bg-violet-500/10 text-violet-600 dark:text-violet-400",
+              )}
+            >
+              {mode === "ROOM_ALLOCATION" ? "Room" : "House"}
+            </Badge>
+          ) : (
+            <span className="text-xs text-slate-600 dark:text-slate-400">\u2014</span>
+          );
+        },
       },
       {
         key: "status",
@@ -596,7 +625,7 @@ export default function HouseQueuePage() {
             <p><span className="font-medium text-slate-500">Priority Score:</span> {app.priority_score?.toFixed(2) || "N/A"}</p>
             <p><span className="font-medium text-slate-500">Queue Position:</span> #{app.queuePosition}</p>
             {app.allocated_house && (
-              <p><span className="font-medium text-slate-500">Allocated House:</span> {app.allocated_house}</p>
+              <p><span className="font-medium text-slate-500">Allocated Unit:</span> {app.allocated_resource ?? `${app.allocated_house}${app.allocated_room_label ? ` — Room ${app.allocated_room_label}` : ""}`}</p>
             )}
           </div>
         </div>
@@ -834,6 +863,20 @@ export default function HouseQueuePage() {
 
                          <div className="flex items-center gap-2 flex-wrap mb-2">
                            {app.eligible_house_category && <CategoryBadge category={app.eligible_house_category} />}
+                           {(() => {
+                             const mode = app.allocation_mode || determineAllocationMode(app);
+                             if (!mode) return null;
+                             return (
+                               <span className={cn(
+                                 "inline-flex items-center text-[10px] font-bold border px-2 py-1 rounded-md",
+                                 mode === "ROOM_ALLOCATION"
+                                   ? "text-sky-500 bg-sky-500/10 border-sky-500/30"
+                                   : "text-violet-500 bg-violet-500/10 border-violet-500/30",
+                               )}>
+                                 {mode === "ROOM_ALLOCATION" ? "Room" : "Whole house"}
+                               </span>
+                             );
+                           })()}
                            {app.supporting_document && (
                              <span className="inline-flex items-center text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-md gap-1">
                                <Paperclip className="h-3 w-3" /> Doc
@@ -923,7 +966,7 @@ export default function HouseQueuePage() {
                     <div className="space-y-2">
                       {batchResult.allocated.map((r) => (
                         <div key={r.house_id} className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
-                          <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{r.house_id}</span>
+                          <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">{r.resource ?? r.house_id}</span>
                           <span className="text-sm font-bold text-emerald-900 dark:text-emerald-100">{r.allocated_to || r.application_no}</span>
                           <Badge variant="outline" className="text-xs font-bold border-emerald-500/40 bg-emerald-500/20 text-emerald-300 px-2">{r.score || "\u2014"} pts</Badge>
                         </div>

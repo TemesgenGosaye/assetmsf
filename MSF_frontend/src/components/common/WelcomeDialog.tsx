@@ -102,10 +102,7 @@ function CrystalPattern({ color = "rgba(255,255,255,0.08)" }: { color?: string }
 /* ─── Full-page celebration ────────────────────────────────
    A restrained, tasteful burst of light when the user enters.
    Shockwave rings from the button, then a soft shower. Self-cleans. */
-const STAR_PALETTE = [
-  "#fbbf24", "#f59e0b", "#fde047", "#f472b6", "#c084fc",
-  "#818cf8", "#38bdf8", "#34d399", "#fb7185",
-];
+const STAR_PALETTE: string[] = [];
 const STAR_PATH = "M12 1.9l2.85 6.2 6.75.6-5.05 4.55 1.5 6.6L12 16.5 5.95 19.85l1.5-6.6L2.4 8.7l6.75-.6z";
 
 type ParticleKind = "star" | "spark" | "strip";
@@ -192,44 +189,8 @@ function ringBurst(x: number, y: number, color: string, duration: number) {
   requestAnimationFrame(tick);
 }
 
-function celebrate(origin: HTMLElement | null) {
-  const rect = origin ? origin.getBoundingClientRect() : null;
-  const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-  const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-
-  ringBurst(cx, cy, STAR_PALETTE[1], 650);
-  ringBurst(cx, cy, STAR_PALETTE[4], 830);
-
-  const kinds: ParticleKind[] = ["star", "star", "spark", "strip", "spark"];
-  for (let i = 0; i < 40; i++) {
-    const angle = (Math.PI * 2 * i) / 40 + (Math.random() - 0.5) * 0.6;
-    const speed = 120 + Math.random() * 240;
-    launchParticle({
-      kind: kinds[i % kinds.length],
-      x: cx,
-      y: cy,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 60,
-      gravity: 170,
-      size: 8 + Math.random() * 14,
-      life: 900 + Math.random() * 800,
-    });
-  }
-
-  setTimeout(() => {
-    for (let i = 0; i < 60; i++) {
-      launchParticle({
-        kind: i % 4 === 0 ? "star" : i % 3 === 0 ? "strip" : "spark",
-        x: Math.random() * window.innerWidth,
-        y: -20 - Math.random() * 80,
-        vx: (Math.random() - 0.5) * 80,
-        vy: 40 + Math.random() * 120,
-        gravity: 240,
-        size: 7 + Math.random() * 12,
-        life: 1800 + Math.random() * 1600,
-      });
-    }
-  }, 220);
+function celebrate(_origin: HTMLElement | null) {
+  // disabled falling celebration particles
 }
 
 /* ─── Main component ─────────────────────────────────────── */

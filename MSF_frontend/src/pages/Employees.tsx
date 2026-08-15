@@ -38,8 +38,8 @@ import { API_BASE_URL } from "@/services/djangoAuth";
 type DeptOption = { id: string; name: string };
 
 const EMPTY_FORM: EmployeeFormData = {
-  full_name: "", names: "", national_id: "", job_position: "", job_grade: "", job_type: "Permanent",
-  department: null, hire_date: null, family_size: 0, has_disability: false, status: "Active", cv_file: null,
+  employee_id: "", full_name: "", national_id: "", job_position: "", job_grade: "", job_type: "Permanent",
+  department: null, hire_date: null, family_size: 0, marital_status: "Single", has_disability: false, status: "Active", cv_file: null,
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -116,7 +116,7 @@ export default function Employees() {
   });
 
   // ── Live data (stale-while-revalidate — no blocking spinner) ───────────
-  // Invalidate stale cache on mount so `names` and other new fields always load fresh
+  // Invalidate stale cache on mount so fields always load fresh
   useEffect(() => {
     invalidateCache("employees:list");
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -210,16 +210,7 @@ export default function Employees() {
       ),
     },
     {
-      key: "names", header: "Names", sortable: true, width: "min-w-[140px]",
-      value: e => e.names,
-      cell: e => (
-        <span className="text-sm font-medium text-foreground">
-          {e.names || <span className="text-muted-foreground/40 text-xs">—</span>}
-        </span>
-      ),
-    },
-    {
-      key: "full_name", header: "Employee", sortable: true, width: "min-w-[180px]",
+      key: "full_name", header: "Fname", sortable: true, width: "min-w-[180px]",
       value: e => e.full_name,
       cell: e => (
         <div className="flex items-center gap-3">
@@ -270,9 +261,13 @@ export default function Employees() {
       cell: e => <span className="tabular-nums text-xs">{e.hire_date ?? "—"}</span>,
     },
     {
-      key: "service_years", header: "Yrs", width: "w-16", align: "center",
-      value: e => e.service_years,
-      cell: e => <span className="tabular-nums text-xs font-medium">{e.service_years}</span>,
+      key: "service_years", header: "Service", width: "w-28", align: "center",
+      value: e => e.service_duration || `${e.service_years} yrs`,
+      cell: e => (
+        <span className="tabular-nums text-xs font-medium">
+          {e.service_duration || (e.service_years ? `${e.service_years} yrs` : <span className="text-muted-foreground/40">—</span>)}
+        </span>
+      ),
     },
     {
       key: "family_size", header: "Family", width: "w-16", align: "center", defaultHidden: true,
@@ -317,12 +312,13 @@ export default function Employees() {
   const openAdd = () => { setEditingId(null); setForm(EMPTY_FORM); if (cvInputRef.current) cvInputRef.current.value = ""; setDialogOpen(true); };
   const openEdit = (emp: Employee) => {
     setEditingId(emp.id);
-    setForm({ full_name: emp.full_name, names: emp.names ?? "", national_id: emp.national_id, job_position: emp.job_position, job_grade: emp.job_grade, job_type: emp.job_type || "Permanent", department: emp.department, hire_date: emp.hire_date, family_size: emp.family_size, has_disability: emp.has_disability, status: emp.status, cv_file: null });
+    setForm({ employee_id: emp.employee_id, full_name: emp.full_name, national_id: emp.national_id, job_position: emp.job_position, job_grade: emp.job_grade, job_type: emp.job_type || "Permanent", department: emp.department, hire_date: emp.hire_date, family_size: emp.family_size, marital_status: emp.marital_status || "Single", has_disability: emp.has_disability, status: emp.status, cv_file: null });
     if (cvInputRef.current) cvInputRef.current.value = "";
     setDialogOpen(true);
   };
 
   const handleSubmit = async () => {
+    if (!form.employee_id.trim()) { toast.error("Employee ID is required — it must be entered manually."); return; }
     if (!form.full_name.trim() || !form.national_id.trim() || !form.job_position.trim()) { toast.error("Full name, national ID and position are required."); return; }
     if (!form.department) { toast.error("Department is required."); return; }
     const ok = await requireSu(editingId ? "Authorise update" : "Authorise creation", editingId ? "Superuser password required to update this employee record." : "Superuser password required to create a new employee.", editingId ? "Save Changes" : "Create Employee");
@@ -384,7 +380,7 @@ export default function Employees() {
   };
 
   const downloadTemplate = () => {
-    const t = [{ full_name: "Jane Doe", national_id: "1234567890", job_position: "Engineer", job_grade: "G5", job_type: "Permanent", department: "IT", hire_date: "2022-01-15", family_size: 2, has_disability: false, status: "Active" }];
+    const t = [{ employee_id: "", full_name: "", national_id: "", job_position: "", job_grade: "", job_type: "Permanent", department: "", hire_date: "", family_size: 0, marital_status: "Single", has_disability: false, status: "Active" }];
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(t, null, 2)], { type: "application/json" })); a.download = "SAMS_Employee_Template.json"; a.click(); URL.revokeObjectURL(a.href); a.remove();
   };
 
@@ -415,7 +411,7 @@ export default function Employees() {
         {/* Hero */}
         <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm">
           <div className="relative z-10 max-w-3xl space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Employee Management</h1>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Employee Management | የሰራተኞች አስተዳደር</h1>
             <p className="text-muted-foreground">Workforce records, service history and HR data — {metrics.total} employees total.</p>
           </div>
           <div className="absolute right-0 top-0 -z-10 h-full w-1/3 bg-gradient-to-l from-primary/5 to-transparent" />
@@ -513,12 +509,27 @@ export default function Employees() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Full Name <span className="text-destructive">*</span></Label>
-                  <Input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder="Jane Doe" />
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Employee ID <span className="text-destructive">*</span></Label>
+                  <Input value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value.toUpperCase() })} placeholder="EMP-00001" />
+                  <p className="text-[11px] text-muted-foreground">Entered by HR — never auto-generated.</p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Names</Label>
-                  <Input value={form.names} onChange={e => setForm({ ...form, names: e.target.value })} placeholder="Middle name, nickname or preferred name" />
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Marital Status</Label>
+                  <Select value={form.marital_status} onValueChange={v => setForm({ ...form, marital_status: v })}>
+                    <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Single">Single</SelectItem>
+                      <SelectItem value="Married">Married</SelectItem>
+                      <SelectItem value="Divorced">Divorced</SelectItem>
+                      <SelectItem value="Widowed">Widowed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Full Name <span className="text-destructive">*</span></Label>
+                  <Input value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} placeholder="Full legal name" />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">National ID <span className="text-destructive">*</span></Label>

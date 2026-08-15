@@ -41,15 +41,21 @@ export const assetPrintHTML = (asset: any) => {
 export const employeePrintHTML = (emp: any) => {
   const rows = [
     { label: 'Employee ID', value: emp.employee_id },
-    { label: 'Name', value: emp.full_name },
+    { label: 'Full Name', value: emp.full_name },
+    { label: 'National ID', value: emp.national_id || '-' },
     { label: 'Job Position', value: emp.job_position },
-    { label: 'Department', value: emp.department },
+    { label: 'Job Grade', value: emp.job_grade || '-' },
+    { label: 'Job Type', value: emp.job_type || '-' },
+    { label: 'Department', value: emp.department_name || emp.department || '-' },
     { label: 'Hire Date', value: emp.hire_date ? new Date(emp.hire_date).toLocaleDateString() : '-' },
+    { label: 'Years of Service', value: emp.service_duration || (emp.service_years != null ? `${emp.service_years} yrs` : '-') },
+    { label: 'Marital Status', value: emp.marital_status || '-' },
+    { label: 'Family Size', value: emp.family_size ?? '-' },
     { label: 'Status', value: emp.status },
   ];
   const rowsHtml = rows.map(r => `<div style="margin-bottom:6px;"><strong>${r.label}:</strong> ${r.value}</div>`).join('');
   return `
-    <html><head><title>Print Employee ${emp.id}</title></head><body style="font-family:Arial,Helvetica,sans-serif;padding:20px;">
+    <html><head><title>Print Employee ${emp.employee_id || emp.id}</title></head><body style="font-family:Arial,Helvetica,sans-serif;padding:20px;">
       <h2>Employee Detail</h2>
       ${rowsHtml}
     </body></html>`;

@@ -13,6 +13,7 @@ import MetricCard from "@/components/ui/metric-card";
 import { QrCode, Search, Download, Printer, Package, Building2, LayoutGrid, List as ListIcon, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import {
   Select,
   SelectContent,
@@ -800,7 +801,7 @@ export default function QRCodes() {
       <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
       <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">QR Code Management</h1>
+          <h1 className="text-3xl font-bold tracking-tight">QR Code Management | የ QR ኮድ አስተዳደር </h1>
           <p className="mt-2 max-w-2xl text-muted-foreground">
             Generate, manage, and print QR codes for asset tracking
           </p>
@@ -1003,10 +1004,47 @@ export default function QRCodes() {
 
               <DateRangePicker className="w-full" value={range} onChange={setRange} />
 
-              <Button onClick={handleDownloadAll} variant="outline" className="gap-2 w-full">
-                <Download className="h-4 w-4" />
-                Download All
-              </Button>
+              <div className="flex gap-2 w-full sm:col-span-2 xl:col-span-3 justify-end">
+                <Button onClick={handleDownloadAll} variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" />
+                  Download ZIP
+                </Button>
+                <ReportExportMenu
+                  title="QR Codes Registry Report"
+                  fileName="qr_codes_registry"
+                  columns={[
+                    { header: "QR ID", key: "id" },
+                    { header: "Asset ID", key: "assetId" },
+                    { header: "Asset Name", key: "assetName" },
+                    { header: "Property", key: "property" },
+                    { header: "Generated Date", key: "generatedDate" },
+                    { header: "Status", key: "status" },
+                  ]}
+                  getRows={() => sortedQRCodes.map((qr) => [
+                    qr.id,
+                    qr.assetId,
+                    qr.assetName || qr.assetId,
+                    qr.property || "",
+                    qr.generatedDate || "",
+                    qr.printed ? "Printed" : (qr.status || "Ready"),
+                  ])}
+                  getSelectedRows={selectedIds.size > 0 ? () => sortedQRCodes.filter(qr => selectedIds.has(qr.id)).map((qr) => [
+                    qr.id,
+                    qr.assetId,
+                    qr.assetName || qr.assetId,
+                    qr.property || "",
+                    qr.generatedDate || "",
+                    qr.printed ? "Printed" : (qr.status || "Ready"),
+                  ]) : undefined}
+                  totalCount={sortedQRCodes.length}
+                  selectedCount={selectedIds.size}
+                  filters={[
+                    searchTerm ? `Search: "${searchTerm}"` : "",
+                    filterProperty !== "all" ? `Property: ${filterProperty}` : "",
+                    filterStatus !== "all" ? `Status: ${filterStatus}` : "",
+                  ].filter(Boolean).join(", ") || undefined}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>

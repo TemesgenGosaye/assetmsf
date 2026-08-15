@@ -52,6 +52,29 @@ class House(BaseModel):
         REGULAR = "R", _("Regular")
         GUEST   = "G", _("Guest")
 
+    class RoomStatus(models.TextChoices):
+        VACANT   = "Vacant",   _("Vacant")
+        OCCUPIED = "Occupied", _("Occupied")
+        RESERVED = "Reserved", _("Reserved")
+        MAINTENANCE = "Maintenance", _("Under Maintenance")
+
+    HOUSE_TYPE_ROOMS = {
+        HouseType.STAFF: 3,
+        HouseType.TYPE_A: 3,
+        HouseType.TYPE_B: 3,
+        HouseType.TYPE_C: 2,
+        HouseType.TYPE_D: 1,
+        HouseType.TYPE_E: 1,
+    }
+    HOUSE_TYPE_ROOM_LABELS = {
+        HouseType.STAFF: ["R1", "R2", "R3"],
+        HouseType.TYPE_A: ["R1", "R2", "R3"],
+        HouseType.TYPE_B: ["R1", "R2", "R3"],
+        HouseType.TYPE_C: ["R1", "R2"],
+        HouseType.TYPE_D: ["R1"],
+        HouseType.TYPE_E: ["R1"],
+    }
+
     house_id = models.CharField(_("house ID"), max_length=20, unique=True, blank=True, db_index=True)
     house_number = models.CharField(
         _("house number"),
@@ -85,6 +108,24 @@ class House(BaseModel):
         help_text=_("R = Regular, G = Guest."),
     )
 
+    room_count = models.PositiveSmallIntegerField(_("room count"), default=1, editable=False)
+    room_labels = models.JSONField(_("room labels"), default=list, blank=True, editable=False)
+
+    r1_status = models.CharField(_("R1 status"), max_length=20, choices=RoomStatus.choices, default=RoomStatus.VACANT, blank=True)
+    r1_occupant_name = models.CharField(_("R1 occupant"), max_length=255, blank=True, default="")
+    r1_occupant_id = models.CharField(_("R1 occupant employee ID"), max_length=50, blank=True, default="")
+    r1_notes = models.CharField(_("R1 notes"), max_length=255, blank=True, default="")
+
+    r2_status = models.CharField(_("R2 status"), max_length=20, choices=RoomStatus.choices, default=RoomStatus.VACANT, blank=True)
+    r2_occupant_name = models.CharField(_("R2 occupant"), max_length=255, blank=True, default="")
+    r2_occupant_id = models.CharField(_("R2 occupant employee ID"), max_length=50, blank=True, default="")
+    r2_notes = models.CharField(_("R2 notes"), max_length=255, blank=True, default="")
+
+    r3_status = models.CharField(_("R3 status"), max_length=20, choices=RoomStatus.choices, default=RoomStatus.VACANT, blank=True)
+    r3_occupant_name = models.CharField(_("R3 occupant"), max_length=255, blank=True, default="")
+    r3_occupant_id = models.CharField(_("R3 occupant employee ID"), max_length=50, blank=True, default="")
+    r3_notes = models.CharField(_("R3 notes"), max_length=255, blank=True, default="")
+
     class Meta:
         db_table = "houses"
         verbose_name = _("house")
@@ -102,6 +143,20 @@ class House(BaseModel):
     def save(self, *args, **kwargs):
         needs_id     = not self.house_id
         needs_number = not self.house_number
+
+        self.room_count = self.HOUSE_TYPE_ROOMS.get(self.house_type, 1)
+        self.room_labels = self.HOUSE_TYPE_ROOM_LABELS.get(self.house_type, ["R1"])
+
+        if self.room_count < 3:
+            self.r3_status = ""
+            self.r3_occupant_name = ""
+            self.r3_occupant_id = ""
+            self.r3_notes = ""
+        if self.room_count < 2:
+            self.r2_status = ""
+            self.r2_occupant_name = ""
+            self.r2_occupant_id = ""
+            self.r2_notes = ""
 
         if needs_id or needs_number:
             if needs_id:
@@ -136,21 +191,130 @@ class House(BaseModel):
                 self.house_number = f"{prefix}{num}"
         super().save(*args, **kwargs)
 
+    # ── room helpers ──────────────────────────────────────────────────────
+
+    @property
+    def rooms(self):
+        labels = self.room_labels or []
+        result = []
+        for i, label in enumerate(labels, start=1):
+            status = getattr(self, f"r{i}_status", "") or ""
+            if not status:
+                continue
+            result.append({
+                "label": label,
+                "index": i,
+                "status": status,
+                "occupant_name": getattr(self, f"r{i}_occupant_name", "") or "",
+                "occupant_id": getattr(self, f"r{i}_occupant_id", "") or "",
+                "notes": getattr(self, f"r{i}_notes", "") or "",
+            })
+        return result
+
+    @property
+    def rooms_summary(self):
+        total = self.room_count
+        occupied = 0
+        vacant = 0
+        reserved = 0
+        maintenance = 0
+        for r in self.rooms:
+            s = r.get("status", "")
+            if s == "Occupied":
+                occupied += 1
+            elif s == "Vacant":
+                vacant += 1
+            elif s == "Reserved":
+                reserved += 1
+            elif s == "Maintenance":
+                maintenance += 1
+        return {
+            "total": total,
+            "occupied": occupied,
+            "vacant": vacant,
+            "reserved": reserved,
+            "maintenance": maintenance,
+            "labels": [r.get("label", "") for r in self.rooms],
+            "details": self.rooms,
+        }
+
+    # ── room helpers ──────────────────────────────────────────────────────
+
+    def room_for_label(self, label):
+        """Return the room dict {label, index, status, occupant_*} matching `label`."""
+        for r in self.rooms:
+            if r["label"] == label:
+                return r
+        return None
+
+    def set_room_status(self, label, status, occupant_name="", occupant_id="", notes=""):
+        """Persist a room's physical status/occupant (rN_* columns)."""
+        room = self.room_for_label(label)
+        if room is None:
+            return None
+        index = room["index"]
+        setattr(self, f"r{index}_status", status)
+        setattr(self, f"r{index}_occupant_name", occupant_name)
+        setattr(self, f"r{index}_occupant_id", occupant_id)
+        setattr(self, f"r{index}_notes", notes)
+        return index
+
+    def claim_all_rooms(self, occupant_name="", occupant_id="", notes=""):
+        """Mark every room as Occupied by one household (whole-house allocation)."""
+        for r in self.rooms:
+            self.set_room_status(
+                r["label"], self.RoomStatus.OCCUPIED,
+                occupant_name=occupant_name, occupant_id=occupant_id, notes=notes,
+            )
+
+    def free_room(self, label):
+        """Release a single room back to Vacant."""
+        return self.set_room_status(label, self.RoomStatus.VACANT)
+
+    def free_all_rooms(self):
+        """Release every room back to Vacant (whole-house deallocation)."""
+        for r in self.rooms:
+            self.free_room(r["label"])
+
+    @property
+    def available_rooms(self):
+        """Rooms that are physically vacant (available for room-level allocation)."""
+        return [r for r in self.rooms if r.get("status") == self.RoomStatus.VACANT]
+
+    @property
+    def room_vacant_count(self):
+        return len(self.available_rooms)
+
     # ── allocation helpers ────────────────────────────────────────────────
     @property
     def is_available(self):
-        return self.status == self.Status.ACTIVE and self.current_occupancy < self.capacity
+        # A house is "available" whenever at least one room is physically
+        # vacant AND no live whole-house allocation claims the unit.
+        if self.status != self.Status.ACTIVE or self.room_vacant_count <= 0:
+            return False
+        has_house_claim = self.allocation_records.filter(
+            status=Allocation.Status.ACTIVE,
+            allocation_unit_type=Allocation.AllocationUnit.HOUSE,
+        ).exists()
+        return not has_house_claim
+
+    @property
+    def is_fully_vacant(self):
+        """True when the house holds no live allocation and every room is vacant."""
+        return self.current_occupancy == 0 and self.room_vacant_count >= self.room_count
 
     @property
     def current_occupancy(self):
         # A house is occupied by live Allocation records only — the single
         # authoritative source of truth for occupancy. Historical/terminated
-        # allocations never count towards capacity.
+        # allocations never count towards capacity. Each live allocation
+        # (whole-house or per-room) counts as one occupied unit.
         return self.allocation_records.filter(status=Allocation.Status.ACTIVE).count()
 
     @property
     def vacant(self):
-        return max(self.capacity - self.current_occupancy, 0)
+        # Vacancy is expressed at the room level (physical truth).
+        return self.room_vacant_count
 
     @property
     def damaged_items(self):
@@ -311,6 +475,10 @@ class HouseApplication(BaseModel):
         REJECTED                 = "Rejected",                 _("Rejected")
         RETURNED                 = "Returned",                 _("Returned")
 
+    class AllocationMode(models.TextChoices):
+        ROOM  = "ROOM_ALLOCATION",  _("Room allocation (single applicant)")
+        HOUSE = "HOUSE_ALLOCATION", _("Whole house allocation (family)")
+
     # ── identifiers ───────────────────────────────────────────────────────
     application_no = models.CharField(_("application number"), max_length=20, unique=True, blank=True, db_index=True)
     requester      = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="house_applications")
@@ -351,6 +519,15 @@ class HouseApplication(BaseModel):
     # ── request details ───────────────────────────────────────────────────
     requested_house_category = models.CharField(_("requested house category"), max_length=10, choices=House.HouseType.choices, default=House.HouseType.STAFF)
     eligible_house_category  = models.CharField(_("eligible house category"), max_length=10, blank=True, default="")
+    allocation_mode = models.CharField(
+        _("allocation mode"),
+        max_length=20,
+        choices=AllocationMode.choices,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=_("ROOM_ALLOCATION for single applicants (family size 1), HOUSE_ALLOCATION for married/families (family size ≥ 2)."),
+    )
     reason_for_request       = models.TextField(_("reason for request"), blank=True)
     preferred_location       = models.CharField(_("preferred location"), max_length=255, blank=True)
     supporting_document      = models.FileField(_("supporting document"), upload_to=application_document_path, null=True, blank=True)
@@ -375,6 +552,8 @@ class HouseApplication(BaseModel):
 
     # ── allocation ────────────────────────────────────────────────────────
     allocated_house     = models.ForeignKey(House, on_delete=models.SET_NULL, null=True, blank=True, related_name="allocations")
+    allocated_room_label = models.CharField(_("allocated room label"), max_length=20, blank=True, default="")
+    allocated_room_number = models.CharField(_("allocated room number"), max_length=50, blank=True, default="")
     allocated_at        = models.DateTimeField(_("allocated at"), null=True, blank=True)
     allocated_by        = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="allocated_applications")
     allocation_notes    = models.TextField(_("allocation notes"), blank=True)
@@ -448,6 +627,10 @@ class AllocationLog(BaseModel):
     employee_id    = models.CharField(_("employee ID"), max_length=50)
     house          = models.ForeignKey(House, on_delete=models.SET_NULL, null=True, blank=True, related_name="allocation_logs")
     house_hid      = models.CharField(_("house ID"), max_length=20, blank=True, default="")
+
+    allocation_unit_type = models.CharField(_("allocation unit"), max_length=20, blank=True, default="")
+    room_label           = models.CharField(_("room label"), max_length=20, blank=True, default="")
+    room_number          = models.CharField(_("room number"), max_length=50, blank=True, default="")
 
     action           = models.CharField(_("action"), max_length=20, choices=Action.choices)
     old_status       = models.CharField(_("old status"), max_length=30, blank=True, default="")
@@ -724,6 +907,10 @@ class HouseOpportunity(BaseModel):
     application = models.ForeignKey(HouseApplication, on_delete=models.CASCADE, related_name="opportunities")
     house       = models.ForeignKey(House, on_delete=models.CASCADE, related_name="opportunities")
 
+    allocation_mode = models.CharField(_("allocation mode"), max_length=20, blank=True, default="", db_index=True)
+    room_label      = models.CharField(_("room label"), max_length=20, blank=True, default="")
+    room_number     = models.CharField(_("room number"), max_length=50, blank=True, default="")
+
     eligible_category   = models.CharField(_("eligible category"), max_length=10, blank=True, default="")
     compatibility_score = models.DecimalField(_("compatibility score"), max_digits=8, decimal_places=4, default=0)
     priority_score      = models.DecimalField(_("applicant priority score"), max_digits=8, decimal_places=4, default=0)
@@ -744,11 +931,23 @@ class HouseOpportunity(BaseModel):
             models.Index(fields=["house", "status"]),
         ]
         constraints = [
-            models.UniqueConstraint(fields=["application", "house"], name="uniq_application_house_opportunity"),
+            models.UniqueConstraint(
+                fields=["application", "house", "room_label"],
+                name="uniq_application_house_room_opportunity",
+            ),
         ]
 
+    @property
+    def resource_label(self):
+        """Human-readable allocated resource, e.g. 'S2 — Room R2' or 'A1'."""
+        base = self.house.house_number or self.house.house_id
+        if self.room_label:
+            return f"{base} — Room {self.room_label}"
+        return base
+
     def __str__(self):
-        return f"{self.application.application_no} → {self.house.house_id} ({self.compatibility_score})"
+        unit = f" · {self.room_label}" if self.room_label else ""
+        return f"{self.application.application_no} → {self.house.house_id}{unit} ({self.compatibility_score})"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -771,6 +970,10 @@ class Allocation(BaseModel):
         MANUAL   = "Manual",   _("Manual")
         OVERRIDE = "Override", _("Override")
 
+    class AllocationUnit(models.TextChoices):
+        ROOM  = "ROOM_ALLOCATION",  _("Room (single occupant)")
+        HOUSE = "HOUSE_ALLOCATION", _("Whole house (family)")
+
     class Status(models.TextChoices):
         ACTIVE      = "Active",      _("Active")
         TERMINATED  = "Terminated",  _("Terminated")
@@ -785,6 +988,22 @@ class Allocation(BaseModel):
     application   = models.ForeignKey(HouseApplication, on_delete=models.PROTECT, related_name="allocation_records")
     house         = models.ForeignKey(House, on_delete=models.PROTECT, related_name="allocation_records")
     emp_record    = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name="house_allocations")
+
+    # ── allocation unit (room vs whole house) ─────────────────────────────
+    allocation_unit_type = models.CharField(
+        _("allocation unit"),
+        max_length=20,
+        choices=AllocationUnit.choices,
+        default=AllocationUnit.HOUSE,
+        db_index=True,
+        help_text=_("ROOM_ALLOCATION for single occupants, HOUSE_ALLOCATION for married/families."),
+    )
+    room_label    = models.CharField(_("room label"), max_length=20, blank=True, default="")
+    room_index    = models.PositiveSmallIntegerField(_("room index"), null=True, blank=True)
+    room_number   = models.CharField(_("room number"), max_length=50, blank=True, default="")
+    room_status   = models.CharField(_("room status at allocation"), max_length=20, blank=True, default="")
+    marital_status = models.CharField(_("marital status"), max_length=20, blank=True, default="")
+    family_size   = models.PositiveIntegerField(_("family size"), default=1)
 
     # ── snapshots (immutable at allocation time) ──────────────────────────
     employee_id   = models.CharField(_("employee ID"), max_length=50)
@@ -824,7 +1043,16 @@ class Allocation(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.allocation_no} – {self.employee_name} → {self.house.house_id} ({self.status})"
+        unit = f" · {self.room_label}" if self.room_label else ""
+        return f"{self.allocation_no} – {self.employee_name} → {self.house.house_id}{unit} ({self.status})"
+
+    @property
+    def resource(self):
+        """Human-readable allocated resource, e.g. 'S2 — Room R2' or 'A1'."""
+        base = self.house.house_number or self.house.house_id
+        if self.allocation_unit_type == self.AllocationUnit.ROOM and self.room_label:
+            return f"{base} — Room {self.room_label}"
+        return base
 
     def save(self, *args, **kwargs):
         if not self.allocation_no:
@@ -839,24 +1067,32 @@ class Allocation(BaseModel):
         if self.status == self.Status.ACTIVE:
             app.status = HouseApplication.Status.ALLOCATED
             app.allocated_house = self.house
+            app.allocated_room_label = self.room_label
+            app.allocated_room_number = self.room_number
             app.allocated_at = self.allocated_at
             app.allocated_by = self.allocated_by
             app.allocation_notes = self.notes
+            app.allocation_mode = self.allocation_unit_type
             app.allocation_confidence = self.confidence
             app.save(update_fields=[
-                "status", "allocated_house", "allocated_at", "allocated_by",
-                "allocation_notes", "allocation_confidence", "updated_at",
+                "status", "allocated_house", "allocated_room_label",
+                "allocated_room_number", "allocated_at", "allocated_by",
+                "allocation_notes", "allocation_mode", "allocation_confidence",
+                "updated_at",
             ])
         elif app.allocated_house_id == self.house_id:
             app.status = HouseApplication.Status.WAITING_FOR_ALLOCATION
             app.allocated_house = None
+            app.allocated_room_label = ""
+            app.allocated_room_number = ""
             app.allocated_at = None
             app.allocated_by = None
             app.allocation_notes = self.notes or ""
             app.allocation_confidence = 0
             app.deallocation_reason = self.termination_reason
             app.save(update_fields=[
-                "status", "allocated_house", "allocated_at", "allocated_by",
+                "status", "allocated_house", "allocated_room_label",
+                "allocated_room_number", "allocated_at", "allocated_by",
                 "allocation_notes", "allocation_confidence", "deallocation_reason",
                 "updated_at",
             ])

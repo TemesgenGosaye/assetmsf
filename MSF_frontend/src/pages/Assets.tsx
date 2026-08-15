@@ -60,6 +60,7 @@ import BulkActionsBar from "@/components/assets/BulkActionsBar";
 import AssetTable from "@/components/assets/AssetTable";
 import QrExportModal from "@/components/assets/QrExportModal";
 import AssetFormDialog from "@/components/assets/AssetFormDialog";
+import type { ReportExportMenuProps } from "@/components/table/ReportExportMenu";
 
 export default function Assets() {
   const confirm = useConfirm();
@@ -109,8 +110,8 @@ export default function Assets() {
   );
   const [range, setRange] = useState<DateRange>();
   const [allowedDepts, setAllowedDepts] = useState<string[] | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [filterProperty, setFilterProperty] = useState("all");
+  const [loadError, setLoadError] = useState<string | null>(null);
   // Saved views & bulk actions
   const [savedView, setSavedView] = useState<string>("all");
   const [bulkProperty, setBulkProperty] = useState<string>("");
@@ -172,30 +173,51 @@ export default function Assets() {
   const prefs = useTablePreferences("assets");
   const columnDefs: ColumnDef[] = [
     { key: "select", label: "Select", always: true },
-    { key: "group", label: "Group", always: true },
     { key: "id", label: "Asset ID", always: true },
     { key: "name", label: "Name", always: true },
-    { key: "type", label: "Type" },
+    { key: "type", label: "Item Type" },
+    { key: "category", label: "Category" },
+    { key: "manufacturer", label: "Manufacturer" },
+    { key: "model", label: "Model" },
+    { key: "serial", label: "Serial No." },
+    { key: "barcode", label: "Barcode" },
     { key: "property", label: "Property" },
     { key: "department", label: "Department" },
-    { key: "qty", label: "Quantity" },
     { key: "location", label: "Location" },
+    { key: "owner", label: "Owner" },
+    { key: "qty", label: "Qty" },
     { key: "purchaseDate", label: "Purchase Date" },
+    { key: "expiryDate", label: "Expiry Date" },
     { key: "purchaseCost", label: "Purchase Cost" },
     { key: "currentValue", label: "Current Value" },
+    { key: "salvageValue", label: "Salvage Value" },
     { key: "depreciationMethod", label: "Dep. Method" },
+    { key: "usefulLifeYears", label: "Useful Life (Y)" },
+    { key: "depreciationRate", label: "Dep. Rate (%)" },
+    { key: "accumulatedDepreciation", label: "Accum. Dep." },
+    { key: "annualDepreciation", label: "Annual Dep." },
+    { key: "poNumber", label: "PO Number" },
     { key: "vendor", label: "Vendor" },
-    { key: "invoiceNumber", label: "Invoice No" },
-    { key: "warrantyExpiry", label: "Warranty Ends" },
-    { key: "status", label: "Status" },
+    { key: "invoiceNumber", label: "Invoice No." },
+    { key: "warrantyStartDate", label: "Warranty Start" },
+    { key: "warrantyExpiry", label: "Warranty Expiry" },
+    { key: "warrantyProvider", label: "Warranty Provider" },
+    { key: "warrantyNotes", label: "Warranty Notes" },
+    { key: "amcEnabled", label: "AMC" },
+    { key: "amcProvider", label: "AMC Provider" },
+    { key: "amcStartDate", label: "AMC Start" },
+    { key: "amcEndDate", label: "AMC End" },
+    { key: "amcCost", label: "AMC Cost" },
+    { key: "condition", label: "Condition" },
     { key: "approval", label: "Approval" },
-    // Admin-only column for creator
     ...(role === "admin"
       ? ([{ key: "createdBy", label: "Created By" }] as ColumnDef[])
       : []),
+    { key: "notes", label: "Notes" },
     { key: "description", label: "Description" },
-    { key: "addedDate", label: "Add Asset" },
-    { key: "onAsset", label: "On Asset" },
+    { key: "addedDate", label: "Created At" },
+    { key: "updatedDate", label: "Updated At" },
+    { key: "onAsset", label: "Age" },
     { key: "actions", label: "Actions", always: true },
   ];
   // Always-on columns set (cannot be hidden)
@@ -246,10 +268,10 @@ export default function Assets() {
   // for users with older saved prefs so no input value stays hidden
   useEffect(() => {
     try {
-      const key = "assets_all_cols_v2";
+      const key = "assets_all_cols_v4";
       const done = sessionStorage.getItem(key);
       if (done) return;
-      if (!prefs.visibleCols.length) return; // fresh users use the defaults above
+      if (!prefs.visibleCols.length) return;
       const all = columnDefs.map((c) => c.key);
       const missing = all.filter((k) => !prefs.visibleCols.includes(k));
       if (missing.length) {
@@ -261,7 +283,7 @@ export default function Assets() {
     } catch {
       /* ignore */
     }
-  }, [prefs.visibleCols]);
+  }, [prefs.visibleCols, columnDefs]);
   const activePropertyIds = useMemo(() => {
     const list = Object.values(propsById);
     if (!list.length) return new Set<string>();
@@ -436,9 +458,13 @@ export default function Assets() {
       const data = await listAssets(force ? { force: true } : undefined);
       setAssets(data as any);
       setLoadingUI(false);
+      setLoadError(null);
     } catch (e: any) {
       toast.error("Failed to load assets");
       setLoadingUI(false);
+      setLoadError(
+        e?.message || "We couldn't load the asset records. Please try again.",
+      );
     }
   }, []);
 
@@ -742,50 +768,93 @@ export default function Assets() {
     [filteredAssets, sortBy],
   );
 
-  // Group visible, sorted assets by (propertyId, name, type, department) for aggregated display
-  const groupedRows = useMemo(() => {
-    const keyOf = (a: any) => {
-      const pid = String(a.property_id || a.property || "").toLowerCase();
-      return [
-        pid,
-        String(a.name || "").toLowerCase(),
-        String(a.type || "").toLowerCase(),
-        String(a.department || "").toLowerCase(),
-      ].join("||");
-    };
-    const map = new Map<
-      string,
-      { key: string; members: any[]; rep: any; totalQty: number }
-    >();
-    for (const a of sortedAssets) {
-      const k = keyOf(a);
-      const g = map.get(k);
-      if (g) {
-        g.members.push(a);
-        g.totalQty += Number(a.quantity || 0) || 0;
-      } else {
-        map.set(k, {
-          key: k,
-          members: [a],
-          rep: a,
-          totalQty: Number(a.quantity || 0) || 0,
-        });
-      }
-    }
-    return Array.from(map.values());
-  }, [sortedAssets]);
-
   const paginatedRows = useMemo(() => {
-    return groupedRows.slice(
+    return sortedAssets.slice(
       (currentPage - 1) * rowsPerPage,
       currentPage * rowsPerPage,
     );
-  }, [groupedRows, currentPage, rowsPerPage]);
+  }, [sortedAssets, currentPage, rowsPerPage]);
+
+  const assetExportColumns = useMemo(() => {
+    return columnDefs
+      .filter((c) => c.key !== "select" && c.key !== "actions" && isVisible(c.key))
+      .map((c) => ({
+        header: c.label,
+        key: c.key,
+      }));
+  }, [columnDefs, isVisible]);
+
+  const getAssetRowValues = useCallback((asset: any) => {
+    return assetExportColumns.map((col) => {
+      switch (col.key) {
+        case "id": return asset.id || "";
+        case "name": return asset.name || "";
+        case "type": return asset.type || "";
+        case "category": return asset.category_name || asset.category || "";
+        case "manufacturer": return asset.manufacturer || "";
+        case "model": return asset.model || "";
+        case "serial": return asset.serialNumber || "";
+        case "barcode": return asset.barcode || "";
+        case "property": return propsById[asset.property]?.name || propsByName[asset.property]?.name || asset.property || "";
+        case "department": return asset.department || "";
+        case "location": return asset.location || "";
+        case "owner": return asset.owner_name || asset.owner || "";
+        case "qty": return asset.quantity ?? 0;
+        case "purchaseDate": return asset.purchaseDate || "";
+        case "expiryDate": return asset.expiryDate || "";
+        case "purchaseCost": return asset.purchaseCost ?? "";
+        case "currentValue": return asset.currentValue ?? "";
+        case "salvageValue": return asset.salvageValue ?? "";
+        case "depreciationMethod": return asset.depreciationMethod || "";
+        case "usefulLifeYears": return asset.usefulLifeYears ?? "";
+        case "depreciationRate": return asset.depreciationRate ?? "";
+        case "accumulatedDepreciation": return asset.accumulatedDepreciation ?? "";
+        case "annualDepreciation": return asset.annual_depreciation_value ?? "";
+        case "poNumber": return asset.poNumber || "";
+        case "vendor": return asset.vendor || "";
+        case "invoiceNumber": return asset.invoiceNumber || "";
+        case "warrantyStartDate": return asset.warrantyStartDate || "";
+        case "warrantyExpiry": return asset.warrantyExpiry || "";
+        case "warrantyProvider": return asset.warrantyProvider || "";
+        case "warrantyNotes": return asset.warrantyNotes || "";
+        case "amcEnabled": return asset.amcEnabled ? "Yes" : "No";
+        case "amcProvider": return asset.amcProvider || "";
+        case "amcStartDate": return asset.amcStartDate || "";
+        case "amcEndDate": return asset.amcEndDate || "";
+        case "amcCost": return asset.amcCost ?? "";
+        case "condition": return asset.condition || "";
+        case "status": return asset.status || "";
+        case "createdBy": return asset.createdByName || asset.created_by || "";
+        case "notes": return asset.notes || "";
+        case "description": return asset.description || "";
+        case "addedDate": return asset.created_at || "";
+        case "updatedDate": return asset.updated_at || "";
+        default: return (asset as any)[col.key] ?? "";
+      }
+    });
+  }, [assetExportColumns, propsById, propsByName]);
+
+  const assetExportProps: ReportExportMenuProps = useMemo(() => ({
+    title: "Asset Catalogue Report",
+    fileName: "asset_catalogue",
+    columns: assetExportColumns,
+    getRows: () => sortedAssets.map(getAssetRowValues),
+    getSelectedRows: selectedIds.size > 0 ? () => sortedAssets.filter(a => selectedIds.has(a.id)).map(getAssetRowValues) : undefined,
+    totalCount: sortedAssets.length,
+    selectedCount: selectedIds.size,
+    filters: [
+      debouncedSearch ? `Search: "${debouncedSearch}"` : "",
+      filterType !== "all" ? `Type: ${filterType}` : "",
+      filterProperty !== "all" ? `Property: ${filterProperty}` : "",
+      !deptAll && deptFilter.length ? `Departments: ${deptFilter.join(", ")}` : "",
+      savedView !== "all" ? `View: ${savedView}` : "",
+    ].filter(Boolean).join(", ") || undefined,
+  }), [assetExportColumns, sortedAssets, selectedIds, getAssetRowValues, debouncedSearch, filterType, filterProperty, deptAll, deptFilter, savedView]);
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [groupedRows.length]);
+  }, [sortedAssets.length]);
 
   // Helpers for ID generation and display
   const typePrefix = (t: string) => {
@@ -864,10 +933,14 @@ export default function Assets() {
         );
 
         if (selectedAsset) {
-          // Update existing asset — property cannot be changed after creation
           await updateAsset(selectedAsset.id, {
             name: assetData.itemName,
             type: assetData.itemType,
+            subcategory: assetData.subcategory || null,
+            manufacturer: assetData.manufacturer || null,
+            model: assetData.model || null,
+            barcode: assetData.barcode || null,
+            rfid: assetData.rfid || null,
             department: assetData.department,
             quantity: Number(assetData.quantity || 1),
             purchaseDate: toISODate(assetData.purchaseDate),
@@ -878,6 +951,8 @@ export default function Assets() {
             invoiceNumber: assetData.invoiceNumber || null,
             warrantyStartDate: toISODate(assetData.warrantyStartDate),
             warrantyExpiry: toISODate(assetData.warrantyExpiry),
+            warrantyProvider: assetData.warrantyProvider || null,
+            warrantyNotes: assetData.warrantyNotes || null,
             depreciationMethod:
               assetData.depreciationMethod || "straight_line",
             usefulLifeYears: assetData.usefulLifeYears || null,
@@ -890,10 +965,13 @@ export default function Assets() {
             status: selectedAsset.status || "active",
             location: assetData.location || null,
             description: assetData.description || null,
+            notes: assetData.notes || null,
             serialNumber: assetData.serialNumber || null,
             amcEnabled,
+            amcProvider: assetData.amcProvider || null,
             amcStartDate,
             amcEndDate,
+            amcCost: assetData.amcCost || null,
           } as any);
           logActivity(
             "asset_updated",
@@ -907,14 +985,19 @@ export default function Assets() {
         } else {
           // Create new assets — fire all requests in parallel so the save is
           // as fast as the slowest single request, not quantity x round-trips.
-          const makeAsset = (seq: number, index: number) =>
+          const makeAsset = (seq: number) =>
             ({
               asset_code: `${seqPrefix}${String(seq).padStart(3, "0")}`,
               name: assetData.itemName,
               type: assetData.itemType,
+              subcategory: assetData.subcategory || null,
+              manufacturer: assetData.manufacturer || null,
+              model: assetData.model || null,
+              barcode: assetData.barcode || null,
+              rfid: assetData.rfid || null,
               property_id: propertyCodeRaw,
               department: assetData.department,
-              quantity: 1,
+              quantity: Math.max(1, Number(assetData.quantity) || 1),
               purchaseDate: toISODate(assetData.purchaseDate),
               expiryDate: toISODate(assetData.expiryDate),
               poNumber: assetData.poNumber || null,
@@ -923,6 +1006,8 @@ export default function Assets() {
               invoiceNumber: assetData.invoiceNumber || null,
               warrantyStartDate: toISODate(assetData.warrantyStartDate),
               warrantyExpiry: toISODate(assetData.warrantyExpiry),
+              warrantyProvider: assetData.warrantyProvider || null,
+              warrantyNotes: assetData.warrantyNotes || null,
               depreciationMethod:
                 assetData.depreciationMethod || "straight_line",
               usefulLifeYears: assetData.usefulLifeYears || null,
@@ -935,53 +1020,17 @@ export default function Assets() {
               status: "active",
               location: assetData.location || null,
               description: assetData.description || null,
-              serialNumber:
-                index === 0 ? (assetData.serialNumber || null) : null,
+              notes: assetData.notes || null,
+              serialNumber: assetData.serialNumber || null,
               amcEnabled,
+              amcProvider: assetData.amcProvider || null,
               amcStartDate,
               amcEndDate,
+              amcCost: assetData.amcCost || null,
             } as any);
-          const fireBatch = async (startSeq: number) => {
-            const settled = await Promise.allSettled(
-              Array.from({ length: quantity }, (_, i) =>
-                createAsset(makeAsset(startSeq + i, i)),
-              ),
-            );
-            const created: any[] = [];
-            let conflicted = false;
-            let fatal: any = null;
-            for (const r of settled) {
-              if (r.status === "fulfilled") created.push(r.value);
-              else if (
-                /already exists|must be unique/i.test(
-                  String((r as any).reason?.message || ""),
-                )
-              )
-                conflicted = true;
-              else fatal = fatal || (r as any).reason;
-            }
-            if (fatal) throw fatal;
-            if (conflicted) {
-              // Codes collided with existing rows (e.g. a concurrent create).
-              // Recompute the sequence from server truth and fill only the
-              // missing slots so the batch never creates more than requested.
-              const latest = await listAssets({ force: true });
-              const missing = quantity - created.length;
-              const retried = await Promise.all(
-                Array.from({ length: missing }, (_, i) =>
-                  createAsset(
-                    makeAsset(nextSequence(latest, seqPrefix) + i, i),
-                  ),
-                ),
-              );
-              return [...created, ...retried];
-            }
-            return created;
-          };
-          const createdList = await fireBatch(baseSeq);
-          const newAssetId = createdList[0]?.id ?? null;
-          // Activity + tracking are non-blocking — never delay the success toast.
-          logActivity("asset_created", `Assets created`).catch(() => {});
+          const created = await createAsset(makeAsset(baseSeq));
+          const newAssetId = created?.id ?? null;
+          logActivity("asset_created", `Asset ${newAssetId} created`).catch(() => {});
           trackActivity("asset", "create", { entityName: assetData.itemName }).catch(() => {});
           if (newAssetId) {
             toast.success(`Asset ${newAssetId} created`);
@@ -1017,6 +1066,11 @@ export default function Assets() {
         ? {
             itemName: selectedAsset.name ?? "",
             itemType: selectedAsset.type ?? "",
+            subcategory: selectedAsset.subcategory ?? "",
+            manufacturer: selectedAsset.manufacturer ?? "",
+            model: selectedAsset.model ?? "",
+            barcode: selectedAsset.barcode ?? "",
+            rfid: selectedAsset.rfid ?? "",
             property: selectedAsset.property_id ?? selectedAsset.property ?? "",
             department: selectedAsset.department ?? "",
             quantity: selectedAsset.quantity ?? 1,
@@ -1030,14 +1084,17 @@ export default function Assets() {
             condition: selectedAsset.condition ?? "",
             location: selectedAsset.location ?? "",
             description: selectedAsset.description ?? "",
+            notes: selectedAsset.notes ?? "",
             serialNumber: selectedAsset.serialNumber ?? "",
             amcEnabled: Boolean(selectedAsset.amcEnabled),
+            amcProvider: selectedAsset.amcProvider ?? "",
             amcStartDate: selectedAsset.amcStartDate
               ? new Date(selectedAsset.amcStartDate)
               : undefined,
             amcEndDate: selectedAsset.amcEndDate
               ? new Date(selectedAsset.amcEndDate)
               : undefined,
+            amcCost: selectedAsset.amcCost ?? "",
             purchaseCost: selectedAsset.purchaseCost ?? "",
             currentValue: selectedAsset.currentValue ?? "",
             depreciationMethod:
@@ -1049,6 +1106,8 @@ export default function Assets() {
             salvageValue: selectedAsset.salvageValue ?? "",
             vendor: selectedAsset.vendor ?? "",
             invoiceNumber: selectedAsset.invoiceNumber ?? "",
+            warrantyProvider: selectedAsset.warrantyProvider ?? "",
+            warrantyNotes: selectedAsset.warrantyNotes ?? "",
             warrantyStartDate: selectedAsset.warrantyStartDate
               ? new Date(selectedAsset.warrantyStartDate)
               : undefined,
@@ -1453,6 +1512,7 @@ export default function Assets() {
         onVisibleColsChange={prefs.setVisibleCols}
         canAdd={role === "admin" || role === "manager" || role === "user"}
         onAddClick={() => setShowAddForm(true)}
+        exportProps={assetExportProps}
       />
 
       <AssetHighlightsCards assets={statsAssets} />
@@ -1505,13 +1565,10 @@ export default function Assets() {
         dense={prefs.dense}
         isVisible={isVisible}
         searchLoading={searchLoading}
-        paginatedRows={paginatedRows}
+        rows={paginatedRows}
         selectedIds={selectedIds}
         onSelectAll={handleSelectAll}
-        onSelectGroup={handleSelectGroup}
         onSelectAsset={handleSelectAsset}
-        expandedGroups={expandedGroups}
-        onToggleExpanded={toggleExpandedGroup}
         approvalsByAsset={approvalsByAsset}
         role={role}
         approverPropIds={approverPropIds}
@@ -1532,9 +1589,9 @@ export default function Assets() {
           setRequestEditOpen(true);
         }}
         onDelete={handleDeleteAsset}
-        onDeleteGroup={handleDeleteGroup}
-        groupedRowsLength={groupedRows.length}
-        sortedAssetsLength={sortedAssets.length}
+        error={loadError}
+        onRetry={() => fetchAssets(true)}
+        totalItems={sortedAssets.length}
         currentPage={currentPage}
         rowsPerPage={rowsPerPage}
         onPageChange={setCurrentPage}

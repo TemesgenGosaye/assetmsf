@@ -415,7 +415,7 @@ export default function Settings() {
       <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
         <div className="relative z-10 max-w-3xl space-y-4">
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Settings & Configuration
+            Settings & Configuration | ማስተካከያዎች እና ውቅሮች
           </h1>
           <p className="text-lg text-muted-foreground">
             Manage your account security, customize your interface, and control how you receive notifications.

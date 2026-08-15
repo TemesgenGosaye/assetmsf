@@ -21,6 +21,7 @@ import {
 import { getCachedValue } from "@/lib/data-cache";
 import { cn } from "@/lib/utils";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 
 function formatShortDate(value?: string | null) {
   if (!value) return "—";
@@ -326,6 +327,33 @@ export default function Transfers() {
                 </SelectContent>
               </Select>
             </div>
+            <ReportExportMenu
+              title="Asset Transfers Report"
+              fileName="asset_transfers"
+              columns={[
+                { header: "Transfer ID", key: "id" },
+                { header: "Asset ID", key: "asset_id" },
+                { header: "Type", key: "transfer_type" },
+                { header: "Source", key: "from_location" },
+                { header: "Destination", key: "to_location" },
+                { header: "Status", key: "status" },
+                { header: "Requested Date", key: "requested_at" },
+              ]}
+              getRows={() => (filteredTransfers || []).map((t: any) => [
+                t.id,
+                t.asset_id || "",
+                t.transfer_type || "location",
+                t.from_location || t.from_department || "",
+                t.to_location || t.to_department || "",
+                t.status || "",
+                formatShortDate(t.requested_at),
+              ])}
+              totalCount={(filteredTransfers || []).length}
+              filters={[
+                searchTerm ? `Search: "${searchTerm}"` : "",
+                statusFilter !== "all" ? `Status: ${statusFilter}` : "",
+              ].filter(Boolean).join(", ") || undefined}
+            />
           </div>
         </CardHeader>
         <CardContent>

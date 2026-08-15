@@ -164,6 +164,11 @@ def decide_transfer(user, transfer, decision, notes=""):
         old_house = allocation.house
         application = allocation.application
 
+        # Preserve the same room when transferring a room-level allocation.
+        transfer_room = allocation.room_label if (
+            allocation.allocation_unit_type == Allocation.AllocationUnit.ROOM
+        ) else ""
+
         # Terminate the previous allocation (no queue re-entry during a transfer).
         terminate_allocation(allocation, user, f"Transferred to {target.house_id}",
                              move_to_queue=False)
@@ -171,7 +176,7 @@ def decide_transfer(user, transfer, decision, notes=""):
         new_allocation = allocate_application(
             application, target, user, "Manual",
             notes=f"Transferred to {target.house_id}. {notes}".strip(),
-            allow_existing=True,
+            allow_existing=True, room_label=transfer_room,
         )
 
         AllocationLog.objects.create(

@@ -175,36 +175,55 @@ class AssetCreateSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Validate and prepare data."""
-        # Handle item_type by name if provided as string
+        from django.db import IntegrityError, transaction
+
         request = self.context.get('request')
         item_type_name = request.data.get('item_type_name') if request else None
         if item_type_name and not attrs.get('item_type'):
-            try:
-                item_type = ItemType.objects.get(name__iexact=item_type_name, is_active=True)
-                attrs['item_type'] = item_type
-            except ItemType.DoesNotExist:
-                # Create item type if it doesn't exist
-                item_type = ItemType.objects.create(name=item_type_name)
+            user = request.user if request and hasattr(request, 'user') else None
+            category = attrs.get('category')
+
+            existing = ItemType.objects.filter(
+                name__iexact=item_type_name
+            ).first()
+
+            if existing is not None:
+                if not existing.is_active:
+                    existing.restore(user=user)
+                attrs['item_type'] = existing
+            else:
+                defaults = {}
+                if category:
+                    defaults['category'] = category
+                try:
+                    with transaction.atomic():
+                        item_type = ItemType.objects.create(
+                            name=item_type_name,
+                            **defaults
+                        )
+                except IntegrityError:
+                    item_type = ItemType.objects.filter(
+                        name__iexact=item_type_name
+                    ).first()
+                    if item_type is None:
+                        raise
+                    if not item_type.is_active:
+                        item_type.restore(user=user)
                 attrs['item_type'] = item_type
 
-        # Auto-generate asset code if not provided
         if not attrs.get('asset_code'):
             attrs['asset_code'] = self.generate_asset_code(attrs.get('item_type'))
         
-        # Normalize status to lowercase
         if 'status' in attrs and attrs['status']:
             attrs['status'] = attrs['status'].lower()
         
-        # Normalize condition to lowercase; map 'new' → 'good'
         if 'condition' in attrs and attrs['condition']:
             cond = attrs['condition'].lower()
             attrs['condition'] = 'good' if cond == 'new' else cond
         
-        # Normalize depreciation method to lowercase
         if 'depreciation_method' in attrs and attrs['depreciation_method']:
             attrs['depreciation_method'] = attrs['depreciation_method'].lower()
         
-        # Default department to empty string if missing
         if not attrs.get('department'):
             attrs['department'] = ''
         
@@ -261,7 +280,43 @@ class AssetUpdateSerializer(serializers.ModelSerializer):
         }
     
     def validate(self, attrs):
-        """Normalize status/condition on update."""
+        """Normalize fields and safely resolve item_type by name on update."""
+        from django.db import IntegrityError, transaction
+
+        request = self.context.get('request')
+        item_type_name = request.data.get('item_type_name') if request else None
+        if item_type_name and not attrs.get('item_type'):
+            user = request.user if request and hasattr(request, 'user') else None
+            category = attrs.get('category')
+
+            existing = ItemType.objects.filter(
+                name__iexact=item_type_name
+            ).first()
+
+            if existing is not None:
+                if not existing.is_active:
+                    existing.restore(user=user)
+                attrs['item_type'] = existing
+            else:
+                defaults = {}
+                if category:
+                    defaults['category'] = category
+                try:
+                    with transaction.atomic():
+                        item_type = ItemType.objects.create(
+                            name=item_type_name,
+                            **defaults
+                        )
+                except IntegrityError:
+                    item_type = ItemType.objects.filter(
+                        name__iexact=item_type_name
+                    ).first()
+                    if item_type is None:
+                        raise
+                    if not item_type.is_active:
+                        item_type.restore(user=user)
+                attrs['item_type'] = item_type
+
         if 'status' in attrs and attrs['status']:
             attrs['status'] = attrs['status'].lower()
         if 'condition' in attrs and attrs['condition']:

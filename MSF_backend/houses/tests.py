@@ -67,8 +67,8 @@ class AllocationEngineTests(TestCase):
 
     def test_occupancy_counts_allocated_not_active(self):
         """House occupancy counts live Allocation records (the authoritative
-        source), not the legacy 'Allocated' status alone — capacity must then
-        block allocation."""
+        source), not the legacy 'Allocated' status alone. A live whole-house
+        allocation blocks further allocation even though rooms are vacant."""
         allocated = _app(self.user, self.house, 10, grade=15, service=5, family=2, days_ago=10)
         allocated.status = HouseApplication.Status.ALLOCATED
         allocated.allocated_house = self.house
@@ -88,12 +88,13 @@ class AllocationEngineTests(TestCase):
 
         self.house.refresh_from_db()
         self.assertEqual(self.house.current_occupancy, 1)
-        self.assertEqual(self.house.vacant, 0)
-        self.assertFalse(self.house.is_available)
+        self.assertEqual(self.house.vacant, 3, "all 3 rooms are physically vacant")
+        self.assertFalse(self.house.is_available, "whole-house allocation blocks further allocation")
+        self.assertFalse(self.house.is_fully_vacant)
 
         serialized = HouseSerializer(self.house).data
         self.assertEqual(serialized["current_occupancy"], 1)
-        self.assertEqual(serialized["vacant"], 0)
+        self.assertEqual(serialized["vacant"], 3)
         self.assertFalse(serialized["is_available"])
 
     def test_batch_allocation_respects_capacity(self):
@@ -121,7 +122,7 @@ class AllocationEngineTests(TestCase):
         self.assertEqual(len(result["allocated"]), 1)
         self.house.refresh_from_db()
         self.assertEqual(self.house.current_occupancy, 0)
-        self.assertEqual(self.house.vacant, 1)
+        self.assertEqual(self.house.vacant, 3, "dry-run persists nothing — rooms stay vacant")
         app_a.refresh_from_db()
         app_b.refresh_from_db()
         self.assertEqual(app_a.status, HouseApplication.Status.WAITING_FOR_ALLOCATION)

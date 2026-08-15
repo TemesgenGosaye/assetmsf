@@ -58,6 +58,7 @@ export function AssetForm({
   const [formData, setFormData] = useState({
     itemName: initialData?.itemName || "",
     description: initialData?.description || "",
+    notes: initialData?.notes || "",
     purchaseDate: initialData?.purchaseDate || undefined,
     quantity: initialData?.quantity || "",
     itemType: initialData?.itemType || "",
@@ -66,11 +67,18 @@ export function AssetForm({
     property: initialData?.property || "",
     condition: initialData?.condition || "",
     serialNumber: initialData?.serialNumber || "",
+    barcode: initialData?.barcode || "",
+    rfid: initialData?.rfid || "",
+    subcategory: initialData?.subcategory || "",
+    manufacturer: initialData?.manufacturer || "",
+    model: initialData?.model || "",
     location: initialData?.location || "",
     department: initialData?.department || "",
     amcEnabled: initialData?.amcEnabled ?? false,
     amcStartDate: initialData?.amcStartDate || undefined,
     amcEndDate: initialData?.amcEndDate || undefined,
+    amcProvider: initialData?.amcProvider || "",
+    amcCost: initialData?.amcCost ?? "",
     purchaseCost: initialData?.purchaseCost ?? "",
     currentValue: initialData?.currentValue ?? "",
     depreciationMethod: initialData?.depreciationMethod || "straight_line",
@@ -80,8 +88,10 @@ export function AssetForm({
     salvageValue: initialData?.salvageValue ?? "",
     vendor: initialData?.vendor ?? "",
     invoiceNumber: initialData?.invoiceNumber ?? "",
+    warrantyProvider: initialData?.warrantyProvider ?? "",
+    warrantyNotes: initialData?.warrantyNotes ?? "",
     warrantyStartDate: initialData?.warrantyStartDate || undefined,
-    warrantyEndDate: initialData?.warrantyExpiry || undefined,
+    warrantyEndDate: initialData?.warrantyExpiry || initialData?.warrantyEndDate || undefined,
   });
   const [properties, setProperties] = useState<Property[]>([]);
   const [itemTypes, setItemTypes] = useState<string[]>(
@@ -99,6 +109,7 @@ export function AssetForm({
     setFormData({
       itemName: initialData?.itemName || "",
       description: initialData?.description || "",
+      notes: initialData?.notes || "",
       purchaseDate: initialData?.purchaseDate || undefined,
       quantity: initialData?.quantity || "",
       itemType: initialData?.itemType || "",
@@ -107,11 +118,18 @@ export function AssetForm({
       property: initialData?.property || "",
       condition: initialData?.condition || "",
       serialNumber: initialData?.serialNumber || "",
+      barcode: initialData?.barcode || "",
+      rfid: initialData?.rfid || "",
+      subcategory: initialData?.subcategory || "",
+      manufacturer: initialData?.manufacturer || "",
+      model: initialData?.model || "",
       location: initialData?.location || "",
       department: initialData?.department || "",
       amcEnabled: initialData?.amcEnabled ?? false,
       amcStartDate: initialData?.amcStartDate || undefined,
       amcEndDate: initialData?.amcEndDate || undefined,
+      amcProvider: initialData?.amcProvider || "",
+      amcCost: initialData?.amcCost ?? "",
       purchaseCost: initialData?.purchaseCost ?? "",
       currentValue: initialData?.currentValue ?? "",
       depreciationMethod: initialData?.depreciationMethod || "straight_line",
@@ -121,8 +139,10 @@ export function AssetForm({
       salvageValue: initialData?.salvageValue ?? "",
       vendor: initialData?.vendor ?? "",
       invoiceNumber: initialData?.invoiceNumber ?? "",
+      warrantyProvider: initialData?.warrantyProvider ?? "",
+      warrantyNotes: initialData?.warrantyNotes ?? "",
       warrantyStartDate: initialData?.warrantyStartDate || undefined,
-      warrantyEndDate: initialData?.warrantyExpiry || undefined,
+      warrantyEndDate: initialData?.warrantyExpiry || initialData?.warrantyEndDate || undefined,
     });
   }, [initialData]);
 
@@ -438,6 +458,7 @@ export function AssetForm({
         setFormData({
           itemName: "",
           description: "",
+          notes: "",
           purchaseDate: undefined,
           quantity: "",
           itemType: "",
@@ -446,11 +467,18 @@ export function AssetForm({
           property: "",
           condition: "",
           serialNumber: "",
+          barcode: "",
+          rfid: "",
+          subcategory: "",
+          manufacturer: "",
+          model: "",
           location: "",
           department: "",
           amcEnabled: false,
           amcStartDate: undefined,
           amcEndDate: undefined,
+          amcProvider: "",
+          amcCost: "",
           purchaseCost: "",
           currentValue: "",
           depreciationMethod: "straight_line",
@@ -460,6 +488,8 @@ export function AssetForm({
           salvageValue: "",
           vendor: "",
           invoiceNumber: "",
+          warrantyProvider: "",
+          warrantyNotes: "",
           warrantyStartDate: undefined,
           warrantyEndDate: undefined,
         });
@@ -718,7 +748,7 @@ export function AssetForm({
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 md:col-span-2">
             <Label htmlFor="location">Location *</Label>
             <Input
               id="location"
@@ -738,7 +768,51 @@ export function AssetForm({
               </p>
             )}
           </div>
+        </div>
+      </div>
 
+      <div className="space-y-6 rounded-2xl border border-border/60 bg-background/80 p-6">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Package className="h-4 w-4 text-primary" />
+          Classification & Manufacturing
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="subcategory">Subcategory</Label>
+            <Input
+              id="subcategory"
+              value={formData.subcategory}
+              onChange={(e) => handleInputChange("subcategory", e.target.value)}
+              placeholder="e.g., Portable, Server, Office Desk"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="manufacturer">Manufacturer / Brand</Label>
+            <Input
+              id="manufacturer"
+              value={formData.manufacturer}
+              onChange={(e) => handleInputChange("manufacturer", e.target.value)}
+              placeholder="e.g., Dell, Herman Miller, Apple"
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="model">Model</Label>
+            <Input
+              id="model"
+              value={formData.model}
+              onChange={(e) => handleInputChange("model", e.target.value)}
+              placeholder="e.g., Latitude 5520, Aeron Chair, iPhone 15"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-6 rounded-2xl border border-border/60 bg-background/80 p-6">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <ClipboardList className="h-4 w-4 text-primary" />
+          Identification Codes
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="serialNumber">Serial Number</Label>
             <Input
@@ -748,6 +822,27 @@ export function AssetForm({
                 handleInputChange("serialNumber", e.target.value)
               }
               placeholder="Asset serial number"
+              className="font-mono text-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="barcode">Barcode / UPC</Label>
+            <Input
+              id="barcode"
+              value={formData.barcode}
+              onChange={(e) => handleInputChange("barcode", e.target.value)}
+              placeholder="Barcode value"
+              className="font-mono text-sm"
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="rfid">RFID / Tag ID</Label>
+            <Input
+              id="rfid"
+              value={formData.rfid}
+              onChange={(e) => handleInputChange("rfid", e.target.value)}
+              placeholder="RFID tag or asset tag identifier"
+              className="font-mono text-sm"
             />
           </div>
         </div>
@@ -948,6 +1043,31 @@ export function AssetForm({
               }}
             />
           </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="warrantyProvider">Warranty Provider</Label>
+            <Input
+              id="warrantyProvider"
+              value={formData.warrantyProvider}
+              onChange={(e) =>
+                handleInputChange("warrantyProvider", e.target.value)
+              }
+              placeholder="e.g., Dell ProSupport, Manufacturer Warranty"
+            />
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="warrantyNotes">Warranty Notes</Label>
+            <Textarea
+              id="warrantyNotes"
+              value={formData.warrantyNotes}
+              onChange={(e) =>
+                handleInputChange("warrantyNotes", e.target.value)
+              }
+              placeholder="Terms, coverage details, claim numbers…"
+              rows={2}
+            />
+          </div>
         </div>
 
         {(toNumber(formData.purchaseCost) > 0 ||
@@ -1032,6 +1152,35 @@ export function AssetForm({
                   }}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="amcProvider">AMC Provider</Label>
+                <Input
+                  id="amcProvider"
+                  value={formData.amcProvider}
+                  onChange={(e) =>
+                    handleInputChange("amcProvider", e.target.value)
+                  }
+                  placeholder="Service provider name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="amcCost">AMC Cost</Label>
+                <Input
+                  id="amcCost"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={formData.amcCost}
+                  onChange={(e) => handleInputChange("amcCost", e.target.value)}
+                  onWheel={(e) => {
+                    try {
+                      (e.currentTarget as HTMLInputElement).blur();
+                    } catch {}
+                  }}
+                  placeholder="e.g., 1200.00"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -1040,17 +1189,29 @@ export function AssetForm({
       <div className="space-y-4 rounded-2xl border border-border/60 bg-background/80 p-6">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <Info className="h-4 w-4 text-primary" />
-          Additional Notes
+          Notes & Metadata
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="description">Description</Label>
-          <Textarea
-            id="description"
-            value={formData.description}
-            onChange={(e) => handleInputChange("description", e.target.value)}
-            placeholder="Add any context the team should know..."
-            rows={4}
-          />
+        <div className="grid gap-6 md:grid-cols-1">
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => handleInputChange("description", e.target.value)}
+              placeholder="Public-facing description of the asset…"
+              rows={3}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="notes">Internal Notes</Label>
+            <Textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => handleInputChange("notes", e.target.value)}
+              placeholder="Operational notes, history, team reminders…"
+              rows={3}
+            />
+          </div>
         </div>
       </div>
 

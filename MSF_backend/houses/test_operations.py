@@ -49,7 +49,7 @@ class OperationsApiTestCase(TestCase):
             capacity=1, created_by=self.admin,
         )
         self.employee = Employee.objects.create(
-            full_name="Test Employee", national_id="NID-OP-001",
+            employee_id="EMP-OP-001", full_name="Test Employee", national_id="NID-OP-001",
             job_position="Operator", status="Active",
         )
 
@@ -85,7 +85,7 @@ class OperationsApiTestCase(TestCase):
             capacity=1, created_by=self.admin,
         )
         self.employee = Employee.objects.create(
-            full_name="Test Employee", national_id="NID-OP-001",
+            employee_id="EMP-OP-001", full_name="Test Employee", national_id="NID-OP-001",
             job_position="Operator", status="Active",
         )
 

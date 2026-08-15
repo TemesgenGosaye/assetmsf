@@ -1,6 +1,5 @@
-import { Fragment, useMemo } from "react";
-import { Package, ShieldCheck, Users, ChevronRight, ChevronDown } from "lucide-react";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { useMemo } from "react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Inbox } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -23,29 +22,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { AssetActionsDropdown } from "@/components/assets/AssetActionsDropdown";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { SearchLoadingSkeleton } from "@/components/ui/page-skeletons";
 import StatusChip from "@/components/ui/status-chip";
 
-type AssetGroup = {
-  key: string;
-  members: any[];
-  rep: any;
-  totalQty: number;
-};
-
 type Props = {
   dense: boolean;
   isVisible: (key: string) => boolean;
   searchLoading: boolean;
-  paginatedRows: AssetGroup[];
+  rows: any[];
   selectedIds: Set<string>;
   onSelectAll: (checked: boolean) => void;
-  onSelectGroup: (members: any[], checked: boolean) => void;
   onSelectAsset: (id: string, checked: boolean) => void;
-  expandedGroups: Set<string>;
-  onToggleExpanded: (key: string) => void;
   approvalsByAsset: Record<string, { status?: string } | undefined>;
   role: string;
   approverPropIds: Set<string>;
@@ -60,24 +50,14 @@ type Props = {
   onPrint: (asset: any) => void;
   onRequestEdit: (asset: any) => void;
   onDelete: (assetId: string) => void;
-  onDeleteGroup: (members: any[]) => void;
-  groupedRowsLength: number;
-  sortedAssetsLength: number;
+  error?: string | null;
+  onRetry?: () => void;
+  totalItems: number;
   currentPage: number;
   rowsPerPage: number;
   onPageChange: (p: number) => void;
   onRowsPerPageChange: (rows: number) => void;
 };
-
-function displayPropertyCode(
-  val: string,
-  propsById: Props["propsById"],
-  propsByName: Props["propsByName"],
-) {
-  if (propsById[val]) return val;
-  const p = propsByName[val];
-  return p ? p.id : val;
-}
 
 function propertyDisplayName(
   val: string,
@@ -89,63 +69,14 @@ function propertyDisplayName(
   return p ? p.name : val;
 }
 
-function getStatusBadge(status: string) {
-  return <StatusChip status={status} />;
-}
-
-function ApprovalCell({ approval }: { approval?: { status?: string } }) {
-  const st = approval?.status;
-  if (st) {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="inline-flex items-center gap-1 text-primary">
-              <ShieldCheck className="h-4 w-4" />
-              <span className="text-xs">
-                {st === "pending_manager" ? "Mgr" : "Admin"}
-              </span>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            Pending {st === "pending_manager" ? "Manager" : "Admin"} approval
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-  return <span className="text-xs text-muted-foreground">-</span>;
-}
-
-function TypeCell({ value }: { value?: string }) {
-  return value ? (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground/80">
-      <Package className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="truncate whitespace-nowrap">{value}</span>
-    </span>
-  ) : (
-    <span className="text-xs text-muted-foreground">-</span>
-  );
-}
-
-function DepartmentCell({ value }: { value?: string }) {
-  return value ? (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground/80">
-      <Users className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="truncate whitespace-nowrap">{value}</span>
-    </span>
-  ) : (
-    <span className="text-xs text-muted-foreground">-</span>
-  );
-}
-
-function QtyBadge({ value }: { value: number }) {
-  return (
-    <span className="inline-flex min-w-[48px] items-center justify-center gap-1 border border-slate-300 bg-slate-100 px-2 py-0.5 text-[12px] font-semibold text-slate-700 dark:border-border dark:bg-muted dark:text-slate-200">
-      <Package className="h-3 w-3 text-slate-500 dark:text-slate-300" />
-      {value}
-    </span>
-  );
+function propertyCode(
+  val: string,
+  propsById: Props["propsById"],
+  propsByName: Props["propsByName"],
+) {
+  if (propsById[val]) return val;
+  const p = propsByName[val];
+  return p ? p.id : val;
 }
 
 const DEP_METHOD_LABELS: Record<string, string> = {
@@ -153,6 +84,11 @@ const DEP_METHOD_LABELS: Record<string, string> = {
   reducing_balance: "Reducing Balance",
   no_depreciation: "No Depreciation",
 };
+
+function depMethodLabel(v?: string) {
+  if (!v) return "-";
+  return DEP_METHOD_LABELS[v] || v.replace(/_/g, " ");
+}
 
 function formatMoney(v: any) {
   if (v === null || v === undefined || v === "") return "-";
@@ -165,9 +101,11 @@ function formatMoney(v: any) {
   }).format(n);
 }
 
-function depMethodLabel(v?: string) {
-  if (!v) return "-";
-  return DEP_METHOD_LABELS[v] || v.replace(/_/g, " ");
+function formatNumber(v: any, suffix = "") {
+  if (v === null || v === undefined || v === "") return "-";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return `${n.toLocaleString(undefined)}${suffix}`;
 }
 
 function formatDateShort(v?: string | null) {
@@ -175,8 +113,14 @@ function formatDateShort(v?: string | null) {
   try {
     const d = new Date(v);
     if (isNaN(d.getTime())) return "-";
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  } catch { return "-"; }
+    return d.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return "-";
+  }
 }
 
 function timeAgo(v?: string | null) {
@@ -201,20 +145,149 @@ function timeAgo(v?: string | null) {
       return remMonths > 0 ? `${years}y ${remMonths}m` : `${years}y`;
     }
     return `${months}m`;
-  } catch { return "-"; }
+  } catch {
+    return "-";
+  }
+}
+
+function conditionLabel(v?: string) {
+  if (!v) return "-";
+  return v.charAt(0).toUpperCase() + v.slice(1).replace(/_/g, " ");
+}
+
+function conditionTone(v?: string): string {
+  if (!v)
+    return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
+  switch (v.toLowerCase()) {
+    case "excellent":
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300";
+    case "good":
+      return "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300";
+    case "fair":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300";
+    case "poor":
+      return "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300";
+    case "damaged":
+      return "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300";
+    default:
+      return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
+  }
+}
+
+function ConditionChip({ value }: { value?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-wide ${conditionTone(value)}`}
+    >
+      {conditionLabel(value)}
+    </span>
+  );
+}
+
+function BoolChip({ value }: { value?: boolean | null }) {
+  return value ? (
+    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+      Yes
+    </span>
+  ) : (
+    <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+      No
+    </span>
+  );
+}
+
+function ApprovalCell({ approval }: { approval?: { status?: string } }) {
+  const st = approval?.status;
+  if (!st) return <span className="text-xs text-muted-foreground">-</span>;
+  const pending =
+    st === "pending_manager" || st === "pending_admin";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        pending
+          ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+      }`}
+    >
+      {st === "pending_manager"
+        ? "Pending Mgr"
+        : st === "pending_admin"
+          ? "Pending Admin"
+          : st.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function MonoTag({ value, max = 18 }: { value?: string; max?: number }) {
+  if (!value)
+    return <span className="text-xs text-muted-foreground">-</span>;
+  const s = String(value);
+  const trimmed = s.length > max ? s.slice(0, max) + "…" : s;
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] tracking-tight text-foreground/80">
+            {trimmed}
+          </span>
+        </TooltipTrigger>
+        {s.length > max && (
+          <TooltipContent
+            side="bottom"
+            align="start"
+            className="max-w-[360px] break-all font-mono text-[11px]"
+          >
+            {s}
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function TextCell({
+  value,
+  max,
+  className,
+}: {
+  value?: string;
+  max?: number;
+  className?: string;
+}) {
+  if (!value)
+    return <span className="text-xs text-muted-foreground">-</span>;
+  const s = String(value);
+  if (max && s.length > max) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className={`truncate ${className || ""}`}>
+              {s.slice(0, max)}…
+            </span>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            align="start"
+            className="max-w-[360px] whitespace-pre-wrap"
+          >
+            {s}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  return <span className={className}>{s}</span>;
 }
 
 export default function AssetTable({
   dense,
   isVisible,
   searchLoading,
-  paginatedRows,
+  rows,
   selectedIds,
   onSelectAll,
-  onSelectGroup,
   onSelectAsset,
-  expandedGroups,
-  onToggleExpanded,
   approvalsByAsset,
   role,
   approverPropIds,
@@ -229,42 +302,100 @@ export default function AssetTable({
   onPrint,
   onRequestEdit,
   onDelete,
-  onDeleteGroup,
-  groupedRowsLength,
-  sortedAssetsLength,
+  error,
+  onRetry,
+  totalItems,
   currentPage,
   rowsPerPage,
   onPageChange,
   onRowsPerPageChange,
 }: Props) {
-  const propCode = (val: string) =>
-    displayPropertyCode(val, propsById, propsByName);
+  const colCount = useMemo(() => {
+    const keys = [
+      "select",
+      "id",
+      "name",
+      "type",
+      "category",
+      "manufacturer",
+      "model",
+      "serial",
+      "barcode",
+      "property",
+      "department",
+      "location",
+      "owner",
+      "qty",
+      "purchaseDate",
+      "expiryDate",
+      "purchaseCost",
+      "currentValue",
+      "salvageValue",
+      "depreciationMethod",
+      "usefulLifeYears",
+      "depreciationRate",
+      "accumulatedDepreciation",
+      "annualDepreciation",
+      "poNumber",
+      "vendor",
+      "invoiceNumber",
+      "warrantyStartDate",
+      "warrantyExpiry",
+      "warrantyProvider",
+      "warrantyNotes",
+      "amcEnabled",
+      "amcProvider",
+      "amcStartDate",
+      "amcEndDate",
+      "amcCost",
+      "condition",
+      "status",
+      "approval",
+      "createdBy",
+      "notes",
+      "description",
+      "addedDate",
+      "updatedDate",
+      "onAsset",
+      "actions",
+    ];
+    return keys.filter((k) => isVisible(k)).length + 1;
+  }, [isVisible]);
+
   const propName = (val: string) =>
     propertyDisplayName(val, propsById, propsByName);
+  const propCode = (val: string) => propertyCode(val, propsById, propsByName);
 
   return (
-    <Card className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden">
+    <Card className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
       <CardHeader className="flex flex-col gap-1 border-b border-border/60 bg-muted/30 px-6 py-5">
         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2">
-            <div>
-              <CardTitle className="text-lg font-semibold">
-                Asset Catalogue
-              </CardTitle>
-              <CardDescription>
-                All assets that match the filters and scope above
-              </CardDescription>
-            </div>
+          <div>
+            <CardTitle className="text-lg font-semibold">
+              Asset Records
+            </CardTitle>
+            <CardDescription>
+              Every asset that matches the filters and scope above, one row per
+              record
+            </CardDescription>
           </div>
-          <div className="bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 border border-slate-300 md:text-right dark:bg-muted dark:border-border dark:text-slate-300">
-            Showing {groupedRowsLength.toLocaleString()} group
-            {groupedRowsLength === 1 ? "" : "s"} •{" "}
-            {sortedAssetsLength.toLocaleString()} item
-            {sortedAssetsLength === 1 ? "" : "s"}
+          <div className="border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 md:text-right dark:border-border dark:bg-muted dark:text-slate-300">
+            {totalItems.toLocaleString()} record
+            {totalItems === 1 ? "" : "s"}
           </div>
         </div>
       </CardHeader>
       <CardContent className="px-0 pb-0">
+        {error && (
+          <div className="mx-6 mt-4 flex flex-col items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+            <span>{error}</span>
+            {onRetry && (
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <Table
             dense={dense}
@@ -280,15 +411,10 @@ export default function AssetTable({
                       aria-label="Select all"
                       checked={
                         selectedIds.size > 0 &&
-                        selectedIds.size === sortedAssetsLength
+                        selectedIds.size === totalItems
                       }
                       onCheckedChange={(checked) => onSelectAll(!!checked)}
                     />
-                  </TableHead>
-                )}
-                {isVisible("group") && (
-                  <TableHead className="w-[110px] whitespace-nowrap text-center">
-                    Group
                   </TableHead>
                 )}
                 {isVisible("id") && (
@@ -296,7 +422,9 @@ export default function AssetTable({
                     <button
                       type="button"
                       onClick={() =>
-                        onSortChange(sortBy === "id-asc" ? "id-desc" : "id-asc")
+                        onSortChange(
+                          sortBy === "id-asc" ? "id-desc" : "id-asc",
+                        )
                       }
                       className="inline-flex items-center gap-1 rounded-sm border border-transparent px-1 py-0 text-slate-700 transition hover:border-slate-300 hover:bg-slate-200 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-800"
                       aria-label="Sort by Asset ID"
@@ -313,44 +441,95 @@ export default function AssetTable({
                     </button>
                   </TableHead>
                 )}
-                {isVisible("name") && <TableHead>Name</TableHead>}
-                {isVisible("type") && <TableHead>Type</TableHead>}
-                {isVisible("property") && <TableHead>Property</TableHead>}
-                {isVisible("department") && <TableHead>Department</TableHead>}
-                {isVisible("qty") && (
-                  <TableHead className="text-center">Quantity</TableHead>
+                 {isVisible("name") && <TableHead>Name</TableHead>}
+                 {isVisible("type") && <TableHead>Item Type</TableHead>}
+                 {isVisible("category") && <TableHead>Category</TableHead>}
+                 {isVisible("manufacturer") && (
+                   <TableHead>Manufacturer</TableHead>
+                 )}
+                 {isVisible("model") && <TableHead>Model</TableHead>}
+                 {isVisible("serial") && <TableHead>Serial No.</TableHead>}
+                 {isVisible("barcode") && <TableHead>Barcode</TableHead>}
+                 {isVisible("property") && <TableHead>Property</TableHead>}
+                {isVisible("department") && (
+                  <TableHead>Department</TableHead>
                 )}
                 {isVisible("location") && <TableHead>Location</TableHead>}
+                {isVisible("owner") && <TableHead>Owner</TableHead>}
+                {isVisible("qty") && (
+                  <TableHead className="text-center">Qty</TableHead>
+                )}
                 {isVisible("purchaseDate") && (
                   <TableHead>Purchase Date</TableHead>
                 )}
+                {isVisible("expiryDate") && <TableHead>Expiry Date</TableHead>}
                 {isVisible("purchaseCost") && (
-                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Purchase Cost</TableHead>
                 )}
                 {isVisible("currentValue") && (
                   <TableHead className="text-right">Current Value</TableHead>
                 )}
+                {isVisible("salvageValue") && (
+                  <TableHead className="text-right">Salvage Value</TableHead>
+                )}
                 {isVisible("depreciationMethod") && (
                   <TableHead>Dep. Method</TableHead>
                 )}
-                {isVisible("vendor") && <TableHead>Vendor</TableHead>}
-                {isVisible("invoiceNumber") && <TableHead>Invoice No</TableHead>}
-                {isVisible("warrantyExpiry") && (
-                  <TableHead>Warranty Ends</TableHead>
+                {isVisible("usefulLifeYears") && (
+                  <TableHead>Useful Life (Y)</TableHead>
                 )}
-                {isVisible("status") && <TableHead>Status</TableHead>}
+                {isVisible("depreciationRate") && (
+                  <TableHead className="text-right">Dep. Rate (%)</TableHead>
+                )}
+                {isVisible("accumulatedDepreciation") && (
+                  <TableHead className="text-right">
+                    Accumulated Dep.
+                  </TableHead>
+                )}
+                {isVisible("annualDepreciation") && (
+                  <TableHead className="text-right">Annual Dep.</TableHead>
+                )}
+                {isVisible("poNumber") && <TableHead>PO Number</TableHead>}
+                {isVisible("vendor") && <TableHead>Vendor</TableHead>}
+                {isVisible("invoiceNumber") && (
+                  <TableHead>Invoice No.</TableHead>
+                )}
+                {isVisible("warrantyStartDate") && (
+                  <TableHead>Warranty Start</TableHead>
+                )}
+                {isVisible("warrantyExpiry") && (
+                  <TableHead>Warranty Expiry</TableHead>
+                )}
+                {isVisible("warrantyProvider") && (
+                  <TableHead>Warranty Provider</TableHead>
+                )}
+                {isVisible("warrantyNotes") && (
+                  <TableHead>Warranty Notes</TableHead>
+                )}
+                {isVisible("amcEnabled") && <TableHead>AMC</TableHead>}
+                {isVisible("amcProvider") && (
+                  <TableHead>AMC Provider</TableHead>
+                )}
+                {isVisible("amcStartDate") && (
+                  <TableHead>AMC Start</TableHead>
+                )}
+                {isVisible("amcEndDate") && <TableHead>AMC End</TableHead>}
+                {isVisible("amcCost") && (
+                  <TableHead className="text-right">AMC Cost</TableHead>
+                )}
+                 {isVisible("condition") && <TableHead>Condition</TableHead>}
+                 {isVisible("status") && <TableHead>Condition</TableHead>}
                 {isVisible("approval") && <TableHead>Approval</TableHead>}
                 {isVisible("createdBy") && <TableHead>Created By</TableHead>}
-                {isVisible("serial") && <TableHead>Serial</TableHead>}
+                {isVisible("notes") && <TableHead>Notes</TableHead>}
                 {isVisible("description") && (
                   <TableHead>Description</TableHead>
                 )}
-                {isVisible("addedDate") && (
-                  <TableHead>Add Asset</TableHead>
+                {isVisible("addedDate") && <TableHead>Created At</TableHead>}
+                {isVisible("updatedDate") && (
+                  <TableHead>Updated At</TableHead>
                 )}
-                {isVisible("onAsset") && (
-                  <TableHead>On Asset</TableHead>
-                )}
+                {isVisible("onAsset") && <TableHead>Age</TableHead>}
                 {isVisible("actions") && (
                   <TableHead className="text-right">Actions</TableHead>
                 )}
@@ -359,441 +538,314 @@ export default function AssetTable({
             <TableBody>
               {searchLoading ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="p-0">
+                  <TableCell colSpan={colCount} className="p-0">
                     <div className="p-4">
                       <SearchLoadingSkeleton rows={5} columns={6} />
                     </div>
                   </TableCell>
                 </TableRow>
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={colCount}
+                    className="h-[280px] text-center"
+                  >
+                    <div className="flex flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/70">
+                        <Inbox className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          No assets found
+                        </p>
+                        <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                          No asset records match the current filters. Adjust
+                          the search, clear the filters, or add a new asset to
+                          populate the catalogue.
+                        </p>
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ) : (
-                paginatedRows.map((group) => {
-                  const { rep, members, totalQty, key } = group;
-                  const allSelected = members.every((m) =>
-                    selectedIds.has(m.id),
+                rows.map((asset) => {
+                  const pid = String(
+                    asset.property_id || asset.property || "",
                   );
-                  const isExpanded = expandedGroups.has(key);
+                  const canEdit =
+                    role === "admin" || approverPropIds.has(pid);
                   return (
-                    <Fragment key={key}>
-                      <TableRow
-                        key={key}
-                        className="cursor-pointer select-none border-b border-slate-300 bg-white shadow-[inset_0_-1px_0_rgba(148,163,184,0.18)] transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/80 dark:border-border dark:bg-card dark:shadow-[inset_0_-1px_0_rgba(51,65,85,0.55)] dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
-                        data-selected={allSelected ? "true" : undefined}
-                        onDoubleClick={() => onOpenAsset(rep.id)}
-                      >
-                        {isVisible("select") && (
-                          <TableCell className="w-10">
-                            <Checkbox
-                              aria-label={`Select group ${key}`}
-                              checked={allSelected}
-                              onCheckedChange={(checked) =>
-                                onSelectGroup(members, !!checked)
-                              }
-                            />
-                          </TableCell>
-                        )}
-                        {isVisible("group") && (
-                          <TableCell className="text-center">
-                            {members.length > 1 ? (
-                              <div className="inline-flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => onToggleExpanded(key)}
-                                  aria-label={
-                                    isExpanded
-                                      ? "Collapse group"
-                                      : "Expand group"
-                                  }
-                                  aria-expanded={isExpanded}
-                                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-slate-300 bg-slate-50 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 dark:border-border dark:bg-muted dark:text-slate-300 dark:hover:bg-slate-800"
-                                >
-                                  {isExpanded ? (
-                                    <ChevronDown className="h-4 w-4" />
-                                  ) : (
-                                    <ChevronRight className="h-4 w-4" />
-                                  )}
-                                </button>
-                                <span className="inline-flex items-center rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-600 dark:border-border dark:bg-muted dark:text-slate-300">
-                                  {isExpanded
-                                    ? "Group"
-                                    : `+${members.length - 1}`}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                Single
-                              </span>
-                            )}
-                          </TableCell>
-                        )}
-                        {isVisible("id") && (
-                          <TableCell className="font-medium">
-                            <span className="font-mono text-[12px] font-semibold tracking-normal text-foreground">
-                              {members[0]?.id}
-                            </span>
-                          </TableCell>
-                        )}
-                        {isVisible("name") && (
-                          <TableCell>
-                            <span className="font-semibold text-foreground leading-5 truncate max-w-[220px]">
-                              {rep.name || rep.id}
-                            </span>
-                          </TableCell>
-                        )}
-                        {isVisible("type") && (
-                          <TableCell>
-                            <TypeCell value={rep.type} />
-                          </TableCell>
-                        )}
-                        {isVisible("property") && (
-                          <TableCell>
-                            <div className="flex max-w-[200px] flex-col gap-0.5 text-sm">
-                              <span className="truncate font-medium text-foreground/90">
-                                {propName(String(rep.property))}
-                              </span>
-                              <span className="truncate text-[11px] text-muted-foreground">
-                                {propCode(String(rep.property))}
-                              </span>
-                            </div>
-                          </TableCell>
-                        )}
-                        {isVisible("department") && (
-                          <TableCell>
-                            <DepartmentCell value={rep.department} />
-                          </TableCell>
-                        )}
-                        {isVisible("qty") && (
-                          <TableCell className="text-center">
-                            {!isExpanded ? (
-                              <QtyBadge value={totalQty} />
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                {members.length} item
-                                {members.length === 1 ? "" : "s"}
-                              </span>
-                            )}
-                          </TableCell>
-                        )}
-                        {isVisible("location") && (
-                          <TableCell className="truncate max-w-[160px]">{rep.location || "-"}</TableCell>
-                        )}
-                        {isVisible("purchaseDate") && (
-                          <TableCell>{rep.purchaseDate}</TableCell>
-                        )}
-                        {isVisible("purchaseCost") && (
-                          <TableCell className="text-right">
-                            {formatMoney(rep.purchaseCost)}
-                          </TableCell>
-                        )}
-                        {isVisible("currentValue") && (
-                          <TableCell className="text-right">
-                            {formatMoney(rep.currentValue)}
-                          </TableCell>
-                        )}
-                        {isVisible("depreciationMethod") && (
-                          <TableCell className="truncate max-w-[140px]">{depMethodLabel(rep.depreciationMethod)}</TableCell>
-                        )}
-                        {isVisible("vendor") && (
-                          <TableCell className="truncate max-w-[150px]">{rep.vendor || "-"}</TableCell>
-                        )}
-                        {isVisible("invoiceNumber") && (
-                          <TableCell className="truncate max-w-[130px]">{rep.invoiceNumber || "-"}</TableCell>
-                        )}
-                        {isVisible("warrantyExpiry") && (
-                          <TableCell className="truncate max-w-[120px]">{rep.warrantyExpiry || "-"}</TableCell>
-                        )}
-                        {isVisible("status") && (
-                          <TableCell>{getStatusBadge(rep.status)}</TableCell>
-                        )}
-                        {isVisible("approval") && (
-                          <TableCell>
-                            {/* Show approval indicator if ANY member has a pending approval */}
-                            {(() => {
-                              const pending = members.find(
-                                (m) => approvalsByAsset[m.id],
-                              );
-                              return pending ? (
-                                <ApprovalCell
-                                  approval={approvalsByAsset[pending.id]}
-                                />
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  -
-                                </span>
-                              );
-                            })()}
-                          </TableCell>
-                        )}
-                        {isVisible("createdBy") && (
-                          <TableCell className="truncate max-w-[160px]">
-                            {rep.createdByName ||
-                              rep.createdByEmail ||
-                              rep.createdById ||
-                              "-"}
-                          </TableCell>
-                        )}
-                        {isVisible("serial") && (
-                          <TableCell className="truncate max-w-[140px]">{rep.serialNumber || "-"}</TableCell>
-                        )}
-                        {isVisible("description") && (
-                          <TableCell className="truncate max-w-[240px]">{rep.description || "-"}</TableCell>
-                        )}
-                        {isVisible("addedDate") && (
-                          <TableCell className="whitespace-nowrap text-xs">{formatDateShort(rep.created_at)}</TableCell>
-                        )}
-                        {isVisible("onAsset") && (
-                          <TableCell className="whitespace-nowrap text-xs font-medium text-muted-foreground">{timeAgo(rep.created_at)}</TableCell>
-                        )}
-                        {isVisible("actions") && (
-                          <TableCell className="text-right">
-                            <AssetActionsDropdown
-                              onEdit={() => onEdit(rep)}
-                              onQRCode={() => onQR(rep)}
-                              onTransfer={() =>
-                                onTransfer(
-                                  members.length === 1 ? members[0] : rep,
-                                )
-                              }
-                              onPrint={() => onPrint(rep)}
-                              onRequestEdit={() =>
-                                onRequestEdit(
-                                  members.length === 1 ? members[0] : rep,
-                                )
-                              }
-                              onDelete={() => {
-                                if (members.length > 1) {
-                                  onDeleteGroup(members);
-                                } else {
-                                  onDelete(rep.id);
-                                }
-                              }}
-                              canEdit={
-                                (members.length === 1 || isExpanded) &&
-                                (role === "admin" ||
-                                  approverPropIds.has(
-                                    String(
-                                      rep.property_id || rep.property || "",
-                                    ),
-                                  ))
-                              }
-                              showRequestEdit={
-                                (members.length === 1 || isExpanded) &&
-                                role !== "admin" &&
-                                !approverPropIds.has(
-                                  String(rep.property_id || rep.property || ""),
-                                )
-                              }
-                              canDelete={role === "admin"}
-                            />
-                          </TableCell>
-                        )}
-                      </TableRow>
-                      {isExpanded && members.length > 0 && (
-                        <>
-                          {members
-                            .slice(1) // exclude representative (already shown in group row)
-                            .sort((a: any, b: any) => {
-                              const parse = (
-                                id: string,
-                              ): { prefix: string; num: number } | null => {
-                                const m = String(id).match(/^(.*?)(\d+)$/);
-                                if (!m) return null;
-                                return {
-                                  prefix: m[1],
-                                  num: Number(m[2]),
-                                };
-                              };
-                              const pa = parse(String(a.id));
-                              const pb = parse(String(b.id));
-                              if (pa && pb) {
-                                const prefCmp = pa.prefix.localeCompare(
-                                  pb.prefix,
-                                );
-                                if (prefCmp !== 0) return prefCmp;
-                                return pa.num - pb.num;
-                              }
-                              return String(a.id).localeCompare(String(b.id));
-                            })
-                            .reverse() // show newest / highest id first
-                            .map((asset) => (
-                              <TableRow
-                                key={`${key}::${asset.id}`}
-                                className="border-b border-slate-200 bg-white transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/70 dark:border-border dark:bg-card dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
-                                data-selected={
-                                  selectedIds.has(asset.id)
-                                    ? "true"
-                                    : undefined
-                                }
-                              >
-                                {isVisible("select") && (
-                                  <TableCell className="w-10">
-                                    <Checkbox
-                                      aria-label={`Select ${asset.id}`}
-                                      checked={selectedIds.has(asset.id)}
-                                      onCheckedChange={(checked) =>
-                                        onSelectAsset(asset.id, !!checked)
-                                      }
-                                    />
-                                  </TableCell>
-                                )}
-                                {isVisible("group") && (
-                                  <TableCell className="text-center">
-                                    <span className="inline-flex items-center rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0 text-[10px] font-medium text-slate-600 dark:border-border dark:bg-muted dark:text-slate-300">
-                                      Child
-                                    </span>
-                                  </TableCell>
-                                )}
-                                {isVisible("id") && (
-                                  <TableCell className="font-medium">
-                                    <div className="flex items-start gap-2">
-                                      <span className="mt-[3px] h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-600" />
-                                      <span className="font-mono text-[12px] font-medium tracking-normal text-slate-700 dark:text-slate-200">
-                                        {asset.id}
-                                      </span>
-                                    </div>
-                                  </TableCell>
-                                )}
-                                {isVisible("name") && (
-                                  <TableCell>
-                                    <span className="font-semibold text-foreground leading-5 truncate max-w-[220px]">
-                                      {asset.name || asset.id}
-                                    </span>
-                                  </TableCell>
-                                )}
-                                {isVisible("type") && (
-                                  <TableCell>
-                                    <TypeCell value={asset.type} />
-                                  </TableCell>
-                                )}
-                                {isVisible("property") && (
-                                  <TableCell>
-                                    <div className="flex max-w-[200px] flex-col gap-0.5 text-sm">
-                                      <span className="truncate font-medium text-foreground/90">
-                                        {propName(String(asset.property))}
-                                      </span>
-                                      <span className="truncate text-[11px] text-muted-foreground">
-                                        {propCode(String(asset.property))}
-                                      </span>
-                                    </div>
-                                  </TableCell>
-                                )}
-                                {isVisible("department") && (
-                                  <TableCell>
-                                    <DepartmentCell value={asset.department} />
-                                  </TableCell>
-                                )}
-                                {isVisible("qty") && (
-                                  <TableCell className="text-center">
-                                    <QtyBadge value={asset.quantity} />
-                                  </TableCell>
-                                )}
-                                {isVisible("location") && (
-                                  <TableCell className="truncate max-w-[160px]">{asset.location || "-"}</TableCell>
-                                )}
-                                {isVisible("purchaseDate") && (
-                                  <TableCell>{asset.purchaseDate}</TableCell>
-                                )}
-                                {isVisible("purchaseCost") && (
-                                  <TableCell className="text-right">
-                                    {formatMoney(asset.purchaseCost)}
-                                  </TableCell>
-                                )}
-                                {isVisible("currentValue") && (
-                                  <TableCell className="text-right">
-                                    {formatMoney(asset.currentValue)}
-                                  </TableCell>
-                                )}
-                                {isVisible("depreciationMethod") && (
-                                  <TableCell className="truncate max-w-[140px]">
-                                    {depMethodLabel(asset.depreciationMethod)}
-                                  </TableCell>
-                                )}
-                                {isVisible("vendor") && (
-                                  <TableCell className="truncate max-w-[150px]">{asset.vendor || "-"}</TableCell>
-                                )}
-                                {isVisible("invoiceNumber") && (
-                                  <TableCell className="truncate max-w-[130px]">
-                                    {asset.invoiceNumber || "-"}
-                                  </TableCell>
-                                )}
-                                {isVisible("warrantyExpiry") && (
-                                  <TableCell className="truncate max-w-[120px]">
-                                    {asset.warrantyExpiry || "-"}
-                                  </TableCell>
-                                )}
-                                {isVisible("status") && (
-                                  <TableCell>
-                                    {getStatusBadge(asset.status)}
-                                  </TableCell>
-                                )}
-                                {isVisible("approval") && (
-                                  <TableCell>
-                                    <ApprovalCell
-                                      approval={approvalsByAsset[asset.id]}
-                                    />
-                                  </TableCell>
-                                )}
-                                {isVisible("createdBy") && (
-                                  <TableCell className="truncate max-w-[160px]">
-                                    {asset.createdByName ||
-                                      asset.createdByEmail ||
-                                      asset.createdById ||
-                                      "-"}
-                                  </TableCell>
-                                )}
-                                {isVisible("serial") && (
-                                  <TableCell className="truncate max-w-[140px]">
-                                    {asset.serialNumber || "-"}
-                                  </TableCell>
-                                )}
-                                {isVisible("description") && (
-                                  <TableCell className="truncate max-w-[240px]">
-                                    {asset.description || "-"}
-                                  </TableCell>
-                                )}
-                                {isVisible("addedDate") && (
-                                  <TableCell className="whitespace-nowrap text-xs">{formatDateShort(asset.created_at)}</TableCell>
-                                )}
-                                {isVisible("onAsset") && (
-                                  <TableCell className="whitespace-nowrap text-xs font-medium text-muted-foreground">{timeAgo(asset.created_at)}</TableCell>
-                                )}
-                                {isVisible("actions") && (
-                                  <TableCell className="text-right">
-                                    <AssetActionsDropdown
-                                      onEdit={() => onEdit(asset)}
-                                      onQRCode={() => onQR(asset)}
-                                      onTransfer={() => onTransfer(asset)}
-                                      onPrint={() => onPrint(asset)}
-                                      onRequestEdit={() => onRequestEdit(asset)}
-                                      onDelete={() => onDelete(asset.id)}
-                                      canEdit={
-                                        role === "admin" ||
-                                        approverPropIds.has(
-                                          String(
-                                            asset.property_id ||
-                                              asset.property ||
-                                              "",
-                                          ),
-                                        )
-                                      }
-                                      showRequestEdit={
-                                        role !== "admin" &&
-                                        !approverPropIds.has(
-                                          String(
-                                            asset.property_id ||
-                                              asset.property ||
-                                              "",
-                                          ),
-                                        )
-                                      }
-                                      canDelete={role === "admin"}
-                                    />
-                                  </TableCell>
-                                )}
-                              </TableRow>
-                            ))}
-                        </>
+                    <TableRow
+                      key={asset.id}
+                      className="cursor-pointer select-none border-b border-slate-300 bg-white shadow-[inset_0_-1px_0_rgba(148,163,184,0.18)] transition-colors hover:bg-slate-50 data-[selected=true]:bg-blue-100/80 dark:border-border dark:bg-card dark:shadow-[inset_0_-1px_0_rgba(51,65,85,0.55)] dark:hover:bg-slate-900 dark:data-[selected=true]:bg-slate-800"
+                      data-selected={
+                        selectedIds.has(asset.id) ? "true" : undefined
+                      }
+                      onDoubleClick={() => onOpenAsset(asset.id)}
+                    >
+                      {isVisible("select") && (
+                        <TableCell className="w-10">
+                          <Checkbox
+                            aria-label={`Select ${asset.id}`}
+                            checked={selectedIds.has(asset.id)}
+                            onCheckedChange={(checked) =>
+                              onSelectAsset(asset.id, !!checked)
+                            }
+                          />
+                        </TableCell>
                       )}
-                    </Fragment>
+                      {isVisible("id") && (
+                        <TableCell className="font-medium">
+                          <MonoTag value={asset.id} />
+                        </TableCell>
+                      )}
+                      {isVisible("name") && (
+                        <TableCell>
+                          <span className="max-w-[220px] truncate font-semibold leading-5 text-foreground">
+                            {asset.name || asset.id}
+                          </span>
+                        </TableCell>
+                      )}
+                      {isVisible("type") && (
+                        <TableCell className="truncate max-w-[160px] text-xs font-medium text-foreground/80">
+                          {asset.type || "-"}
+                        </TableCell>
+                      )}
+                       {isVisible("category") && (
+                         <TableCell className="truncate max-w-[140px] text-xs">
+                           {asset.category_name || "-"}
+                         </TableCell>
+                       )}
+                       {isVisible("manufacturer") && (
+                         <TableCell className="truncate max-w-[140px] text-xs">
+                           {asset.manufacturer || "-"}
+                         </TableCell>
+                       )}
+                       {isVisible("model") && (
+                         <TableCell className="truncate max-w-[120px] text-xs">
+                           {asset.model || "-"}
+                         </TableCell>
+                       )}
+                       {isVisible("serial") && (
+                         <TableCell className="truncate max-w-[140px] text-xs">
+                           <MonoTag value={asset.serialNumber} />
+                         </TableCell>
+                       )}
+                       {isVisible("barcode") && (
+                         <TableCell className="truncate max-w-[140px] text-xs">
+                           <MonoTag value={asset.barcode} />
+                         </TableCell>
+                       )}
+                       {isVisible("property") && (
+                        <TableCell>
+                          <div className="flex max-w-[200px] flex-col gap-0.5 text-sm">
+                            <span className="truncate font-medium text-foreground/90">
+                              {propName(String(asset.property))}
+                            </span>
+                            <span className="truncate text-[11px] text-muted-foreground">
+                              {propCode(String(asset.property))}
+                            </span>
+                          </div>
+                        </TableCell>
+                      )}
+                      {isVisible("department") && (
+                        <TableCell className="truncate max-w-[180px] text-xs font-medium text-foreground/80">
+                          {asset.department || "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("location") && (
+                        <TableCell className="truncate max-w-[160px] text-xs">
+                          {asset.location || "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("owner") && (
+                        <TableCell className="truncate max-w-[140px] text-xs">
+                          {asset.owner_name || asset.owner || "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("qty") && (
+                        <TableCell className="text-center text-xs font-semibold">
+                          {Number(asset.quantity) || 0}
+                        </TableCell>
+                      )}
+                      {isVisible("purchaseDate") && (
+                        <TableCell className="text-xs">
+                          {formatDateShort(asset.purchaseDate)}
+                        </TableCell>
+                      )}
+                      {isVisible("expiryDate") && (
+                        <TableCell className="text-xs">
+                          {formatDateShort(asset.expiryDate)}
+                        </TableCell>
+                      )}
+                      {isVisible("purchaseCost") && (
+                        <TableCell className="text-right text-xs">
+                          {formatMoney(asset.purchaseCost)}
+                        </TableCell>
+                      )}
+                      {isVisible("currentValue") && (
+                        <TableCell className="text-right text-xs">
+                          {formatMoney(asset.currentValue)}
+                        </TableCell>
+                      )}
+                      {isVisible("salvageValue") && (
+                        <TableCell className="text-right text-xs">
+                          {formatMoney(asset.salvageValue)}
+                        </TableCell>
+                      )}
+                      {isVisible("depreciationMethod") && (
+                        <TableCell className="truncate max-w-[140px] text-xs">
+                          {depMethodLabel(asset.depreciationMethod)}
+                        </TableCell>
+                      )}
+                      {isVisible("usefulLifeYears") && (
+                        <TableCell className="text-xs">
+                          {formatNumber(asset.usefulLifeYears, " yrs")}
+                        </TableCell>
+                      )}
+                      {isVisible("depreciationRate") && (
+                        <TableCell className="text-right text-xs">
+                          {formatNumber(asset.depreciationRate, "%")}
+                        </TableCell>
+                      )}
+                      {isVisible("accumulatedDepreciation") && (
+                        <TableCell className="text-right text-xs">
+                          {formatMoney(asset.accumulatedDepreciation)}
+                        </TableCell>
+                      )}
+                      {isVisible("annualDepreciation") && (
+                        <TableCell className="text-right text-xs">
+                          {formatMoney(asset.annual_depreciation_value)}
+                        </TableCell>
+                      )}
+                      {isVisible("poNumber") && (
+                        <TableCell className="truncate max-w-[130px] text-xs">
+                          {asset.poNumber || "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("vendor") && (
+                        <TableCell className="truncate max-w-[150px] text-xs">
+                          {asset.vendor || "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("invoiceNumber") && (
+                        <TableCell className="truncate max-w-[130px] text-xs">
+                          {asset.invoiceNumber || "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("warrantyStartDate") && (
+                        <TableCell className="text-xs">
+                          {formatDateShort(asset.warrantyStartDate)}
+                        </TableCell>
+                      )}
+                      {isVisible("warrantyExpiry") && (
+                        <TableCell className="text-xs">
+                          {formatDateShort(asset.warrantyExpiry)}
+                        </TableCell>
+                      )}
+                      {isVisible("warrantyProvider") && (
+                        <TableCell className="truncate max-w-[150px] text-xs">
+                          {asset.warrantyProvider || "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("warrantyNotes") && (
+                        <TableCell className="max-w-[200px] text-xs">
+                          <TextCell value={asset.warrantyNotes} max={28} />
+                        </TableCell>
+                      )}
+                      {isVisible("amcEnabled") && (
+                        <TableCell>
+                          <BoolChip value={Boolean(asset.amcEnabled)} />
+                        </TableCell>
+                      )}
+                      {isVisible("amcProvider") && (
+                        <TableCell className="truncate max-w-[150px] text-xs">
+                          {asset.amcProvider || "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("amcStartDate") && (
+                        <TableCell className="text-xs">
+                          {formatDateShort(asset.amcStartDate)}
+                        </TableCell>
+                      )}
+                      {isVisible("amcEndDate") && (
+                        <TableCell className="text-xs">
+                          {formatDateShort(asset.amcEndDate)}
+                        </TableCell>
+                      )}
+                      {isVisible("amcCost") && (
+                        <TableCell className="text-right text-xs">
+                          {formatMoney(asset.amcCost)}
+                        </TableCell>
+                      )}
+                       {isVisible("condition") && (
+                         <TableCell>
+                           <ConditionChip value={asset.condition} />
+                         </TableCell>
+                       )}
+                       {isVisible("status") && (
+                         <TableCell>
+                           <ConditionChip value={asset.condition} />
+                         </TableCell>
+                       )}
+                      {isVisible("approval") && (
+                        <TableCell>
+                          <ApprovalCell
+                            approval={approvalsByAsset[asset.id]}
+                          />
+                        </TableCell>
+                      )}
+                      {isVisible("createdBy") && (
+                        <TableCell className="truncate max-w-[160px] text-xs">
+                          {asset.createdByName ||
+                            asset.createdByEmail ||
+                            asset.createdById ||
+                            "-"}
+                        </TableCell>
+                      )}
+                      {isVisible("notes") && (
+                        <TableCell className="max-w-[200px] text-xs">
+                          <TextCell value={asset.notes} max={28} />
+                        </TableCell>
+                      )}
+                      {isVisible("description") && (
+                        <TableCell className="max-w-[220px] text-xs">
+                          <TextCell value={asset.description} max={28} />
+                        </TableCell>
+                      )}
+                      {isVisible("addedDate") && (
+                        <TableCell className="text-xs">
+                          {formatDateShort(asset.created_at)}
+                        </TableCell>
+                      )}
+                      {isVisible("updatedDate") && (
+                        <TableCell className="text-xs">
+                          {formatDateShort(asset.updated_at)}
+                        </TableCell>
+                      )}
+                      {isVisible("onAsset") && (
+                        <TableCell className="text-xs font-medium text-muted-foreground">
+                          {timeAgo(asset.created_at)}
+                        </TableCell>
+                      )}
+                      {isVisible("actions") && (
+                        <TableCell className="text-right">
+                          <AssetActionsDropdown
+                            onEdit={() => onEdit(asset)}
+                            onQRCode={() => onQR(asset)}
+                            onTransfer={() => onTransfer(asset)}
+                            onPrint={() => onPrint(asset)}
+                            onRequestEdit={() => onRequestEdit(asset)}
+                            onDelete={() => onDelete(asset.id)}
+                            canEdit={canEdit}
+                            showRequestEdit={
+                              role !== "admin" && !canEdit
+                            }
+                            canDelete={role === "admin"}
+                          />
+                        </TableCell>
+                      )}
+                    </TableRow>
                   );
                 })
               )}
@@ -801,7 +853,7 @@ export default function AssetTable({
           </Table>
           <TablePagination
             currentPage={currentPage}
-            totalItems={groupedRowsLength}
+            totalItems={totalItems}
             rowsPerPage={rowsPerPage}
             onPageChange={onPageChange}
             onRowsPerPageChange={(rows) => {

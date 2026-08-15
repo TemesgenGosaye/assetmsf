@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import StatusChip from "@/components/ui/status-chip";
 import MetricCard from "@/components/ui/metric-card";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import { PropertyActionsDropdown } from "@/components/properties/PropertyActionsDropdown";
 import {
   Table,
@@ -689,7 +690,7 @@ export default function Properties() {
         <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
           <div className="relative z-10 max-w-3xl space-y-4">
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              Property Management
+              Property Management | ፕሮፐርቲ ማኔጅመንት
             </h1>
             <p className="text-lg text-muted-foreground">
               Manage properties and related assets
@@ -780,16 +781,46 @@ export default function Properties() {
         {/* Properties Table */}
         <Card className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
           <CardHeader className="flex flex-col gap-1 border-b border-border/60 bg-muted/30 px-6 py-5">
-            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-muted-foreground" />
                 <CardTitle className="text-lg font-semibold">
                   Properties
                 </CardTitle>
               </div>
-              <div className="bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 border border-slate-300 md:text-right dark:bg-muted dark:border-border dark:text-slate-300">
-                Showing {filtered.length} propert
-                {filtered.length === 1 ? "y" : "ies"}
+              <div className="flex items-center gap-3">
+                <ReportExportMenu
+                  title="Property Records Report"
+                  fileName="properties_directory"
+                  columns={[
+                    { header: "Property ID", key: "id" },
+                    { header: "Name", key: "name" },
+                    { header: "Address", key: "address" },
+                    { header: "Type", key: "type" },
+                    { header: "Status", key: "status" },
+                    { header: "Manager", key: "manager" },
+                    { header: "Asset Count", key: "assetCount" },
+                  ]}
+                  getRows={() => filtered.map((p) => [
+                    p.id,
+                    p.name,
+                    p.address || "",
+                    p.type,
+                    p.status,
+                    p.manager || "",
+                    p.assetCount ?? 0,
+                  ])}
+                  totalCount={filtered.length}
+                  filters={[
+                    debouncedSearch ? `Search: "${debouncedSearch}"` : "",
+                    typeFilter !== "all" ? `Type: ${typeFilter}` : "",
+                    statusFilter !== "all" ? `Status: ${statusFilter}` : "",
+                  ].filter(Boolean).join(", ") || undefined}
+                />
+                <div className="bg-slate-100 px-2.5 py-1 text-[11px] text-slate-600 border border-slate-300 dark:bg-muted dark:border-border dark:text-slate-300">
+                  Showing {filtered.length} propert
+                  {filtered.length === 1 ? "y" : "ies"}
+                </div>
               </div>
             </div>
           </CardHeader>

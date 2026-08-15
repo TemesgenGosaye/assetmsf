@@ -24,6 +24,7 @@ import {
 // format no longer needed after centralizing date range picker
 import { cn } from "@/lib/utils";
 import DateRangePicker from "@/components/ui/date-range-picker";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import { toast } from "sonner";
 import { isDemoMode } from "@/lib/demo";
 import { listProperties, type Property } from "@/services/properties";
@@ -177,6 +178,60 @@ export default function Reports() {
   const [tkScope, setTkScope] = useState<string>(() => (isAdminRole ? 'all' : 'mine-received'));
   const [tkFrom, setTkFrom] = useState<Date | undefined>();
   const [tkTo, setTkTo] = useState<Date | undefined>();
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+
+  // Load tickets whenever scope or date filters change
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const id = (currentUser?.id || '').toString();
+        const email = (currentUser?.email || '').toString();
+        const tasks: Promise<Ticket[]>[] = [];
+        if (tkScope === 'mine-received') {
+          if (id) tasks.push(listTickets({ assignee: id }));
+          if (email && email !== id) tasks.push(listTickets({ assignee: email }));
+        } else if (tkScope === 'mine-raised') {
+          if (id) tasks.push(listTickets({ createdBy: id }));
+          if (email && email !== id) tasks.push(listTickets({ createdBy: email }));
+        } else if (tkScope === 'target-admin') {
+          tasks.push(listTickets({ targetRole: 'admin' as any }));
+        } else if (tkScope === 'target-manager') {
+          tasks.push(listTickets({ targetRole: 'manager' as any }));
+        } else {
+          tasks.push(listTickets({}));
+        }
+        const results = (await Promise.all(tasks)).flat();
+        const map = new Map<string, Ticket>();
+        results.forEach(t => { map.set(t.id, t); });
+        if (!cancelled) setTickets(Array.from(map.values()));
+      } catch {
+        if (!cancelled) setTickets([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tkScope, currentUser]);
+
+  // Apply date range filter to tickets (for both table display and export)
+  const ticketsFiltered = useMemo(() => {
+    const from = tkFrom ? new Date(new Date(tkFrom).setHours(0, 0, 0, 0)) : null;
+    const to = tkTo ? new Date(new Date(tkTo).setHours(23, 59, 59, 999)) : null;
+    return tickets
+      .filter(t => {
+        if (!from && !to) return true;
+        const iso = (t as any).created_at || (t as any).createdAt;
+        if (!iso) return false;
+        const d = new Date(iso);
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const aDate = (a as any).created_at || (a as any).createdAt || '';
+        const bDate = (b as any).created_at || (b as any).createdAt || '';
+        return aDate < bDate ? 1 : -1;
+      });
+  }, [tickets, tkFrom, tkTo]);
 
   // Load properties, item types, and recent reports
   // When Supabase is enabled, pull live data; else use light fallbacks
@@ -1064,7 +1119,7 @@ export default function Reports() {
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
         <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Reports & Insights</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Reports & Insights | ሪፖርቶች እና መረጃዎች </h1>
             <p className="mt-2 max-w-2xl text-muted-foreground">
               Generate compliance-ready exports, enrich audit reviews, and keep your teams informed.
             </p>
@@ -1561,9 +1616,29 @@ export default function Reports() {
                     <DateRangePicker value={{ from: tkFrom, to: tkTo }} onChange={(r) => { setTkFrom(r.from); setTkTo(r.to); }} />
                   </div>
                 </div>
-                <Button variant="outline" className="gap-2" onClick={exportTicketsCsv}>
-                  <Download className="h-4 w-4" /> Export CSV
-                </Button>
+                <ReportExportMenu
+                  title="Maintenance Tickets Report"
+                  fileName="tickets_report"
+                  columns={[
+                    { header: "Ticket ID", key: "id" },
+                    { header: "Category", key: "category" },
+                    { header: "Title", key: "title" },
+                    { header: "Priority", key: "priority" },
+                    { header: "Status", key: "status" },
+                    { header: "Property ID", key: "property_id" },
+                    { header: "Created At", key: "created_at" },
+                  ]}
+                  getRows={() => (ticketsFiltered || []).map((t) => [
+                    t.id,
+                    t.category || "",
+                    t.title || "",
+                    t.priority || "",
+                    t.status || "",
+                    t.property_id || "",
+                    t.created_at ? new Date(t.created_at).toLocaleString() : "",
+                  ])}
+                  totalCount={(ticketsFiltered || []).length}
+                />
               </div>
             </CardContent>
           </Card>
@@ -1626,9 +1701,29 @@ export default function Reports() {
                     />
                   </div>
                 </div>
-                <Button variant="outline" className="gap-2" onClick={exportApprovalsCsv} disabled={!approvalsFiltered.length}>
-                  <Download className="h-4 w-4" /> Export CSV
-                </Button>
+                <ReportExportMenu
+                  title="Approvals Log Report"
+                  fileName="approvals_log"
+                  columns={[
+                    { header: "Request ID", key: "id" },
+                    { header: "Asset ID", key: "assetId" },
+                    { header: "Action", key: "action" },
+                    { header: "Requested By", key: "requestedBy" },
+                    { header: "Department", key: "department" },
+                    { header: "Status", key: "status" },
+                    { header: "Requested At", key: "requestedAt" },
+                  ]}
+                  getRows={() => (approvalsFiltered || []).map((a) => [
+                    a.id,
+                    a.assetId || "",
+                    a.action ? String(a.action).toUpperCase() : "REQUEST",
+                    a.requestedBy || "",
+                    a.department || "",
+                    a.status || "",
+                    a.requestedAt ? new Date(a.requestedAt).toLocaleString() : "",
+                  ])}
+                  totalCount={(approvalsFiltered || []).length}
+                />
               </div>
 
               <div className="rounded-md border border-border/40 overflow-hidden">

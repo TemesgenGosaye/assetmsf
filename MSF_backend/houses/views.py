@@ -30,7 +30,7 @@ from .allocation_engine import (
     compute_mcda_score, topsis_rank, check_allocation_constraints,
     analyze_eligibility, generate_opportunities, rank_opportunities,
     allocate_application, override_allocate, terminate_allocation,
-    record_audit,
+    record_audit, ALLOCATION_MODE_ROOM, ALLOCATION_MODE_HOUSE,
 )
 
 
@@ -388,7 +388,10 @@ class AutoAllocateView(APIView):
                 return StandardResponse.not_found("Application not found")
 
         try:
-            app, breakdown, reasons = auto_allocate_single(house, target_app, request.user)
+            app, breakdown, reasons = auto_allocate_single(
+                house, target_app, request.user,
+                room_label=request.data.get("room_label", ""),
+            )
             return StandardResponse.success(
                 HouseApplicationDetailSerializer(app).data,
                 f"House {house.house_id} allocated to {app.employee_name}"
@@ -437,7 +440,10 @@ class ManualAllocateView(APIView):
             return StandardResponse.not_found("Application not found")
 
         try:
-            app = manual_allocate(house, app, request.user, notes)
+            app = manual_allocate(
+                house, app, request.user, notes,
+                room_label=request.data.get("room_label", ""),
+            )
             return StandardResponse.success(HouseApplicationDetailSerializer(app).data, "Manual allocation complete")
         except ValueError as e:
             return StandardResponse.bad_request(str(e))
@@ -588,6 +594,16 @@ class ReviewOverviewView(APIView):
                 t: Allocation.objects.filter(status=Allocation.Status.ACTIVE, house__house_type=t).count()
                 for t in ["Staff", "A", "B", "C", "D", "E"]
             },
+            "allocations_by_unit": {
+                "house": Allocation.objects.filter(
+                    status=Allocation.Status.ACTIVE,
+                    allocation_unit_type=ALLOCATION_MODE_HOUSE,
+                ).count(),
+                "room": Allocation.objects.filter(
+                    status=Allocation.Status.ACTIVE,
+                    allocation_unit_type=ALLOCATION_MODE_ROOM,
+                ).count(),
+            },
         }
         return StandardResponse.success(data, "Review overview retrieved")
 
@@ -722,6 +738,7 @@ class AllocateView(APIView):
         allocation_type = str(request.data.get("allocation_type", "Manual")).capitalize()
         notes = request.data.get("notes", "")
         override_reason = request.data.get("override_reason", "")
+        room_label = request.data.get("room_label", "")
 
         if not house_id or not app_id:
             return StandardResponse.bad_request("house_id and application_id are required")
@@ -736,13 +753,13 @@ class AllocateView(APIView):
 
         try:
             if allocation_type == "Auto":
-                allocation = allocate_application(app, house, request.user, "Auto", notes=notes)
+                allocation = allocate_application(app, house, request.user, "Auto", notes=notes, room_label=room_label)
             elif allocation_type == "Override":
                 if not override_reason.strip():
                     return StandardResponse.bad_request("override_reason is required for manual overrides")
-                allocation = override_allocate(house, app, request.user, override_reason, notes)
+                allocation = override_allocate(house, app, request.user, override_reason, notes, room_label=room_label)
             else:
-                allocation = allocate_application(app, house, request.user, "Manual", notes=notes)
+                allocation = allocate_application(app, house, request.user, "Manual", notes=notes, room_label=room_label)
             return StandardResponse.success(
                 AllocationSerializer(allocation).data,
                 f"Allocated {house.house_id} to {app.employee_name}",

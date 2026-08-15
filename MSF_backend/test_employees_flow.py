@@ -46,6 +46,7 @@ for e in emps:
 # 5. Create employee via API
 print('\n=== 5. CREATE EMPLOYEE ===')
 new_emp = json.dumps({
+    'employee_id': 'EMP-2025-0001',
     'full_name': 'Sara Mbeki',
     'national_id': 'MSF-2025-0002',
     'job_position': 'Logistics Officer',

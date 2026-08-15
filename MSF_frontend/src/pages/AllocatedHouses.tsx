@@ -156,11 +156,34 @@ export default function AllocatedHouses() {
       },
       {
         key: "house_id",
-        header: "House",
-        width: "w-28",
+        header: "Unit",
+        width: "min-w-[120px]",
         sortable: true,
         value: (r) => r.house_id,
-        cell: (r) => <span className="font-medium">{r.house_id}</span>,
+        cell: (r) => (
+          <span className="font-medium">
+            {r.resource || (r.room_label ? `${r.house_id} — Room ${r.room_label}` : r.house_id)}
+          </span>
+        ),
+      },
+      {
+        key: "allocation_unit_type",
+        header: "Unit Type",
+        width: "w-24",
+        sortable: true,
+        value: (r) => r.allocation_unit_type,
+        cell: (r) => (
+          <Badge
+            variant="outline"
+            className={
+              r.allocation_unit_type === "ROOM_ALLOCATION"
+                ? "border-sky-300 text-[10px] text-sky-700 dark:border-sky-500/40 dark:text-sky-400"
+                : "border-violet-300 text-[10px] text-violet-700 dark:border-violet-500/40 dark:text-violet-400"
+            }
+          >
+            {r.allocation_unit_type === "ROOM_ALLOCATION" ? "Room" : "Whole house"}
+          </Badge>
+        ),
       },
       {
         key: "house_type",
@@ -274,6 +297,7 @@ export default function AllocatedHouses() {
       <PageHeader
         icon={KeyRound}
         title="Allocated Houses"
+        amharicTitle="የተመደቡ ቤቶች"
         description="Authoritative register of current house allocations, occupancy, and allocation history."
         actions={
           <>
@@ -341,6 +365,8 @@ export default function AllocatedHouses() {
       {/* ── Allocation register ──────────────────────────────────────── */}
       <DataTable<HouseAllocation>
         tableKey="allocated-houses"
+        exportFileName="house-allocations"
+        reportTitle="Allocated House Records"
         columns={columns}
         data={allocations}
         rowKey={(r) => r.id}
@@ -378,7 +404,6 @@ export default function AllocatedHouses() {
         ]}
         rowActions={rowActions}
         pageSize={20}
-        exportFileName="house-allocations"
         searchPlaceholder="Search allocation no., employee, emp ID, house…"
       />
 
@@ -391,7 +416,9 @@ export default function AllocatedHouses() {
               {detail?.allocation_no ?? "Allocation"}
             </DialogTitle>
             <DialogDescription>
-              {detail ? `${detail.employee_name} → ${detail.house_id}` : ""}
+              {detail
+                ? `${detail.employee_name} → ${detail.resource || detail.house_id}`
+                : ""}
             </DialogDescription>
           </DialogHeader>
 
@@ -400,8 +427,9 @@ export default function AllocatedHouses() {
               <Field label="Employee" value={detail.employee_name} />
               <Field label="Emp ID" value={detail.employee_id} />
               <Field label="Application" value={detail.application_no} />
-              <Field label="House" value={detail.house_id} />
+              <Field label="Unit" value={detail.resource || detail.house_id} />
               <Field label="House Number" value={detail.house_number} />
+              <Field label="Room" value={detail.room_label || (detail.allocation_unit_type === "ROOM_ALLOCATION" ? "—" : "Whole house")} />
               <Field label="Type" value={detail.house_type} />
               <Field label="Location" value={detail.house_location} />
               <Field label="Allocation Type" value={detail.allocation_type} />
@@ -454,7 +482,7 @@ export default function AllocatedHouses() {
             </DialogTitle>
             <DialogDescription>
               {terminateTarget
-                ? `This will free ${terminateTarget.house_id} and move ${terminateTarget.employee_name}'s application back to the queue.`
+                ? `This will free ${terminateTarget.resource || terminateTarget.house_id} and move ${terminateTarget.employee_name}'s application back to the queue.`
                 : ""}
             </DialogDescription>
           </DialogHeader>

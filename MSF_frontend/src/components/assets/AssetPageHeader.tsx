@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import ColumnChooser, {
   type ColumnDef,
 } from "@/components/table/ColumnChooser";
+import { ReportExportMenu, type ReportExportMenuProps } from "@/components/table/ReportExportMenu";
 
 type Props = {
   columns: ColumnDef[];
@@ -10,6 +11,7 @@ type Props = {
   onVisibleColsChange: (cols: string[]) => void;
   canAdd: boolean;
   onAddClick: () => void;
+  exportProps?: ReportExportMenuProps;
 };
 
 export default function AssetPageHeader({
@@ -18,19 +20,21 @@ export default function AssetPageHeader({
   onVisibleColsChange,
   canAdd,
   onAddClick,
+  exportProps,
 }: Props) {
   return (
     <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
       <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
         <div className="max-w-3xl space-y-4">
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Asset Management
+            Asset Management | የቋሚ ንብረት አስተዳደር
           </h1>
           <p className="text-lg text-muted-foreground">
             Track and manage all your organization's assets
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {exportProps && <ReportExportMenu {...exportProps} />}
           <ColumnChooser
             columns={columns}
             visible={visibleCols}
@@ -51,3 +55,4 @@ export default function AssetPageHeader({
     </div>
   );
 }
+

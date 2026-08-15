@@ -25,7 +25,6 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
     filterset_fields = ["status", "department"]
     search_fields = [
         "full_name",
-        "names",
         "employee_id",
         "national_id",
         "job_position",
@@ -107,7 +106,7 @@ def employee_bulk_import(request):
     POST /api/employees/bulk-import/
 
     Accepts a JSON body with an array of employee objects.
-    Validates each row (required fields, no duplicate national_id) and
+    Validates each row (required fields, no duplicate employee_id/national_id) and
     inserts only valid rows.
 
     Returns: { created: int, skipped: int, errors: [{row, message}] }
@@ -120,12 +119,19 @@ def employee_bulk_import(request):
             "or an object with an 'employees' key containing that array."
         )
 
-    # Collect national_ids already in the DB so we can detect duplicates within the batch too
+    # Collect employee_ids / national_ids already in the DB so we can detect
+    # duplicates within the batch too
     existing_ids = set(
+        Employee.objects.filter(is_active=True).values_list("employee_id", flat=True)
+    )
+    existing_national_ids = set(
         Employee.objects.filter(is_active=True).values_list("national_id", flat=True)
     )
 
-    REQUIRED_FIELDS = ["full_name", "national_id", "job_position", "status"]
+    REQUIRED_FIELDS = ["employee_id", "full_name", "national_id", "job_position", "status"]
+    valid_statuses = [s.value for s in Employee.Status]
+    valid_job_types = [j.value for j in Employee.JobType]
+    valid_marital_statuses = [m.value for m in Employee.MaritalStatus]
 
     created_count = 0
     skipped_count = 0
@@ -152,10 +158,20 @@ def employee_bulk_import(request):
             )
             continue
 
+        employee_id = str(row["employee_id"]).strip()
         national_id = str(row["national_id"]).strip()
 
         # Duplicate in DB
-        if national_id in existing_ids:
+        if employee_id in existing_ids:
+            skipped_count += 1
+            errors.append(
+                {
+                    "row": row_num,
+                    "message": f"Duplicate employee_id '{employee_id}' already exists.",
+                }
+            )
+            continue
+        if national_id in existing_national_ids:
             skipped_count += 1
             errors.append(
                 {
@@ -166,6 +182,15 @@ def employee_bulk_import(request):
             continue
 
         # Duplicate within the batch itself
+        if employee_id in seen_in_batch:
+            skipped_count += 1
+            errors.append(
+                {
+                    "row": row_num,
+                    "message": f"Duplicate employee_id '{employee_id}' appears more than once in the import.",
+                }
+            )
+            continue
         if national_id in seen_in_batch:
             skipped_count += 1
             errors.append(
@@ -192,7 +217,6 @@ def employee_bulk_import(request):
                 )
 
         # Validate status choice
-        valid_statuses = [s.value for s in Employee.Status]
         status_val = str(row.get("status", "Active")).strip()
         if status_val not in valid_statuses:
             skipped_count += 1
@@ -200,6 +224,30 @@ def employee_bulk_import(request):
                 {
                     "row": row_num,
                     "message": f"Invalid status '{status_val}'. Must be one of: {', '.join(valid_statuses)}.",
+                }
+            )
+            continue
+
+        # Validate job type choice
+        job_type_val = str(row.get("job_type", "Permanent")).strip()
+        if job_type_val not in valid_job_types:
+            skipped_count += 1
+            errors.append(
+                {
+                    "row": row_num,
+                    "message": f"Invalid job_type '{job_type_val}'. Must be one of: {', '.join(valid_job_types)}.",
+                }
+            )
+            continue
+
+        # Validate marital status choice
+        marital_val = str(row.get("marital_status", "Single")).strip()
+        if marital_val not in valid_marital_statuses:
+            skipped_count += 1
+            errors.append(
+                {
+                    "row": row_num,
+                    "message": f"Invalid marital_status '{marital_val}'. Must be one of: {', '.join(valid_marital_statuses)}.",
                 }
             )
             continue
@@ -227,21 +275,24 @@ def employee_bulk_import(request):
 
         try:
             Employee.objects.create(
+                employee_id=employee_id,
                 full_name=str(row["full_name"]).strip(),
-                names=str(row.get("names", "")).strip(),
                 national_id=national_id,
                 job_position=str(row["job_position"]).strip(),
                 job_grade=str(row.get("job_grade", "")).strip(),
-                job_type=str(row.get("job_type", "Permanent")).strip(),
+                job_type=job_type_val,
                 department=department,
                 hire_date=hire_date,
                 family_size=int(row.get("family_size", 0) or 0),
+                marital_status=marital_val,
                 has_disability=bool(row.get("has_disability", False)),
                 status=status_val,
                 created_by=request.user,
             )
+            seen_in_batch.add(employee_id)
             seen_in_batch.add(national_id)
-            existing_ids.add(national_id)  # prevent later duplicates in same batch
+            existing_ids.add(employee_id)  # prevent later duplicates in same batch
+            existing_national_ids.add(national_id)
             created_count += 1
         except Exception as exc:
             skipped_count += 1
@@ -309,12 +360,12 @@ def employee_lookup_view(request, employee_id):
         "id": str(emp.id),
         "employee_id": emp.employee_id,
         "full_name": emp.full_name,
-        "names": emp.names,
         "national_id": emp.national_id,
         "job_position": emp.job_position,
         "job_grade": emp.job_grade,
         "job_type": emp.job_type,
         "service_years": emp.service_years,
+        "service_duration": emp.service_duration,
         "marital_status": emp.marital_status,
         "has_disability": emp.has_disability,
         "family_size": emp.family_size,

@@ -11,6 +11,32 @@ export type ApplicationStatus =
   | "Rejected"
   | "Returned";
 
+export type AllocationMode = "ROOM_ALLOCATION" | "HOUSE_ALLOCATION" | "";
+
+export function allocationModeLabel(mode?: AllocationMode | string | null): string {
+  if (mode === "ROOM_ALLOCATION") return "Room (single)";
+  if (mode === "HOUSE_ALLOCATION") return "Whole house (family)";
+  return "—";
+}
+
+/**
+ * Client-side mirror of the backend rule: single applicants with family size
+ * ≤ 1 are room-allocated; everyone else gets the whole house.
+ */
+export function determineAllocationMode(app: {
+  marital_status?: string;
+  family_size?: number;
+}): AllocationMode {
+  const family = Number(app.family_size ?? 1) || 1;
+  const marital = (app.marital_status || "").trim().toLowerCase();
+  return marital === "single" && family <= 1 ? "ROOM_ALLOCATION" : "HOUSE_ALLOCATION";
+}
+
+export function resourceLabel(houseNumber?: string | null, roomLabel?: string | null): string {
+  const base = houseNumber || "—";
+  return roomLabel ? `${base} — Room ${roomLabel}` : base;
+}
+
 export type CriterionContribution = {
   raw: string | number | boolean;
   normalised: number;
@@ -52,6 +78,7 @@ export type HouseApplication = {
   number_of_children: number;
   requested_house_category: string;
   eligible_house_category?: string;
+  allocation_mode?: AllocationMode;
   priority_score: number;
   queue_position?: number | null;
   score_breakdown?: ScoreBreakdown | null;
@@ -65,6 +92,9 @@ export type HouseApplication = {
   reviewed_by_name?: string | null;
   allocated_house?: string | null;
   allocated_house_id?: string | null;
+  allocated_room_label?: string | null;
+  allocated_room_number?: string | null;
+  allocated_resource?: string | null;
   allocated_at: string | null;
   allocated_by?: string | null;
   allocated_by_name?: string | null;
@@ -127,6 +157,10 @@ export type AllocationLog = {
   employee_name: string;
   house: string | null;
   house_id: string | null;
+  allocation_unit_type?: string;
+  room_label?: string;
+  room_number?: string;
+  resource?: string;
   action: string;
   priority_score: number;
   eligible_category: string;
@@ -156,6 +190,7 @@ function fromDjango(row: any): HouseApplication {
     number_of_children: row.number_of_children ?? 0,
     requested_house_category: row.requested_house_category ?? "Staff",
     eligible_house_category: row.eligible_house_category ?? "",
+    allocation_mode: row.allocation_mode ?? "",
     priority_score: Number(row.priority_score) || 0,
     queue_position: row.queue_position ?? null,
     score_breakdown: row.score_breakdown ?? null,
@@ -168,7 +203,10 @@ function fromDjango(row: any): HouseApplication {
     reviewed_by: row.reviewed_by ? String(row.reviewed_by) : null,
     reviewed_by_name: row.reviewed_by_name ?? null,
     allocated_house: row.allocated_house ? String(row.allocated_house) : null,
-    allocated_house_id: row.allocated_house_hid ?? null,
+    allocated_house_id: row.allocated_house_id ?? row.allocated_house_hid ?? null,
+    allocated_room_label: row.allocated_room_label ?? null,
+    allocated_room_number: row.allocated_room_number ?? null,
+    allocated_resource: row.allocated_resource ?? null,
     allocated_at: row.allocated_at ?? null,
     allocated_by: row.allocated_by ? String(row.allocated_by) : null,
     allocated_by_name: row.allocated_by_name ?? null,
@@ -282,10 +320,18 @@ export async function getRankedQueue(category?: string): Promise<HouseApplicatio
   throw new Error(res.message || "Failed to fetch queue");
 }
 
-export async function autoAllocateHouse(houseId: string, applicationId?: string): Promise<HouseApplication> {
+export async function autoAllocateHouse(
+  houseId: string,
+  applicationId?: string,
+  roomLabel?: string,
+): Promise<HouseApplication> {
   const res = await djangoRequest<any>("/houses/auto-allocate/", {
     method: "POST",
-    body: JSON.stringify({ house_id: houseId, ...(applicationId ? { application_id: applicationId } : {}) }),
+    body: JSON.stringify({
+      house_id: houseId,
+      ...(applicationId ? { application_id: applicationId } : {}),
+      ...(roomLabel ? { room_label: roomLabel } : {}),
+    }),
   });
   if (res.success) {
     invalidateCache("applications:list");
@@ -299,6 +345,9 @@ export interface BatchAllocateResult {
   house_id: string;
   house_number: string;
   house_type: string;
+  room_label?: string;
+  allocation_unit_type?: string;
+  resource?: string;
   allocated_to: string | null;
   application_no: string | null;
   score: string | null;
@@ -346,10 +395,11 @@ export async function manualAllocateHouse(
   houseId: string,
   applicationId: string,
   notes?: string,
+  roomLabel?: string,
 ): Promise<HouseApplication> {
   const res = await djangoRequest<any>("/houses/manual-allocate/", {
     method: "POST",
-    body: JSON.stringify({ house_id: houseId, application_id: applicationId, notes }),
+    body: JSON.stringify({ house_id: houseId, application_id: applicationId, notes, ...(roomLabel ? { room_label: roomLabel } : {}) }),
   });
   if (res.success) {
     invalidateCache("applications:list");

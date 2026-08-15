@@ -26,6 +26,7 @@ import {
 import MetricCard from "@/components/ui/metric-card";
 
 import DateRangePicker, { type DateRange } from "@/components/ui/date-range-picker";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -637,7 +638,7 @@ export default function Tickets() {
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-l from-primary/5 to-transparent blur-3xl" />
         <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Maintenance Tickets</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Maintenance Tickets | ማጽደቆች / ፍቃዶች </h1>
             <p className="mt-2 max-w-2xl text-muted-foreground">
               Monitor, triage, and resolve maintenance issues across your properties
             </p>
@@ -997,6 +998,36 @@ export default function Tickets() {
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <DateRangePicker value={range} onChange={setRange} />
+              <ReportExportMenu
+                title="Maintenance & Support Tickets Report"
+                fileName="tickets_directory"
+                columns={[
+                  { header: "Ticket ID", key: "id" },
+                  { header: "Title", key: "title" },
+                  { header: "Category", key: "category" },
+                  { header: "Priority", key: "priority" },
+                  { header: "Status", key: "status" },
+                  { header: "Target Role", key: "targetRole" },
+                  { header: "Property ID", key: "property_id" },
+                  { header: "Created At", key: "created_at" },
+                ]}
+                getRows={() => (filteredItems || []).map((t) => [
+                  t.id,
+                  t.title || "",
+                  t.category || "",
+                  t.priority || "",
+                  t.status || "",
+                  t.targetRole || "",
+                  t.property_id || "",
+                  t.created_at ? new Date(t.created_at).toLocaleString() : "",
+                ])}
+                totalCount={(filteredItems || []).length}
+                filters={[
+                  `View: ${viewMode}`,
+                  showClosedOnly ? "Status: Closed" : "",
+                  range?.from ? `Date: ${range.from.toLocaleDateString()}` : "",
+                ].filter(Boolean).join(", ") || undefined}
+              />
               <Button
                 variant={showClosedOnly ? 'default' : 'outline'}
                 size="sm"

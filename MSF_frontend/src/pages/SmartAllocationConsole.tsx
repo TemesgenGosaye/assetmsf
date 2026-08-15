@@ -23,6 +23,7 @@ import {
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import PageHeader from "@/components/layout/PageHeader";
 import MetricCard from "@/components/ui/metric-card";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import { PageSkeleton } from "@/components/ui/page-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -223,9 +224,25 @@ export default function SmartAllocationConsole() {
             <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <Home className="h-4 w-4 text-primary" /> Vacant Units ({houses.length})
             </h2>
-            <span className="text-xs text-muted-foreground">
-              vacant = capacity − current occupancy
-            </span>
+            <ReportExportMenu
+              title="Smart Housing Candidates Report"
+              fileName="smart_housing_candidates"
+              columns={[
+                { header: "App No", key: "application_no" },
+                { header: "Employee Name", key: "employee_name" },
+                { header: "Position", key: "position" },
+                { header: "Score", key: "total_score" },
+                { header: "Status", key: "status" },
+              ]}
+              getRows={() => (candidates || []).map((c) => [
+                c.application_no || c.id,
+                c.employee_name || "",
+                c.position || "",
+                fmtScore(c.total_score),
+                c.status || "",
+              ])}
+              totalCount={(candidates || []).length}
+            />
           </div>
 
           {houses.length === 0 ? (

@@ -277,6 +277,7 @@ export default function HouseCommandCenter() {
       <PageHeader
         icon={Activity}
         title="Housing Command Center"
+        amharicTitle="የቤቶች ትዕዛዝ ማዕከል"
         description="Live portfolio intelligence, allocation activity, alerts, and transparent recommendations."
         actions={
           <>
@@ -628,6 +629,8 @@ export default function HouseCommandCenter() {
         <CardContent>
           <DataTable
             tableKey="houses:occupancy"
+            exportFileName="house-occupancy"
+            reportTitle="House Occupancy Report"
             columns={occupancyCols}
             data={filteredOccupancy}
             rowKey={(r) => r.house_id}

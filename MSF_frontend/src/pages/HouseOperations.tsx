@@ -134,6 +134,7 @@ export default function HouseOperations() {
       <PageHeader
         icon={Wrench}
         title="House Operations"
+        amharicTitle="የቤቶች አስተዳደር"
         description="Inspections, maintenance, transfers, and rental billing for the estate."
         actions={
           <Button variant="outline" onClick={() => window.location.reload()}>
@@ -300,6 +301,8 @@ function InspectionsTab({ canAdmin }: { canAdmin: boolean }) {
       <CardContent>
         <DataTable
           tableKey="houses:inspections"
+          exportFileName="house-inspections"
+          reportTitle="House Inspection Records"
           columns={cols}
           data={rows}
           rowKey={(r) => r.id}
@@ -544,6 +547,8 @@ function MaintenanceTab({ canAdmin }: { canAdmin: boolean }) {
       <CardContent>
         <DataTable
           tableKey="houses:maintenance"
+          exportFileName="house-maintenance"
+          reportTitle="House Maintenance Requests"
           columns={cols}
           data={rows}
           rowKey={(r) => r.id}
@@ -801,6 +806,8 @@ function TransfersTab({ canAdmin }: { canAdmin: boolean }) {
       <CardContent>
         <DataTable
           tableKey="houses:transfers"
+          exportFileName="house-transfers"
+          reportTitle="House Transfer Records"
           columns={cols}
           data={rows}
           rowKey={(r) => r.id}
@@ -1100,6 +1107,8 @@ function RentalsTab({ canAdmin }: { canAdmin: boolean }) {
           {view === "contracts" && (
             <DataTable
               tableKey="houses:contracts"
+              exportFileName="rental-contracts"
+              reportTitle="Rental Contracts"
               columns={contractCols}
               data={contracts}
               rowKey={(r) => r.id}
@@ -1122,6 +1131,8 @@ function RentalsTab({ canAdmin }: { canAdmin: boolean }) {
           {view === "invoices" && (
             <DataTable
               tableKey="houses:invoices"
+              exportFileName="rental-invoices"
+              reportTitle="Rental Invoices"
               columns={invoiceCols}
               data={invoices}
               rowKey={(r) => r.id}
@@ -1146,6 +1157,8 @@ function RentalsTab({ canAdmin }: { canAdmin: boolean }) {
           {view === "payments" && (
             <DataTable
               tableKey="houses:payments"
+              exportFileName="rental-payments"
+              reportTitle="Rental Payments"
               columns={paymentCols}
               data={payments}
               rowKey={(r) => r.id}

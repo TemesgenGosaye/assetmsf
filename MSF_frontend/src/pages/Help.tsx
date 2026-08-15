@@ -328,6 +328,9 @@ export default function Help() {
           <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
             How can we help you today?
           </h1>
+          <p className="text-xl font-semibold text-primary/90 tracking-wide">
+            የእርዳታ ማዕከል
+          </p>
           <p className="text-xl text-muted-foreground">
             Explore guides, documentation, and support resources to get the most out of SAMS.
           </p>

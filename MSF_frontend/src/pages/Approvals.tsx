@@ -21,6 +21,7 @@ import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescript
 import StatusChip from "@/components/ui/status-chip";
 import { PageSkeleton } from "@/components/ui/page-skeletons";
 import MetricCard from "@/components/ui/metric-card";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import {
   ResponsiveContainer,
   BarChart,
@@ -495,7 +496,7 @@ export default function Approvals() {
       <div className="relative overflow-hidden rounded-3xl border bg-card px-8 py-10 shadow-sm sm:px-12 sm:py-12">
         <div className="relative z-10 max-w-3xl space-y-4">
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Approvals
+            Approvals | ማጽደቆች / ፍቃዶች
           </h1>
           <p className="text-lg text-muted-foreground">
             Review asset requests and keep decision workflows moving
@@ -686,6 +687,37 @@ export default function Approvals() {
                   value={{ from: dateFrom, to: dateTo }}
                   onChange={(r) => { setDateFrom(r.from); setDateTo(r.to); }}
                   className="min-w-[16rem] h-8"
+                />
+                <ReportExportMenu
+                  title="Approval Requests Report"
+                  fileName="approval_requests"
+                  columns={[
+                    { header: "Request ID", key: "id" },
+                    { header: "Action", key: "action" },
+                    { header: "Asset ID", key: "assetId" },
+                    { header: "Requested By", key: "requestedBy" },
+                    { header: "Requested Date", key: "requestedAt" },
+                    { header: "Status", key: "status" },
+                    { header: "Department", key: "department" },
+                    { header: "Reviewed At", key: "reviewedAt" },
+                  ]}
+                  getRows={() => visibleItems.map((a) => [
+                    a.id,
+                    a.action ? String(a.action).toUpperCase() : "REQUEST",
+                    a.assetId || "",
+                    a.requestedBy || "",
+                    fmt(a.requestedAt),
+                    a.status || "",
+                    a.department || "",
+                    fmt(a.reviewedAt),
+                  ])}
+                  totalCount={visibleItems.length}
+                  filters={[
+                    statusFilter !== "all" ? `Status: ${statusFilter}` : "",
+                    role === "admin" && adminDeptFilter !== "ALL" ? `Department: ${adminDeptFilter}` : "",
+                    dateFrom ? `From: ${dateFrom.toLocaleDateString()}` : "",
+                    dateTo ? `To: ${dateTo.toLocaleDateString()}` : "",
+                  ].filter(Boolean).join(", ") || undefined}
                 />
               </div>
             </div>

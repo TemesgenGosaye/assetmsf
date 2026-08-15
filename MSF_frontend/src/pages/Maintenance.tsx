@@ -7,6 +7,7 @@ import MetricCard from "@/components/ui/metric-card";
 import { PageSkeleton } from "@/components/ui/page-skeletons";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -296,11 +297,38 @@ export default function Maintenance() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Preventive Maintenance Schedules</CardTitle>
-          <CardDescription>
-            {sortedSchedules.length} schedules • {dueSoon} due within 30 days
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base">Preventive Maintenance Schedules</CardTitle>
+            <CardDescription>
+              {sortedSchedules.length} schedules • {dueSoon} due within 30 days
+            </CardDescription>
+          </div>
+          <ReportExportMenu
+            title="Preventive Maintenance Schedules Report"
+            fileName="maintenance_schedules"
+            columns={[
+              { header: "Asset Code", key: "asset_code" },
+              { header: "Asset Name", key: "asset_name" },
+              { header: "Title", key: "title" },
+              { header: "Frequency", key: "frequency" },
+              { header: "Last Performed", key: "last_performed_at" },
+              { header: "Next Due", key: "next_due_at" },
+              { header: "Assignee", key: "assigned_to_name" },
+              { header: "Status", key: "status" },
+            ]}
+            getRows={() => sortedSchedules.map((s) => [
+              s.asset_code || "",
+              s.asset_name || "",
+              s.title || "",
+              s.frequency ? FREQUENCY_LABELS[s.frequency] || s.frequency : "",
+              s.last_performed_at || "Never",
+              s.next_due_at || "",
+              s.assigned_to_name || "—",
+              s.is_overdue ? "OVERDUE" : "On Schedule",
+            ])}
+            totalCount={sortedSchedules.length}
+          />
         </CardHeader>
         <CardContent>
           {sortedSchedules.length ? (
