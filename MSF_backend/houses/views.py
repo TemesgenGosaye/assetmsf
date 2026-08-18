@@ -15,7 +15,8 @@ from core.permissions import IsAdminOrManager
 from .models import (
     House, HouseApplication, HouseInspection, MaintenanceRequest,
     HouseTransfer, ScoringConfig, EligibilityRule, AllocationLog,
-    HouseOpportunity, Allocation, HouseAuditTrail,
+    HouseOpportunity, Allocation, HouseAuditTrail, HouseHandoverReceipt,
+    TerminationCase, TerminationTransaction,
 )
 from .serializers import (
     HouseSerializer, HouseCreateUpdateSerializer,
@@ -23,14 +24,24 @@ from .serializers import (
     HouseApplicationCreateSerializer, HouseApplicationStatusSerializer,
     ScoringConfigSerializer, EligibilityRuleSerializer, AllocationLogSerializer,
     HouseOpportunitySerializer, AllocationSerializer, HouseAuditTrailSerializer,
+    HouseHandoverReceiptSerializer, HouseHandoverReceiptCreateSerializer,
+    HouseHandoverReceiptUpdateSerializer,
+    TerminationCaseSerializer, TerminationTransactionSerializer,
+    TerminationCreateSerializer, TerminationApprovalSerializer,
+    TerminationVerifyCodeSerializer, TerminationResolveIssuesSerializer,
+    TerminateWithCodeSerializer,
 )
 from .allocation_engine import (
-    get_ranked_queue, auto_allocate_single, manual_allocate,
+    get_ranked_queue, auto_allocate_single, auto_allocate_cascade,
+    manual_allocate,
     deallocate, run_batch_allocation, determine_eligible_category,
     compute_mcda_score, topsis_rank, check_allocation_constraints,
     analyze_eligibility, generate_opportunities, rank_opportunities,
     allocate_application, override_allocate, terminate_allocation,
     record_audit, ALLOCATION_MODE_ROOM, ALLOCATION_MODE_HOUSE,
+    create_termination_transaction, approve_termination, process_termination,
+    validate_termination, verify_termination_code,
+    resolve_inspection_issues, terminate_with_code,
 )
 
 
@@ -360,7 +371,29 @@ class AutoAllocateView(APIView):
     def post(self, request, *args, **kwargs):
         house_id = request.data.get("house_id")
         app_id = request.data.get("application_id")
+        mode = request.data.get("mode", "cascade")  # "cascade" (default) or "single"
+        dry_run = str(request.data.get("dry_run", "false")).lower() in ("true", "1", "yes")
 
+        # ── Cascade mode (new): walk eligible categories, R1→R2→R3 ─────
+        if mode == "cascade" and app_id:
+            try:
+                target_app = HouseApplication.objects.get(id=app_id, is_active=True)
+            except HouseApplication.DoesNotExist:
+                return StandardResponse.not_found("Application not found")
+
+            allocated, result = auto_allocate_cascade(
+                target_app, request.user, dry_run=dry_run,
+            )
+            if allocated:
+                msg = (
+                    f"{'[DRY RUN] Would allocate' if dry_run else 'Allocated'} "
+                    f"{result['employee_name']} → {result['resource']}"
+                )
+            else:
+                msg = f"Skipped: {result.get('skip_reason', 'No house available')}"
+            return StandardResponse.success(result, msg)
+
+        # ── Single-house mode (legacy): allocate a specific house ────────
         if house_id:
             try:
                 house = House.objects.get(house_id=house_id, is_active=True)
@@ -809,3 +842,638 @@ class ApplicationAuditView(APIView):
             "audit": audit,
             "logs": logs,
         }, "Audit timeline retrieved")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE HANDOVER RECEIPT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _handover_user_name(user) -> str:
+    return getattr(user, "name", "") or getattr(user, "username", "")
+
+
+def _extract_inspection_prefill(house):
+    """Pre-fill receipt inspection sections from the latest completed Move-In inspection."""
+    insp = (
+        HouseInspection.objects.filter(
+            house=house,
+            inspection_type=HouseInspection.InspectionType.MOVE_IN,
+            status=HouseInspection.Status.COMPLETED,
+            is_active=True,
+        )
+        .order_by("-completed_date")
+        .first()
+    )
+    if not insp:
+        return "", "", "", ""
+
+    checklist = insp.checklist_results or {}
+    findings = (insp.findings or "").strip()
+
+    def damage_line(key, label):
+        val = checklist.get(key)
+        if val is True or str(val).lower() == "true":
+            return f"{label}: Damaged"
+        return ""
+
+    electrical = "\n".join(
+        p for p in [damage_line("switch", "Switch"), damage_line("bulb", "Bulb")] if p
+    )
+    structural = "\n".join(
+        p for p in [
+            damage_line("door", "Door"),
+            damage_line("windows", "Windows"),
+            damage_line("walls", "Walls"),
+        ] if p
+    )
+    water = damage_line("water", "Water")
+    admin = findings
+    return electrical, structural, water, admin
+
+
+def _build_handover_receipt_defaults(allocation):
+    """Snapshot allocation/application/house data for a new handover receipt."""
+    app = allocation.application
+    house = allocation.house
+    emp = allocation.emp_record or app.emp_record
+
+    department = ""
+    if emp and getattr(emp, "department", None):
+        department = emp.department.name
+
+    elec, struct, water, admin = _extract_inspection_prefill(house)
+    alloc_date = allocation.effective_date
+    if not alloc_date and allocation.allocated_at:
+        alloc_date = allocation.allocated_at.date()
+
+    return {
+        "application": app,
+        "house": house,
+        "employee_id": allocation.employee_id,
+        "employee_name": allocation.employee_name,
+        "job_position": app.job_position or "",
+        "job_grade": app.job_grade or "",
+        "department": department,
+        "national_id": app.national_id or "",
+        "marital_status": allocation.marital_status or app.marital_status or "",
+        "family_size": allocation.family_size or app.family_size or 1,
+        "house_number": house.house_number or house.house_id,
+        "house_type": house.house_type,
+        "house_location": house.location,
+        "room_count": house.room_count,
+        "allocation_no": allocation.allocation_no,
+        "application_no": app.application_no,
+        "allocation_date": alloc_date,
+        "inspection_electrical": elec,
+        "inspection_structural": struct,
+        "inspection_water": water,
+        "inspection_admin": admin,
+        "committee_members": [],
+        "doc_status": HouseHandoverReceipt.DocStatus.ACTIVE,
+    }
+
+
+class HandoverReceiptListCreateView(generics.ListCreateAPIView):
+    """List handover receipts or generate one from an allocation (idempotent)."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = HouseHandoverReceiptSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["allocation", "doc_status", "house"]
+    search_fields = ["doc_number", "employee_name", "employee_id", "allocation_no"]
+    ordering_fields = ["generated_date", "doc_number", "last_printed_at"]
+    ordering = ["-generated_date"]
+
+    def get_queryset(self):
+        return HouseHandoverReceipt.objects.filter(is_active=True).select_related(
+            "allocation", "application", "house", "generated_by", "printed_by",
+        )
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(HouseHandoverReceiptSerializer(page, many=True).data)
+        return StandardResponse.success(
+            HouseHandoverReceiptSerializer(qs, many=True).data,
+            "Handover receipts retrieved",
+        )
+
+    def create(self, request, *args, **kwargs):
+        ser = HouseHandoverReceiptCreateSerializer(data=request.data)
+        if not ser.is_valid():
+            return StandardResponse.validation_error("Validation failed", ser.errors)
+
+        allocation_id = ser.validated_data["allocation_id"]
+        try:
+            allocation = Allocation.objects.select_related(
+                "application", "house", "emp_record__department",
+            ).get(id=allocation_id, is_active=True)
+        except Allocation.DoesNotExist:
+            return StandardResponse.not_found("Allocation not found")
+
+        if allocation.status != Allocation.Status.ACTIVE:
+            return StandardResponse.bad_request("Receipt can only be generated for active allocations")
+
+        with transaction.atomic():
+            existing = HouseHandoverReceipt.objects.filter(
+                allocation=allocation, is_active=True,
+            ).first()
+            if existing:
+                return StandardResponse.success(
+                    HouseHandoverReceiptSerializer(existing).data,
+                    "Handover receipt already exists",
+                )
+
+            defaults = _build_handover_receipt_defaults(allocation)
+            receipt = HouseHandoverReceipt.objects.create(
+                allocation=allocation,
+                generated_by=request.user,
+                generated_by_name=_handover_user_name(request.user),
+                created_by=request.user,
+                **defaults,
+            )
+
+        return StandardResponse.created(
+            HouseHandoverReceiptSerializer(receipt).data,
+            "Handover receipt generated",
+        )
+
+
+class HandoverReceiptDetailView(generics.RetrieveUpdateAPIView):
+    """Retrieve or update inspection notes / committee members before printing."""
+    permission_classes = [IsAuthenticated]
+    queryset = HouseHandoverReceipt.objects.filter(is_active=True)
+    lookup_field = "id"
+
+    def get_serializer_class(self):
+        if self.request.method in ("PUT", "PATCH"):
+            return HouseHandoverReceiptUpdateSerializer
+        return HouseHandoverReceiptSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        return StandardResponse.success(
+            HouseHandoverReceiptSerializer(instance).data,
+            "Handover receipt retrieved",
+        )
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        ser = HouseHandoverReceiptUpdateSerializer(instance, data=request.data, partial=True)
+        if not ser.is_valid():
+            return StandardResponse.validation_error("Validation failed", ser.errors)
+        receipt = ser.save(updated_by=request.user)
+        return StandardResponse.success(
+            HouseHandoverReceiptSerializer(receipt).data,
+            "Handover receipt updated",
+        )
+
+
+class HandoverReceiptPrintView(APIView):
+    """Record a print or download event (increments reprint_count)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        action = request.data.get("action", "printed")
+        try:
+            receipt = HouseHandoverReceipt.objects.get(id=pk, is_active=True)
+        except HouseHandoverReceipt.DoesNotExist:
+            return StandardResponse.not_found("Handover receipt not found")
+
+        event = receipt.record_print_event(request.user, action=str(action))
+        return StandardResponse.success(
+            {
+                "receipt": HouseHandoverReceiptSerializer(receipt).data,
+                "event": event,
+            },
+            "Print event recorded",
+        )
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  TERMINATION MANAGEMENT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TerminationCaseListCreateView(generics.ListCreateAPIView):
+    """List or create termination cases (database-driven configuration)."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+    serializer_class = TerminationCaseSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["category", "is_active"]
+    search_fields = ["code", "name", "description"]
+    ordering_fields = ["priority", "name", "code"]
+    ordering = ["priority", "name"]
+
+    def get_queryset(self):
+        return TerminationCase.objects.all()
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        return StandardResponse.success(
+            TerminationCaseSerializer(qs, many=True).data,
+            "Termination cases retrieved",
+        )
+
+    def create(self, request, *args, **kwargs):
+        ser = TerminationCaseSerializer(data=request.data)
+        if ser.is_valid():
+            instance = ser.save(created_by=request.user)
+            return StandardResponse.created(
+                TerminationCaseSerializer(instance).data,
+                "Termination case created",
+            )
+        return StandardResponse.validation_error("Validation failed", ser.errors)
+
+
+class TerminationCaseDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, or soft-delete a termination case."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+    queryset = TerminationCase.objects.all()
+    lookup_field = "id"
+
+    def get_serializer_class(self):
+        return TerminationCaseSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        return StandardResponse.success(
+            TerminationCaseSerializer(self.get_object()).data,
+            "Termination case retrieved",
+        )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        ser = TerminationCaseSerializer(instance, data=request.data, partial=partial)
+        if ser.is_valid():
+            ser.save(updated_by=request.user)
+            return StandardResponse.success(
+                TerminationCaseSerializer(instance).data,
+                "Termination case updated",
+            )
+        return StandardResponse.validation_error("Validation failed", ser.errors)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.is_active = False
+        instance.save(update_fields=["is_active", "updated_at"])
+        return StandardResponse.success(None, "Termination case deactivated")
+
+
+class TerminationTransactionListCreateView(generics.ListCreateAPIView):
+    """List or create termination transactions."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["status", "case", "employee_id", "house", "approval_status"]
+    search_fields = ["termination_no", "employee_name", "employee_id", "house_number"]
+    ordering_fields = ["created_at", "effective_date", "termination_no"]
+    ordering = ["-created_at"]
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return TerminationCreateSerializer
+        return TerminationTransactionSerializer
+
+    def get_queryset(self):
+        return TerminationTransaction.objects.filter(is_active=True).select_related(
+            "case", "allocation", "application", "house",
+            "target_house", "approved_by", "created_by",
+        )
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                TerminationTransactionSerializer(page, many=True).data
+            )
+        return StandardResponse.success(
+            TerminationTransactionSerializer(qs, many=True).data,
+            "Termination transactions retrieved",
+        )
+
+    def create(self, request, *args, **kwargs):
+        ser = TerminationCreateSerializer(data=request.data)
+        if not ser.is_valid():
+            return StandardResponse.validation_error("Validation failed", ser.errors)
+
+        data = ser.validated_data
+        try:
+            allocation = Allocation.objects.select_related("house", "application", "emp_record").get(
+                id=data["allocation_id"], is_active=True
+            )
+        except Allocation.DoesNotExist:
+            return StandardResponse.not_found("Allocation not found")
+
+        try:
+            case = TerminationCase.objects.get(id=data["case_id"], is_active=True)
+        except TerminationCase.DoesNotExist:
+            return StandardResponse.not_found("Termination case not found")
+
+        try:
+            termination, warnings = create_termination_transaction(
+                allocation, case, request.user,
+                employee_id=allocation.employee_id,
+                effective_date=data["effective_date"],
+                reason=data["reason"],
+                target_house_id=data.get("target_house_id", ""),
+                remarks=data.get("remarks", ""),
+                requested_date=data.get("requested_date"),
+            )
+            result = TerminationTransactionSerializer(termination).data
+            result["_warnings"] = warnings
+            return StandardResponse.created(result, "Termination transaction created")
+        except ValueError as e:
+            return StandardResponse.bad_request(str(e))
+
+
+class TerminationTransactionDetailView(generics.RetrieveAPIView):
+    """Retrieve a termination transaction with full details."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+    queryset = TerminationTransaction.objects.filter(is_active=True).select_related(
+        "case", "allocation", "application", "house",
+        "target_house", "target_allocation", "approved_by", "created_by",
+    )
+    lookup_field = "id"
+
+    def retrieve(self, request, *args, **kwargs):
+        return StandardResponse.success(
+            TerminationTransactionSerializer(self.get_object()).data,
+            "Termination transaction retrieved",
+        )
+
+
+class TerminationApproveView(APIView):
+    """Approve or reject a pending termination transaction. Generates authorization code on approval."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        ser = TerminationApprovalSerializer(data=request.data)
+        if not ser.is_valid():
+            return StandardResponse.validation_error("Validation failed", ser.errors)
+
+        try:
+            termination = TerminationTransaction.objects.get(id=pk, is_active=True)
+        except TerminationTransaction.DoesNotExist:
+            return StandardResponse.not_found("Termination transaction not found")
+
+        decision = ser.validated_data["decision"]
+        notes = ser.validated_data.get("notes", "")
+
+        try:
+            if decision == "Rejected":
+                termination.status = TerminationTransaction.Status.REJECTED
+                termination.approval_status = TerminationTransaction.Status.REJECTED
+                termination.approved_by = request.user
+                termination.approval_date = timezone.now()
+                termination.approval_notes = notes
+                termination.save(update_fields=[
+                    "status", "approval_status", "approved_by",
+                    "approval_date", "approval_notes", "updated_at",
+                ])
+                record_audit(
+                    termination.application,
+                    HouseAuditTrail.Action.STATUS_CHANGED,
+                    request.user,
+                    old_status="Termination Pending",
+                    new_status="Termination Rejected",
+                    detail={"termination_no": termination.termination_no},
+                    note=notes or "Termination rejected",
+                )
+                return StandardResponse.success(
+                    TerminationTransactionSerializer(termination).data,
+                    "Termination rejected",
+                )
+
+            termination, auth_code = approve_termination(termination, request.user, notes)
+            result = TerminationTransactionSerializer(termination).data
+            result["_authorization_code"] = auth_code
+            return StandardResponse.success(
+                result,
+                "Termination approved. Authorization code generated.",
+            )
+        except ValueError as e:
+            return StandardResponse.bad_request(str(e))
+
+
+class TerminationVerifyCodeView(APIView):
+    """Verify the termination authorization code before processing."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        ser = TerminationVerifyCodeSerializer(data=request.data)
+        if not ser.is_valid():
+            return StandardResponse.validation_error("Validation failed", ser.errors)
+
+        try:
+            termination = TerminationTransaction.objects.select_related(
+                "allocation", "application", "house", "case",
+            ).get(id=pk, is_active=True)
+        except TerminationTransaction.DoesNotExist:
+            return StandardResponse.not_found("Termination transaction not found")
+
+        code = ser.validated_data["authorization_code"]
+        is_valid, message = verify_termination_code(termination, code, request.user)
+
+        if not is_valid:
+            return StandardResponse.bad_request(message)
+
+        termination.refresh_from_db()
+        return StandardResponse.success(
+            TerminationTransactionSerializer(termination).data,
+            message,
+        )
+
+
+class TerminationResolveIssuesView(APIView):
+    """Resolve inspection discrepancies for a termination transaction."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        ser = TerminationResolveIssuesSerializer(data=request.data)
+        if not ser.is_valid():
+            return StandardResponse.validation_error("Validation failed", ser.errors)
+
+        try:
+            termination = TerminationTransaction.objects.get(id=pk, is_active=True)
+        except TerminationTransaction.DoesNotExist:
+            return StandardResponse.not_found("Termination transaction not found")
+
+        from .allocation_engine import resolve_inspection_issues
+        try:
+            termination = resolve_inspection_issues(
+                termination,
+                request.user,
+                resolution_notes=ser.validated_data.get("resolution_notes", ""),
+                force=ser.validated_data.get("force", False),
+            )
+            return StandardResponse.success(
+                TerminationTransactionSerializer(termination).data,
+                "Inspection issues resolved",
+            )
+        except ValueError as e:
+            return StandardResponse.bad_request(str(e))
+
+
+class TerminationProcessView(APIView):
+    """
+    Process (complete) an approved termination — closes allocation, releases house.
+    SECURITY: Requires a verified authorization code. The termination must have
+    gone through: create → approve → verify_code → process.
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        auth_code = request.data.get("authorization_code", "")
+        if not auth_code:
+            return StandardResponse.bad_request("Authorization code is required to process termination")
+
+        try:
+            termination = TerminationTransaction.objects.select_related(
+                "allocation", "application", "house", "case", "target_house",
+            ).get(id=pk, is_active=True)
+        except TerminationTransaction.DoesNotExist:
+            return StandardResponse.not_found("Termination transaction not found")
+
+        # Verify the authorization code matches what's stored
+        if termination.authorization_code != str(auth_code).strip():
+            return StandardResponse.bad_request("Invalid authorization code")
+
+        if not termination.code_verified:
+            return StandardResponse.bad_request(
+                "Authorization code has not been verified. "
+                "Call the verify-code endpoint first."
+            )
+
+        try:
+            termination = process_termination(
+                termination, request.user, authorization_code=auth_code,
+            )
+            return StandardResponse.success(
+                TerminationTransactionSerializer(termination).data,
+                "Termination processed successfully",
+            )
+        except ValueError as e:
+            return StandardResponse.bad_request(str(e))
+
+
+class TerminationStatsView(APIView):
+    """Dashboard statistics for termination management."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        from django.db.models import Count
+
+        base = TerminationTransaction.objects.filter(is_active=True)
+
+        stats = {
+            "total": base.count(),
+            "pending": base.filter(status=TerminationTransaction.Status.PENDING).count(),
+            "approved": base.filter(status=TerminationTransaction.Status.APPROVED).count(),
+            "in_progress": base.filter(status=TerminationTransaction.Status.IN_PROGRESS).count(),
+            "completed": base.filter(status=TerminationTransaction.Status.COMPLETED).count(),
+            "rejected": base.filter(status=TerminationTransaction.Status.REJECTED).count(),
+        }
+
+        by_case = (
+            base.values("case__code", "case__name", "case__category")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+        stats["by_case"] = list(by_case)
+
+        by_house_type = (
+            base.values("house_type")
+            .annotate(count=Count("id"))
+            .order_by("-count")
+        )
+        stats["by_house_type"] = list(by_house_type)
+
+        return StandardResponse.success(stats, "Termination statistics retrieved")
+
+
+class AllocatedEmployeesListView(APIView):
+    """List all employees with active allocations for termination selection."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def get(self, request, *args, **kwargs):
+        allocations = (
+            Allocation.objects
+            .filter(status=Allocation.Status.ACTIVE, is_active=True)
+            .select_related("house", "application", "emp_record")
+            .order_by("-allocated_at")
+        )
+
+        result = []
+        for alloc in allocations:
+            app = alloc.application
+            result.append({
+                "allocation_id": str(alloc.id),
+                "allocation_no": alloc.allocation_no,
+                "employee_id": alloc.employee_id,
+                "employee_name": alloc.employee_name,
+                "job_position": app.job_position or "",
+                "job_grade": app.job_grade or "",
+                "marital_status": alloc.marital_status or app.marital_status or "",
+                "family_size": alloc.family_size or app.family_size or 1,
+                "house_id": str(alloc.house_id),
+                "house_number": alloc.house.house_number or alloc.house.house_id,
+                "house_type": alloc.house.house_type,
+                "room_label": alloc.room_label or "",
+                "unit_type": alloc.allocation_unit_type,
+                "allocated_at": alloc.allocated_at.isoformat() if alloc.allocated_at else None,
+                "application_no": app.application_no,
+            })
+
+        return StandardResponse.success(result, "Allocated employees retrieved")
+
+
+class TerminateWithCodeView(APIView):
+    """
+    Terminate an allocation using a previously approved termination authorization code.
+
+    This is the endpoint used by the Allocated Houses table sidebar. When a user
+    clicks "Terminate" on an allocated house, they must enter the authorization
+    code that was generated and approved from the Termination Management page.
+
+    The backend validates:
+      - Code exists, is valid, active, and belongs to this exact employee/allocation/house
+      - Termination case matches the approved request
+      - Inspection and house-condition requirements are satisfied
+      - Admin/Manager approval exists
+      - Allocation is still active
+
+    Only after all verifications pass does the system execute the termination.
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        pk = kwargs.get("id")
+        ser = TerminateWithCodeSerializer(data=request.data)
+        if not ser.is_valid():
+            return StandardResponse.validation_error("Validation failed", ser.errors)
+
+        try:
+            allocation = Allocation.objects.select_related(
+                "house", "application", "emp_record",
+            ).get(id=pk, is_active=True)
+        except Allocation.DoesNotExist:
+            return StandardResponse.not_found("Allocation not found")
+
+        auth_code = ser.validated_data["authorization_code"]
+        reason = ser.validated_data.get("reason", "")
+
+        try:
+            termination = terminate_with_code(
+                allocation, auth_code, request.user, reason=reason,
+            )
+            return StandardResponse.success(
+                TerminationTransactionSerializer(termination).data,
+                "Termination executed successfully via authorization code",
+            )
+        except ValueError as e:
+            return StandardResponse.bad_request(str(e))

@@ -210,18 +210,24 @@ export default function Employees() {
       ),
     },
     {
-      key: "full_name", header: "Fname", sortable: true, width: "min-w-[180px]",
+      key: "full_name", header: "Full Name", sortable: true, width: "min-w-[180px]",
       value: e => e.full_name,
       cell: e => (
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
             {e.full_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
           </div>
-          <div className="min-w-0">
-            <p className="font-medium truncate">{e.full_name}</p>
-            <p className="text-xs text-muted-foreground truncate">{e.national_id}</p>
-          </div>
+          <p className="font-medium truncate">{e.full_name}</p>
         </div>
+      ),
+    },
+    {
+      key: "national_id", header: "National ID", sortable: true, width: "w-40",
+      value: e => e.national_id,
+      cell: e => (
+        <span className="font-mono text-xs font-medium tracking-wide">
+          {e.national_id || <span className="text-muted-foreground/40">—</span>}
+        </span>
       ),
     },
     {

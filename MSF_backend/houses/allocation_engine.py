@@ -108,6 +108,285 @@ def room_available(house, room, exclude_allocation_id=None):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ROOM ORDERING  (R1 → R2 → R3)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def find_vacant_room_in_order(house):
+    """
+    Return the first physically vacant room in strict R1 → R2 → R3 order.
+
+    This is the authoritative room-selection primitive: a house with 3 rooms
+    always fills Room 1 before Room 2, and Room 2 before Room 3.  Returns
+    (room_dict, index) or (None, -1) when no room is free.
+    """
+    for room in house.rooms:
+        if room.get("status") == House.RoomStatus.VACANT:
+            return room, room["index"]
+    return None, -1
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE CASCADE  (evaluate eligible houses in order)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _eligible_types_ordered(eligible_category):
+    """
+    Return the list of house types an applicant may be placed in,
+    ordered from best match to lowest fallback.  An applicant eligible
+    for category B can also occupy C, D, E (downward cascade) but *not*
+    A or Staff (upward).
+
+    The cascade order ensures we try the applicant's exact category first,
+    then step down through lower categories — mirroring real factory
+    housing policy where higher-grade houses fill before lower ones.
+    """
+    rank = CATEGORY_ORDER.get(eligible_category, 0)
+    types = []
+    for t, r in sorted(CATEGORY_ORDER.items(), key=lambda x: x[1], reverse=True):
+        if r <= rank:
+            types.append(t)
+    return types
+
+
+def find_best_house_for_applicant(application, allocation_mode=None):
+    """
+    Walk the applicant's eligible house types from best → lowest and return
+    the first house that can accommodate them.
+
+    For ROOM_ALLOCATION: the house must have at least one physically vacant
+    room (checked via ``find_vacant_room_in_order``).
+
+    For HOUSE_ALLOCATION: the house must be fully vacant (every room vacant,
+    no active allocation record).
+
+    Returns (house, room_or_None, room_index, reasoning_steps) or
+    (None, None, -1, reasoning_steps) when no house is available.
+    """
+    if allocation_mode is None:
+        allocation_mode, _ = determine_allocation_mode(application)
+
+    eligible_cat, cat_reason = determine_eligible_category(application)
+    types = _eligible_types_ordered(eligible_cat)
+    reasoning = [
+        {"step": "Eligibility", "detail": cat_reason, "eligible_category": eligible_cat},
+    ]
+
+    active_houses = list(
+        House.objects.filter(
+            status=House.Status.ACTIVE,
+            is_active=True,
+            house_type__in=types,
+        ).exclude(allocation_category=House.AllocationCategory.GUEST)
+        .order_by("house_type", "house_number")
+    )
+
+    if not active_houses:
+        reasoning.append({
+            "step": "House Search",
+            "detail": f"No active non-guest houses found for categories {types}",
+        })
+        return None, None, -1, reasoning
+
+    evaluated = []
+    for house in active_houses:
+        if allocation_mode == ALLOCATION_MODE_ROOM:
+            room, idx = find_vacant_room_in_order(house)
+            available = room is not None
+            detail = (
+                f"{house.house_number or house.house_id} ({house.house_type}): "
+                f"room {room['label']} vacant (R1→R2→R3)" if available else
+                f"{house.house_number or house.house_id} ({house.house_type}): "
+                f"all rooms occupied"
+            )
+            evaluated.append({
+                "house": house.house_id, "type": house.house_type,
+                "available": available, "detail": detail,
+            })
+            reasoning.append({"step": "Evaluated House", "detail": detail})
+            if available:
+                reasoning.append({
+                    "step": "Selected House",
+                    "detail": (
+                        f"Selected {house.house_number or house.house_id} — "
+                        f"Room {room['label']} (index {idx}) "
+                        f"available in {house.house_type} category"
+                    ),
+                    "house_id": house.house_id,
+                    "house_number": house.house_number,
+                    "room_label": room["label"],
+                })
+                return house, room, idx, reasoning
+        else:
+            available = house.is_fully_vacant
+            detail = (
+                f"{house.house_number or house.house_id} ({house.house_type}): "
+                f"fully vacant — suitable for whole-house allocation" if available else
+                f"{house.house_number or house.house_id} ({house.house_type}): "
+                f"partially/fully occupied"
+            )
+            evaluated.append({
+                "house": house.house_id, "type": house.house_type,
+                "available": available, "detail": detail,
+            })
+            reasoning.append({"step": "Evaluated House", "detail": detail})
+            if available:
+                reasoning.append({
+                    "step": "Selected House",
+                    "detail": (
+                        f"Selected {house.house_number or house.house_id} — "
+                        f"fully vacant {house.house_type} house for family allocation"
+                    ),
+                    "house_id": house.house_id,
+                    "house_number": house.house_number,
+                })
+                return house, None, -1, reasoning
+
+    reasoning.append({
+        "step": "House Search Complete",
+        "detail": (
+            f"No available house found across {len(evaluated)} evaluated houses "
+            f"in categories {types}. All are occupied or have no vacant rooms."
+        ),
+        "evaluated": evaluated,
+    })
+    return None, None, -1, reasoning
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ALLOCATION REASONING  (transparent XAI chain)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def build_allocation_reasoning(application, house, room=None,
+                               allocation_mode=None, priority_score=None,
+                               score_breakdown=None, eligibility_results=None,
+                               compatibility_score=None):
+    """
+    Build a complete, human-readable reasoning chain for one allocation.
+    Returns a dict with every decision step:
+      1. Applicant profile summary
+      2. Eligibility analysis
+      3. Fairness / priority score
+      4. Allocation mode determination
+      5. House selection rationale
+      6. Room / exclusive occupancy detail
+      7. Final summary
+    """
+    if allocation_mode is None:
+        allocation_mode, _ = determine_allocation_mode(application)
+    if priority_score is None:
+        priority_score = application.priority_score
+    if score_breakdown is None:
+        score_breakdown = application.score_breakdown or {}
+    if eligibility_results is None:
+        eligibility_results = application.eligibility_analysis or []
+
+    eligible_cat = application.eligible_house_category or ""
+
+    room_label = ""
+    if allocation_mode == ALLOCATION_MODE_ROOM and room is not None:
+        room_label = room.get("label", "")
+
+    steps = []
+
+    # 1 — Applicant profile
+    steps.append({
+        "section": "Applicant Profile",
+        "employee_name": application.employee_name,
+        "employee_id": application.employee_id,
+        "job_grade": application.job_grade,
+        "years_of_service": application.years_of_service,
+        "marital_status": application.marital_status,
+        "family_size": application.family_size,
+        "has_disability": application.has_disability,
+        "application_no": application.application_no,
+    })
+
+    # 2 — Eligibility
+    steps.append({
+        "section": "Eligibility",
+        "eligible_category": eligible_cat,
+        "analysis": eligibility_results,
+    })
+
+    # 3 — Fairness score
+    steps.append({
+        "section": "Fairness Score",
+        "priority_score": str(priority_score),
+        "breakdown": score_breakdown,
+    })
+
+    # 4 — Allocation mode
+    mode_label = ALLOCATION_MODE_LABELS.get(allocation_mode, allocation_mode)
+    if allocation_mode == ALLOCATION_MODE_ROOM:
+        mode_reason = (
+            f"Single applicant (marital status: {application.marital_status}, "
+            f"family size: {application.family_size}) → room allocation"
+        )
+    else:
+        mode_reason = (
+            f"Family applicant (marital status: {application.marital_status}, "
+            f"family size: {application.family_size}) → whole-house allocation"
+        )
+    steps.append({
+        "section": "Allocation Mode",
+        "mode": allocation_mode,
+        "mode_label": mode_label,
+        "reason": mode_reason,
+    })
+
+    # 5 — House selection
+    house_base = house.house_number or house.house_id
+    if allocation_mode == ALLOCATION_MODE_ROOM and room_label:
+        resource = f"{house_base} — Room {room_label}"
+    else:
+        resource = house_base
+
+    steps.append({
+        "section": "House Selection",
+        "house_id": house.house_id,
+        "house_number": house.house_number,
+        "house_type": house.house_type,
+        "location": house.location,
+        "resource": resource,
+        "room_label": room_label,
+    })
+
+    # 6 — Room / exclusive occupancy
+    if allocation_mode == ALLOCATION_MODE_ROOM:
+        steps.append({
+            "section": "Room Assignment",
+            "room_label": room_label,
+            "room_index": room.get("index") if room else None,
+            "detail": (
+                f"Applicant occupies Room {room_label} in {house_base}. "
+                f"Remaining vacant rooms after allocation: "
+                f"{house.room_vacant_count - 1}"
+            ),
+        })
+    else:
+        steps.append({
+            "section": "Exclusive Occupancy",
+            "detail": (
+                f"Applicant/family occupies the entire house {house_base} "
+                f"({house.room_count} room(s)) exclusively. "
+                f"All rooms marked Occupied."
+            ),
+        })
+
+    # 7 — Final summary
+    steps.append({
+        "section": "Summary",
+        "detail": (
+            f"{application.employee_name} (Grade {application.job_grade}, "
+            f"Score {priority_score}) allocated to {resource} "
+            f"({allocation_mode})."
+        ),
+    })
+
+    return {"steps": steps}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  AUDIT HELPER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1045,10 +1324,14 @@ def terminate_allocation(allocation, user=None, reason="", move_to_queue=True):
 
 def auto_allocate_single(house, target_application=None, user=None, room_label=""):
     """
-    Auto-allocate a house (or a room within it) to the best eligible applicant.
-    If target_application is provided, allocate that specific application.
-    Room-mode (single) applicants are assigned the first available room, unless
-    `room_label` is given (then that specific room is used when allocatable).
+    Auto-allocate a specific house (or a room within it) to the best eligible
+    applicant.  When *target_application* is provided that applicant is used
+    directly; otherwise the function ranks all waiting applicants and picks
+    the most deserving one.
+
+    Room-mode (single) applicants are assigned the first physically vacant
+    room in **R1 → R2 → R3** order unless *room_label* is explicitly given.
+
     Returns (application, breakdown, reasons) or raises ValueError.
     """
     if not house.is_available:
@@ -1056,6 +1339,7 @@ def auto_allocate_single(house, target_application=None, user=None, room_label="
 
     config = ScoringConfig.objects.filter(is_active=True).first()
 
+    # ── Candidate selection ──────────────────────────────────────────────
     if target_application:
         candidates = [target_application]
     else:
@@ -1080,7 +1364,10 @@ def auto_allocate_single(house, target_application=None, user=None, room_label="
         raise ValueError("No eligible candidates for this house")
 
     ranked = topsis_rank(candidates, config)
-    best_app, best_score, best_breakdown, best_reasons = ranked[0][0], ranked[0][1], ranked[0][2], ranked[0][3]
+    best_app = ranked[0][0]
+    best_score = ranked[0][1]
+    best_breakdown = ranked[0][2]
+    best_reasons = ranked[0][3]
 
     best_app.priority_score = best_score
     best_app.score_breakdown = best_breakdown
@@ -1089,6 +1376,7 @@ def auto_allocate_single(house, target_application=None, user=None, room_label="
         "priority_score", "score_breakdown", "eligible_house_category", "updated_at",
     ])
 
+    # ── Room selection (R1 → R2 → R3) ──────────────────────────────────
     mode, _ = determine_allocation_mode(best_app)
     room = None
     if mode == ALLOCATION_MODE_ROOM:
@@ -1097,14 +1385,181 @@ def auto_allocate_single(house, target_application=None, user=None, room_label="
             if room is None:
                 raise ValueError(f"Room {room_label} not found in house {house.house_id}")
         else:
-            room = house.available_rooms[0] if house.available_rooms else None
+            room, _ = find_vacant_room_in_order(house)
         if room is None:
             raise ValueError(f"House {house.house_id} has no available room for a single applicant")
 
-    allocate_application(best_app, house, user, "Auto", notes="; ".join(best_reasons),
+    allocate_application(best_app, house, user, "Auto",
+                         notes="; ".join(best_reasons),
                          room=room, room_label=room["label"] if room else "")
 
     return best_app, best_breakdown, best_reasons
+
+
+def auto_allocate_cascade(application, user=None, dry_run=False):
+    """
+    Allocate a single application by walking the applicant's eligible house
+    types from best category → lowest, using R1→R2→R3 room ordering.
+
+    This is the **production entry-point** for allocating one applicant:
+      1. Compute MCDA score + eligibility
+      2. Walk eligible categories (e.g. Staff → A → B → C → D → E)
+      3. For each category, evaluate every active house
+      4. For ROOM_ALLOCATION: pick the first house with a vacant room
+         (R1 first, then R2, then R3)
+      5. For HOUSE_ALLOCATION: pick the first fully vacant house
+      6. Allocate atomically (or return a dry-run preview)
+
+    Returns (allocated_flag, result_dict) where result_dict contains the
+    allocation details or a skip reason together with full reasoning.
+    """
+    config = ScoringConfig.objects.filter(is_active=True).first()
+
+    total, breakdown, reasons = compute_mcda_score(application, config)
+    application.priority_score = total
+    application.score_breakdown = breakdown
+    application.eligible_house_category, _ = determine_eligible_category(application)
+    if not dry_run:
+        application.save(update_fields=[
+            "priority_score", "score_breakdown", "eligible_house_category",
+            "updated_at",
+        ])
+
+    allocation_mode, mode_reason = determine_allocation_mode(application)
+    eligible_cat = application.eligible_house_category
+
+    if not eligible_cat:
+        reasoning = build_allocation_reasoning(
+            application, house=None,
+            allocation_mode=allocation_mode,
+            priority_score=total, score_breakdown=breakdown,
+            eligibility_results=[],
+        )
+        return False, {
+            "application_no": application.application_no,
+            "employee_name": application.employee_name,
+            "skip_reason": "Not eligible for any house category",
+            "reasoning": reasoning,
+        }
+
+    # ── Walk eligible categories (best → lowest) ────────────────────────
+    cat_types = _eligible_types_ordered(eligible_cat)
+    active_houses = list(
+        House.objects.filter(
+            status=House.Status.ACTIVE,
+            is_active=True,
+        ).exclude(allocation_category=House.AllocationCategory.GUEST)
+        .order_by("house_type", "house_number")
+    )
+
+    house_by_type = {}
+    for h in active_houses:
+        house_by_type.setdefault(h.house_type, []).append(h)
+
+    evaluation_log = []
+
+    for htype in cat_types:
+        houses_of_type = house_by_type.get(htype, [])
+        if not houses_of_type:
+            evaluation_log.append({
+                "type": htype, "houses_found": 0,
+                "detail": "No active houses of this type",
+            })
+            continue
+
+        for house in houses_of_type:
+            if allocation_mode == ALLOCATION_MODE_ROOM:
+                room, idx = find_vacant_room_in_order(house)
+                available = room is not None
+                detail = (
+                    f"{house.house_number}: Room {room['label']} vacant "
+                    f"(R1→R2→R3)" if available else
+                    f"{house.house_number}: all rooms occupied"
+                )
+            else:
+                available = house.is_fully_vacant
+                room = None
+                detail = (
+                    f"{house.house_number}: fully vacant" if available else
+                    f"{house.house_number}: partially/fully occupied"
+                )
+
+            evaluation_log.append({
+                "type": htype, "house_id": house.house_id,
+                "house_number": house.house_number, "available": available,
+                "detail": detail,
+            })
+
+            if not available:
+                continue
+
+            # ── Candidate found — allocate (or preview) ─────────────────
+            reasoning = build_allocation_reasoning(
+                application, house, room=room,
+                allocation_mode=allocation_mode,
+                priority_score=total, score_breakdown=breakdown,
+                eligibility_results=application.eligibility_analysis or [],
+            )
+            reasoning["steps"].insert(0, {
+                "section": "Evaluation Trail",
+                "detail": (
+                    f"Walked categories {cat_types}, evaluated "
+                    f"{len(evaluation_log)} house(s) before finding "
+                    f"available resource"
+                ),
+                "evaluations": evaluation_log,
+            })
+
+            result = {
+                "application_no": application.application_no,
+                "employee_name": application.employee_name,
+                "employee_id": application.employee_id,
+                "job_grade": application.job_grade,
+                "priority_score": str(total),
+                "allocation_mode": allocation_mode,
+                "house_id": house.house_id,
+                "house_number": house.house_number,
+                "house_type": house.house_type,
+                "room_label": room["label"] if room else "",
+                "resource": resource_label(house, room["label"] if room else ""),
+                "reasoning": reasoning,
+            }
+
+            if dry_run:
+                return True, result
+
+            allocate_application(
+                application, house, user, "Auto",
+                notes=f"Cascade allocation score={total}",
+                room=room, room_label=room["label"] if room else "",
+            )
+            return True, result
+
+    # ── No house found ──────────────────────────────────────────────────
+    reasoning = build_allocation_reasoning(
+        application, house=None,
+        allocation_mode=allocation_mode,
+        priority_score=total, score_breakdown=breakdown,
+        eligibility_results=application.eligibility_analysis or [],
+    )
+    reasoning["steps"].insert(0, {
+        "section": "Evaluation Trail",
+        "detail": (
+            f"Walked categories {cat_types}, evaluated "
+            f"{len(evaluation_log)} house(s) — no available house found"
+        ),
+        "evaluations": evaluation_log,
+    })
+
+    return False, {
+        "application_no": application.application_no,
+        "employee_name": application.employee_name,
+        "skip_reason": (
+            f"No available house across categories {cat_types} "
+            f"({len(evaluation_log)} houses evaluated)"
+        ),
+        "reasoning": reasoning,
+    }
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1595,3 +2050,1326 @@ def get_ranked_queue(category=None, recalculate=False):
         result.append(app)
 
     return result
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  14. TERMINATION ENGINE  (Inspection-gated, Authorization-Code secured)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  Full workflow enforced server-side:
+#  Allocation Baseline → House Inspection → Status Comparison →
+#  Issue Resolution → Termination Request → Admin/Manager Approval →
+#  Secure Termination Code → Code Verification → Termination →
+#  House Release → Capacity Recalculation → Complete Audit Trail
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def capture_inspection_baseline(house):
+    """
+    Capture the authoritative house condition snapshot at termination-creation time.
+    Includes:
+      - damage flags (door, windows, walls, switch, bulb, water)
+      - latest completed inspection results (findings, damage_costs, checklist)
+      - pending open maintenance requests
+    Returns a dict used as `inspection_baseline` on the TerminationTransaction.
+    """
+    # Current house damage flags
+    damage_flags = {
+        "damaged_door": house.damaged_door,
+        "damaged_windows": house.damaged_windows,
+        "damaged_walls": house.damaged_walls,
+        "damaged_switch": house.damaged_switch,
+        "damaged_bulb": house.damaged_bulb,
+        "damaged_water": house.damaged_water,
+    }
+    any_damage = any(damage_flags.values())
+
+    # Latest completed inspection
+    from .models import HouseInspection
+    latest_inspection = (
+        HouseInspection.objects
+        .filter(house=house, status=HouseInspection.Status.COMPLETED)
+        .order_by("-completed_date")
+        .first()
+    )
+    inspection_snapshot = {}
+    if latest_inspection:
+        inspection_snapshot = {
+            "inspection_id": str(latest_inspection.id),
+            "inspection_type": latest_inspection.inspection_type,
+            "completed_date": latest_inspection.completed_date.isoformat() if latest_inspection.completed_date else None,
+            "findings": latest_inspection.findings or "",
+            "damage_costs": float(latest_inspection.damage_costs or 0),
+            "checklist_results": latest_inspection.checklist_results or {},
+        }
+
+    # Pending maintenance requests count
+    from .models import MaintenanceRequest
+    open_maintenance = (
+        MaintenanceRequest.objects
+        .filter(
+            house=house,
+            status__in=[
+                MaintenanceRequest.Status.PENDING,
+                MaintenanceRequest.Status.IN_PROGRESS,
+            ],
+        )
+        .count()
+    )
+
+    return {
+        "snapshot_at": timezone.now().isoformat(),
+        "damage_flags": damage_flags,
+        "has_any_damage": any_damage,
+        "latest_inspection": inspection_snapshot,
+        "open_maintenance_count": open_maintenance,
+        "room_statuses": {
+            "r1": house.r1_status,
+            "r2": house.r2_status if house.room_count >= 2 else "",
+            "r3": house.r3_status if house.room_count >= 3 else "",
+        },
+    }
+
+
+def compare_inspection_baseline(baseline, current_house):
+    """
+    Compare the allocation baseline (captured at termination creation) with the
+    current authoritative house condition. Returns a list of discrepancies.
+    Each discrepancy is a dict with keys: field, baseline_value, current_value, severity, description.
+    Severity is one of: 'critical', 'warning', 'info'.
+    """
+    discrepancies = []
+    if not baseline:
+        return discrepancies
+
+    # Compare damage flags
+    old_flags = baseline.get("damage_flags", {})
+    current_flags = {
+        "damaged_door": current_house.damaged_door,
+        "damaged_windows": current_house.damaged_windows,
+        "damaged_walls": current_house.damaged_walls,
+        "damaged_switch": current_house.damaged_switch,
+        "damaged_bulb": current_house.damaged_bulb,
+        "damaged_water": current_house.damaged_water,
+    }
+    for field, label in [
+        ("damaged_door", "Door"), ("damaged_windows", "Windows"),
+        ("damaged_walls", "Walls"), ("damaged_switch", "Switch"),
+        ("damaged_bulb", "Bulb"), ("damaged_water", "Water"),
+    ]:
+        old_val = old_flags.get(field, False)
+        cur_val = current_flags.get(field, False)
+        if cur_val and not old_val:
+            discrepancies.append({
+                "field": field,
+                "label": label,
+                "baseline_value": old_val,
+                "current_value": cur_val,
+                "severity": "critical",
+                "description": f"{label} damage detected that was not present at allocation baseline",
+            })
+        elif old_val and not cur_val:
+            discrepancies.append({
+                "field": field,
+                "label": label,
+                "baseline_value": old_val,
+                "current_value": cur_val,
+                "severity": "info",
+                "description": f"{label} was damaged at baseline but has been repaired",
+            })
+
+    # Compare latest inspection
+    from .models import HouseInspection, MaintenanceRequest
+    latest_completed = (
+        HouseInspection.objects
+        .filter(house=current_house, status=HouseInspection.Status.COMPLETED)
+        .order_by("-completed_date")
+        .first()
+    )
+    baseline_inspection = baseline.get("latest_inspection", {})
+    if latest_completed:
+        baseline_cost = baseline_inspection.get("damage_costs", 0) or 0
+        current_cost = float(latest_completed.damage_costs or 0)
+        if current_cost > baseline_cost:
+            discrepancies.append({
+                "field": "damage_costs",
+                "label": "Damage Costs",
+                "baseline_value": baseline_cost,
+                "current_value": current_cost,
+                "severity": "critical",
+                "description": (
+                    f"Damage costs increased from {baseline_cost:.2f} to "
+                    f"{current_cost:.2f} — outstanding damage must be resolved"
+                ),
+            })
+
+    # Check open maintenance
+    open_maint = (
+        MaintenanceRequest.objects
+        .filter(
+            house=current_house,
+            status__in=[
+                MaintenanceRequest.Status.PENDING,
+                MaintenanceRequest.Status.IN_PROGRESS,
+            ],
+        )
+        .count()
+    )
+    baseline_open = baseline.get("open_maintenance_count", 0)
+    if open_maint > baseline_open:
+        discrepancies.append({
+            "field": "open_maintenance",
+            "label": "Open Maintenance",
+            "baseline_value": baseline_open,
+            "current_value": open_maint,
+            "severity": "warning",
+            "description": f"{open_maint} open maintenance request(s) — may require resolution before handover",
+        })
+
+    return discrepancies
+
+
+def validate_termination(allocation, case, user, **kwargs):
+    """
+    Server-side validation before creating a termination transaction.
+    Includes mandatory inspection baseline capture and discrepancy detection.
+    Returns (is_valid, errors_list, warnings_list).
+    """
+    errors = []
+    warnings = []
+
+    # ── 1. Allocation exists and is active ──────────────────────────────
+    if allocation is None:
+        errors.append("Allocation not found")
+        return False, errors, warnings
+    if allocation.status != Allocation.Status.ACTIVE:
+        errors.append(f"Allocation {allocation.allocation_no} is not active (status: {allocation.status})")
+        return False, errors, warnings
+
+    # ── 2. Case validation ──────────────────────────────────────────────
+    if case is None:
+        errors.append("Termination case not found")
+        return False, errors, warnings
+    if not case.is_active:
+        errors.append(f"Termination case '{case.name}' is not active")
+        return False, errors, warnings
+
+    # ── 3. Employee identity matches allocation ─────────────────────────
+    employee_id = kwargs.get("employee_id", "")
+    if employee_id and employee_id != allocation.employee_id:
+        errors.append(
+            f"Employee ID mismatch: allocation belongs to {allocation.employee_id}, "
+            f"request is for {employee_id}"
+        )
+
+    # ── 4. Effective date validation ────────────────────────────────────
+    effective_date = kwargs.get("effective_date")
+    if effective_date is None:
+        errors.append("Effective date is required")
+
+    # ── 5. Transfer-specific validation ─────────────────────────────────
+    if case.category == "Transfer":
+        target_house_id = kwargs.get("target_house_id")
+        if not target_house_id:
+            errors.append("Target house is required for transfer terminations")
+        else:
+            try:
+                target_house = House.objects.get(house_id=target_house_id, is_active=True)
+                if not target_house.is_available:
+                    errors.append(f"Target house {target_house.house_id} is not available")
+                if target_house.id == allocation.house_id:
+                    errors.append("Target house cannot be the same as current house")
+            except House.DoesNotExist:
+                errors.append(f"Target house {target_house_id} not found")
+
+    # ── 6. Retirement-specific validation ───────────────────────────────
+    if case.category == "Retirement" and case.auto_verify_employment:
+        emp_record = allocation.emp_record
+        if emp_record:
+            emp_status = getattr(emp_record, "status", None)
+            if emp_status and hasattr(emp_status, 'lower') and emp_status.lower() not in ("active", "employed"):
+                warnings.append(
+                    f"Employee employment status is '{emp_status}' — verify this matches retirement case"
+                )
+
+    # ── 7. Release-specific validation ──────────────────────────────────
+    if case.category == "Release" and case.auto_verify_employment:
+        emp_record = allocation.emp_record
+        if emp_record:
+            emp_status = getattr(emp_record, "status", None)
+            if emp_status and hasattr(emp_status, 'lower') and emp_status.lower() not in ("active", "employed"):
+                warnings.append(
+                    f"Employee employment status is '{emp_status}' — verify this matches release case"
+                )
+
+    # ── 8. Conflict check: no other active termination for same allocation
+    from .models import TerminationTransaction
+    active_term = TerminationTransaction.objects.filter(
+        allocation=allocation,
+        status__in=[
+            TerminationTransaction.Status.PENDING,
+            TerminationTransaction.Status.APPROVED,
+            TerminationTransaction.Status.IN_PROGRESS,
+        ],
+        is_active=True,
+    ).exclude(id=kwargs.get("transaction_id")).exists()
+    if active_term:
+        errors.append("An active termination transaction already exists for this allocation")
+
+    # ── 9. Reason validation ────────────────────────────────────────────
+    reason = kwargs.get("reason", "")
+    if not reason or not str(reason).strip():
+        errors.append("Termination reason is required")
+
+    # ── 10. MANDATORY INSPECTION BASELINE CHECK ────────────────────────
+    # Always require inspection baseline when case requires inspection.
+    house = allocation.house
+    if case.requires_inspection in ("Always", "Conditional"):
+        baseline = capture_inspection_baseline(house)
+        discrepancies = compare_inspection_baseline(baseline, house)
+
+        critical = [d for d in discrepancies if d["severity"] == "critical"]
+        warning_disc = [d for d in discrepancies if d["severity"] == "warning"]
+
+        if critical:
+            for d in critical:
+                errors.append(
+                    f"[INSPECTION BLOCKED] {d['description']}. "
+                    f"Resolve this issue before termination can proceed."
+                )
+        if warning_disc:
+            for d in warning_disc:
+                warnings.append(
+                    f"[INSPECTION WARNING] {d['description']}"
+                )
+
+        # Check open maintenance that must be resolved
+        from .models import MaintenanceRequest
+        open_maint = MaintenanceRequest.objects.filter(
+            house=house,
+            status__in=[
+                MaintenanceRequest.Status.PENDING,
+                MaintenanceRequest.Status.IN_PROGRESS,
+            ],
+        )
+        if open_maint.exists():
+            for req in open_maint[:5]:
+                warnings.append(
+                    f"[MAINTENANCE] Open {req.priority} priority request: "
+                    f"'{req.title}' (status: {req.status}) — resolve before handover"
+                )
+
+        # Store baseline data in kwargs for create_termination_transaction
+        kwargs["_inspection_baseline"] = baseline
+        kwargs["_inspection_discrepancies"] = discrepancies
+
+    # ── 11. For 'Never' inspection cases, waive inspection but still capture baseline ──
+    elif case.requires_inspection == "Never":
+        kwargs["_inspection_baseline"] = capture_inspection_baseline(house)
+        kwargs["_inspection_discrepancies"] = []
+
+    return len(errors) == 0, errors, warnings
+
+
+def create_termination_transaction(allocation, case, user, **kwargs):
+    """
+    Create a TerminationTransaction after full validation.
+    Captures inspection baseline snapshot. Does NOT terminate the allocation.
+    """
+    from .models import TerminationTransaction
+
+    is_valid, errors, warnings = validate_termination(
+        allocation, case, user, **kwargs,
+    )
+    if not is_valid:
+        raise ValueError("; ".join(errors))
+
+    house = allocation.house
+    effective_date = kwargs.get("effective_date")
+    reason = kwargs.get("reason", "")
+    target_house_id = kwargs.get("target_house_id")
+    target_house = None
+
+    if target_house_id:
+        try:
+            target_house = House.objects.get(house_id=target_house_id, is_active=True)
+        except House.DoesNotExist:
+            pass
+
+    # Determine handover + inspection requirements
+    handover_status = TerminationTransaction.HandoverStatus.PENDING
+    inspection_status = TerminationTransaction.InspectionStatus.NOT_REQUIRED
+    if case.requires_inspection == "Always":
+        inspection_status = TerminationTransaction.InspectionStatus.SCHEDULED
+    elif case.requires_inspection == "Conditional":
+        inspection_status = TerminationTransaction.InspectionStatus.SCHEDULED
+
+    if not case.requires_inspection or case.requires_inspection == "Never":
+        handover_status = TerminationTransaction.HandoverStatus.WAIVED
+        inspection_status = TerminationTransaction.InspectionStatus.WAIVED
+
+    inspection_baseline = kwargs.get("_inspection_baseline", {})
+    inspection_discrepancies = kwargs.get("_inspection_discrepancies", [])
+
+    # Determine if all discrepancies are non-critical (resolved or info-only)
+    critical_count = sum(1 for d in inspection_discrepancies if d.get("severity") == "critical")
+    issues_resolved = critical_count == 0
+
+    termination = TerminationTransaction.objects.create(
+        allocation=allocation,
+        application=allocation.application,
+        case=case,
+        employee_id=allocation.employee_id,
+        employee_name=allocation.employee_name,
+        house=house,
+        house_number=house.house_number or house.house_id,
+        house_type=house.house_type,
+        room_label=allocation.room_label or "",
+        termination_reason=reason,
+        effective_date=effective_date,
+        requested_date=kwargs.get("requested_date"),
+        status=TerminationTransaction.Status.PENDING,
+        handover_status=handover_status,
+        inspection_status=inspection_status,
+        inspection_baseline=inspection_baseline,
+        inspection_discrepancies=inspection_discrepancies,
+        issues_resolved=issues_resolved,
+        target_house=target_house,
+        remarks=kwargs.get("remarks", ""),
+        created_by=user,
+    )
+
+    # Audit trail
+    record_audit(
+        allocation.application,
+        HouseAuditTrail.Action.TERMINATED,
+        user,
+        old_status=allocation.status,
+        new_status="Termination Pending",
+        detail={
+            "termination_no": termination.termination_no,
+            "case": case.code,
+            "category": case.category,
+            "allocation_no": allocation.allocation_no,
+            "house_id": house.house_id,
+            "inspection_required": case.requires_inspection,
+            "critical_discrepancies": critical_count,
+            "issues_resolved": issues_resolved,
+        },
+        note=f"Termination initiated: {case.name} — {reason}",
+    )
+
+    return termination, warnings
+
+
+def resolve_inspection_issues(termination, user, resolution_notes="", force=False):
+    """
+    Mark all inspection discrepancies as resolved. Required before approval
+    when critical discrepancies exist. Only admins can force-resolve.
+    """
+    from .models import TerminationTransaction
+
+    if termination.status not in (
+        TerminationTransaction.Status.PENDING,
+        TerminationTransaction.Status.IN_PROGRESS,
+    ):
+        raise ValueError(f"Cannot resolve issues in '{termination.status}' status")
+
+    with transaction.atomic():
+        termination = TerminationTransaction.objects.select_for_update().get(id=termination.id)
+
+        # Re-evaluate current inspection baseline
+        baseline = termination.inspection_baseline or {}
+        current_baseline = capture_inspection_baseline(termination.house)
+        new_discrepancies = compare_inspection_baseline(current_baseline, termination.house)
+        critical = [d for d in new_discrepancies if d["severity"] == "critical"]
+
+        if critical and not force:
+            raise ValueError(
+                f"{len(critical)} critical discrepancy(ies) still present. "
+                f"Resolve them first or use force=True to override."
+            )
+
+        termination.inspection_baseline = current_baseline
+        termination.inspection_discrepancies = new_discrepancies
+        termination.issues_resolved = True
+        termination.handover_completed = True
+        termination.handover_status = TerminationTransaction.HandoverStatus.COMPLETED
+        termination.inspection_status = TerminationTransaction.InspectionStatus.COMPLETED
+        if resolution_notes:
+            termination.remarks = (
+                f"{termination.remarks}\n[Inspection Resolution] {resolution_notes}"
+            ).strip()
+        termination.save(update_fields=[
+            "inspection_baseline", "inspection_discrepancies", "issues_resolved",
+            "handover_completed", "handover_status", "inspection_status",
+            "remarks", "updated_at",
+        ])
+
+        record_audit(
+            termination.application,
+            HouseAuditTrail.Action.STATUS_CHANGED,
+            user,
+            old_status=termination.status,
+            new_status=f"{termination.status} — Inspection Resolved",
+            detail={
+                "termination_no": termination.termination_no,
+                "forced": force,
+                "remaining_critical": len(critical),
+                "resolution_notes": resolution_notes,
+            },
+            note=f"Inspection issues resolved. {resolution_notes}".strip(),
+        )
+
+    return termination
+
+
+def _generate_termination_authorization_code(termination):
+    """
+    Generate a unique 8-digit numeric authorization code.
+    Guaranteed unique by DB constraint + retry.
+    """
+    import secrets
+    from .models import TerminationTransaction
+
+    attempts = 0
+    while True:
+        code = f"{secrets.randbelow(100000000):08d}"
+        if not TerminationTransaction.objects.filter(authorization_code=code, status=TerminationTransaction.Status.APPROVED).exists():
+            return code
+        attempts += 1
+        if attempts > 50:
+            raise RuntimeError("Failed to generate unique 8-digit authorization code after 50 attempts")
+
+
+def approve_termination(termination, user, notes=""):
+    """
+    Approve a pending termination transaction.
+    Pre-conditions:
+      - Must be in PENDING status
+      - Inspection issues must be resolved (issues_resolved=True) when inspection is required
+    Post-conditions:
+      - Status → APPROVED
+      - Secure authorization code is generated and stored
+      - Only admin/manager role enforced in the view layer
+    """
+    from .models import TerminationTransaction
+
+    if termination.status != TerminationTransaction.Status.PENDING:
+        raise ValueError(f"Cannot approve termination in '{termination.status}' status")
+
+    # Block approval if inspection required and issues not resolved
+    if termination.inspection_status not in (
+        TerminationTransaction.InspectionStatus.NOT_REQUIRED,
+        TerminationTransaction.InspectionStatus.WAIVED,
+    ):
+        if not termination.issues_resolved:
+            raise ValueError(
+                "Cannot approve: inspection issues are not yet resolved. "
+                "Call resolve_inspection_issues() first."
+            )
+
+    with transaction.atomic():
+        termination = TerminationTransaction.objects.select_for_update().get(id=termination.id)
+
+        # Double-check under lock
+        if termination.status != TerminationTransaction.Status.PENDING:
+            raise ValueError(f"Cannot approve termination in '{termination.status}' status (race condition)")
+
+        if termination.inspection_status not in (
+            TerminationTransaction.InspectionStatus.NOT_REQUIRED,
+            TerminationTransaction.InspectionStatus.WAIVED,
+        ):
+            if not termination.issues_resolved:
+                raise ValueError(
+                    "Cannot approve: inspection issues are not yet resolved."
+                )
+
+        # Generate secure authorization code
+        auth_code = _generate_termination_authorization_code(termination)
+
+        termination.status = TerminationTransaction.Status.APPROVED
+        termination.approval_status = TerminationTransaction.Status.APPROVED
+        termination.approved_by = user
+        termination.approval_date = timezone.now()
+        termination.approval_notes = notes
+        termination.authorization_code = auth_code
+        termination.code_generated_at = timezone.now()
+        termination.code_generated_by = user
+        termination.save(update_fields=[
+            "status", "approval_status", "approved_by", "approval_date",
+            "approval_notes", "authorization_code", "code_generated_at",
+            "code_generated_by", "updated_at",
+        ])
+
+        record_audit(
+            termination.application,
+            HouseAuditTrail.Action.STATUS_CHANGED,
+            user,
+            old_status="Termination Pending",
+            new_status="Termination Approved",
+            detail={
+                "termination_no": termination.termination_no,
+                "case": termination.case.code,
+                "authorization_code_generated": True,
+            },
+            note=notes or "Termination approved. Authorization code generated.",
+        )
+
+    return termination, auth_code
+
+
+def verify_termination_code(termination, code, user):
+    """
+    Verify the termination authorization code. Must be called before process_termination.
+    Returns (is_valid, message).
+    Only approved terminations with valid codes can proceed.
+    """
+    from .models import TerminationTransaction
+
+    if termination.status != TerminationTransaction.Status.APPROVED:
+        return False, f"Termination is not approved (status: {termination.status})"
+
+    if not termination.authorization_code:
+        return False, "No authorization code has been generated for this termination"
+
+    if not code or not str(code).strip():
+        return False, "Authorization code is required"
+
+    if str(code).strip() != termination.authorization_code:
+        # Audit the failed attempt
+        record_audit(
+            termination.application,
+            HouseAuditTrail.Action.STATUS_CHANGED,
+            user,
+            old_status=termination.status,
+            new_status=f"{termination.status} — Failed Code Attempt",
+            detail={
+                "termination_no": termination.termination_no,
+                "attempted_code": str(code).strip()[:8] + "...",
+            },
+            note="Failed authorization code verification attempt",
+        )
+        return False, "Invalid authorization code"
+
+    # Mark code as verified
+    with transaction.atomic():
+        termination = TerminationTransaction.objects.select_for_update().get(id=termination.id)
+        termination.code_verified = True
+        termination.code_verified_at = timezone.now()
+        termination.code_verified_by = user
+        termination.status = TerminationTransaction.Status.IN_PROGRESS
+        termination.save(update_fields=[
+            "code_verified", "code_verified_at", "code_verified_by",
+            "status", "updated_at",
+        ])
+
+        record_audit(
+            termination.application,
+            HouseAuditTrail.Action.STATUS_CHANGED,
+            user,
+            old_status="Termination Approved",
+            new_status="Termination In Progress (Code Verified)",
+            detail={
+                "termination_no": termination.termination_no,
+                "code_verified": True,
+            },
+            note="Authorization code verified. Termination authorized to proceed.",
+        )
+
+    return True, "Authorization code verified. Termination authorized."
+
+
+def process_termination(termination, user, authorization_code=None, **kwargs):
+    """
+    Process a completed termination — closes the allocation, releases the house,
+    and (for transfers) creates the new allocation atomically.
+
+    SECURITY: Requires a verified authorization code. The termination must have
+    gone through: create → approve → verify_code → process.
+
+    This is the core termination processor that:
+    0. Verifies authorization code (must be code_verified=True)
+    1. Validates all preconditions
+    2. Closes the active allocation
+    3. Releases physical rooms
+    4. Recalculates house capacity
+    5. For Transfers: allocates the target house
+    6. Writes AllocationLog + HouseAuditTrail
+    7. Updates the application state
+
+    Returns the updated TerminationTransaction.
+    """
+    from .models import TerminationTransaction
+
+    # SECURITY: Authorization code must be verified
+    if not termination.code_verified:
+        raise ValueError(
+            "Termination cannot be processed: authorization code has not been verified. "
+            "The code must be verified before processing."
+        )
+
+    if termination.status not in (
+        TerminationTransaction.Status.APPROVED,
+        TerminationTransaction.Status.IN_PROGRESS,
+    ):
+        raise ValueError(
+            f"Cannot process termination in '{termination.status}' status. "
+            f"Must be Approved or In Progress."
+        )
+
+    allocation = termination.allocation
+    case = termination.case
+    application = allocation.application
+
+    with transaction.atomic():
+        termination = TerminationTransaction.objects.select_for_update().get(id=termination.id)
+        allocation = Allocation.objects.select_for_update().get(id=allocation.id)
+
+        # Re-verify authorization under lock
+        if not termination.code_verified:
+            raise ValueError(
+                "Termination cannot be processed: authorization code verification was revoked."
+            )
+
+        if allocation.status != Allocation.Status.ACTIVE:
+            raise ValueError(
+                f"Allocation {allocation.allocation_no} is no longer active "
+                f"(status: {allocation.status}). Cannot process termination."
+            )
+
+        # ── 1. Close the allocation ────────────────────────────────────
+        allocation.status = Allocation.Status.TERMINATED
+        allocation.occupancy_status = Allocation.Occupancy.VACATED
+        allocation.terminated_at = timezone.now()
+        allocation.terminated_by = user
+        allocation.termination_reason = (
+            f"[{case.code}] {termination.termination_reason}"
+        )
+        allocation.updated_by = user
+        allocation.save(update_fields=[
+            "status", "occupancy_status", "terminated_at", "terminated_by",
+            "termination_reason", "updated_at",
+        ])
+
+        # ── 2. Release physical rooms ──────────────────────────────────
+        house = allocation.house
+        if allocation.allocation_unit_type == Allocation.AllocationUnit.HOUSE:
+            house.free_all_rooms()
+        elif allocation.room_label:
+            house.free_room(allocation.room_label)
+        house.save()
+
+        # ── 3. Sync application ────────────────────────────────────────
+        application = HouseApplication.objects.select_for_update().get(id=application.id)
+        old_app_status = application.status
+
+        # For transfers, the application stays Allocated (new allocation incoming)
+        if case.category != "Transfer":
+            application.status = HouseApplication.Status.WAITING_FOR_ALLOCATION
+            application.allocated_house = None
+            application.allocated_room_label = ""
+            application.allocated_room_number = ""
+            application.allocated_at = None
+            application.allocated_by = None
+            application.allocation_notes = ""
+            application.allocation_confidence = 0
+            application.deallocation_reason = (
+                f"[{case.code}] {termination.termination_reason}"
+            )
+            application.save()
+
+        # ── 4. Handle Transfer case ────────────────────────────────────
+        new_allocation = None
+        if case.category == "Transfer" and termination.target_house:
+            target_house = House.objects.select_for_update().get(
+                id=termination.target_house_id
+            )
+            if not target_house.is_available:
+                raise ValueError(
+                    f"Target house {target_house.house_id} is no longer available"
+                )
+
+            # Create new allocation for the target house
+            transfer_room = allocation.room_label if (
+                allocation.allocation_unit_type == Allocation.AllocationUnit.ROOM
+            ) else ""
+            new_allocation = allocate_application(
+                application, target_house, user, "Manual",
+                notes=(
+                    f"Transfer from {house.house_number} to "
+                    f"{target_house.house_number}. {termination.termination_reason}"
+                ).strip(),
+                allow_existing=True,
+                room_label=termination.room_label if termination.room_label else transfer_room,
+            )
+            termination.target_allocation = new_allocation
+
+            # Log transfer
+            AllocationLog.objects.create(
+                application=application,
+                application_no=application.application_no,
+                employee_name=application.employee_name,
+                employee_id=application.employee_id,
+                house=target_house,
+                house_hid=target_house.house_id,
+                action=AllocationLog.Action.TRANSFERRED,
+                old_status=old_app_status,
+                new_status=application.status,
+                priority_score=application.priority_score,
+                eligible_category=application.eligible_house_category,
+                score_breakdown=application.score_breakdown,
+                recommendation_reason=(
+                    f"Transfer from {house.house_number} to "
+                    f"{target_house.house_number}"
+                ),
+                notes=termination.termination_reason,
+                performed_by=user,
+                performed_by_name=user.get_full_name() if user else "",
+            )
+
+            record_audit(
+                application,
+                HouseAuditTrail.Action.TRANSFERRED,
+                user,
+                old_status=old_app_status,
+                new_status=application.status,
+                detail={
+                    "termination_no": termination.termination_no,
+                    "old_house": house.house_number,
+                    "new_house": target_house.house_number,
+                    "allocation_no": new_allocation.allocation_no if new_allocation else "",
+                },
+                note=f"House transferred: {house.house_number} → {target_house.house_number}",
+            )
+        else:
+            # ── 5. Non-transfer: log deallocation ──────────────────────
+            AllocationLog.objects.create(
+                application=application,
+                application_no=application.application_no,
+                employee_name=application.employee_name,
+                employee_id=application.employee_id,
+                house=house,
+                house_hid=house.house_id,
+                allocation_unit_type=allocation.allocation_unit_type,
+                room_label=allocation.room_label,
+                room_number=allocation.room_number,
+                action=AllocationLog.Action.DEALLOCATED,
+                old_status=old_app_status,
+                new_status=application.status,
+                priority_score=application.priority_score,
+                eligible_category=application.eligible_house_category,
+                score_breakdown=application.score_breakdown,
+                recommendation_reason=(
+                    f"[{case.code}] Terminated: {termination.termination_reason}"
+                ),
+                notes=termination.termination_reason,
+                performed_by=user,
+                performed_by_name=user.get_full_name() if user else "",
+            )
+
+            record_audit(
+                application,
+                HouseAuditTrail.Action.TERMINATED,
+                user,
+                old_status=old_app_status,
+                new_status=application.status,
+                detail={
+                    "termination_no": termination.termination_no,
+                    "allocation_no": allocation.allocation_no,
+                    "house_id": house.house_id,
+                    "room_label": allocation.room_label or None,
+                    "case": case.code,
+                },
+                note=f"Allocation terminated: {termination.termination_reason}",
+            )
+
+        # ── 6. Mark termination completed ──────────────────────────────
+        termination.status = TerminationTransaction.Status.COMPLETED
+        termination.house_release_date = timezone.now().date()
+        if new_allocation:
+            termination.target_allocation = new_allocation
+        termination.save(update_fields=[
+            "status", "house_release_date", "target_allocation",
+            "updated_at",
+        ])
+
+        # Final audit
+        record_audit(
+            termination.application,
+            HouseAuditTrail.Action.STATUS_CHANGED,
+            user,
+            old_status="Termination In Progress",
+            new_status="Termination Completed",
+            detail={
+                "termination_no": termination.termination_no,
+                "allocation_no": allocation.allocation_no,
+                "house_id": house.house_id,
+                "case": case.code,
+                "authorization_verified": True,
+                "inspection_baseline": bool(termination.inspection_baseline),
+                "house_released": True,
+            },
+            note=f"Termination completed. House {house.house_number} released.",
+        )
+
+    return termination
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  15. PRE-INSPECTION VALIDATION  (mandatory before termination)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def validate_pre_inspection(allocation):
+    """Validate that a post-inspection record exists and is consistent with the
+    current allocation before allowing termination to proceed.
+
+    Returns a dict:
+      {
+        "valid": bool,
+        "post_inspection": PostInspection | None,
+        "message": str,
+        "details": {
+          "post_inspection_found": bool,
+          "post_inspection_status": str,
+          "house_number_match": bool,
+          "allocation_status_match": bool,
+          "house_status_match": bool,
+        }
+      }
+    """
+    from .models import PostInspection, House
+
+    house = allocation.house
+    employee_id = allocation.employee_id
+
+    # ── 1. Look up the most recent post-inspection for this house ────
+    post_inspection = (
+        PostInspection.objects
+        .filter(house=house, is_active=True)
+        .order_by("-scheduled_date")
+        .first()
+    )
+
+    if not post_inspection:
+        return {
+            "valid": False,
+            "post_inspection": None,
+            "message": (
+                f"No post-inspection record found for house {house.house_number or house.house_id}. "
+                f"House {house.house_number or house.house_id} must undergo a post-occupancy "
+                f"inspection before termination can proceed."
+            ),
+            "details": {
+                "post_inspection_found": False,
+                "post_inspection_status": "",
+                "house_number_match": False,
+                "allocation_status_match": False,
+                "house_status_match": False,
+            },
+        }
+
+    # ── 2. Post-inspection must be completed ─────────────────────────
+    if post_inspection.status not in (
+        PostInspection.Status.COMPLETED,
+    ):
+        return {
+            "valid": False,
+            "post_inspection": post_inspection,
+            "message": (
+                f"Post-inspection for house {house.house_number or house.house_id} "
+                f"is in '{post_inspection.status}' status. It must be completed "
+                f"before termination can proceed."
+            ),
+            "details": {
+                "post_inspection_found": True,
+                "post_inspection_status": post_inspection.status,
+                "house_number_match": True,
+                "allocation_status_match": True,
+                "house_status_match": True,
+            },
+        }
+
+    # ── 3. House number must match ───────────────────────────────────
+    pi_house_number = post_inspection.house_number or post_inspection.house.house_number or post_inspection.house.house_id
+    alloc_house_number = house.house_number or house.house_id
+    house_number_match = (pi_house_number == alloc_house_number)
+
+    if not house_number_match:
+        return {
+            "valid": False,
+            "post_inspection": post_inspection,
+            "message": (
+                f"Post-inspection house number mismatch: inspection is for "
+                f"{pi_house_number} but allocation is for {alloc_house_number}."
+            ),
+            "details": {
+                "post_inspection_found": True,
+                "post_inspection_status": post_inspection.status,
+                "house_number_match": False,
+                "allocation_status_match": True,
+                "house_status_match": True,
+            },
+        }
+
+    # ── 4. Compare allocation status with post-inspection snapshot ────
+    allocation_status_match = True
+    if post_inspection.allocation_status_snapshot:
+        allocation_status_match = (
+            post_inspection.allocation_status_snapshot == allocation.status
+        )
+
+    # ── 5. Compare house status with post-inspection snapshot ────────
+    house_status_match = True
+    if post_inspection.house_status_snapshot:
+        house_status_match = (
+            post_inspection.house_status_snapshot == house.status
+        )
+
+    # ── 6. If condition is Critical, warn but allow with approval ────
+    if post_inspection.overall_condition == "Critical":
+        return {
+            "valid": True,
+            "post_inspection": post_inspection,
+            "message": (
+                f"Post-inspection completed for house {alloc_house_number}. "
+                f"Condition rated CRITICAL — termination allowed but "
+                f"damage costs of {post_inspection.damage_costs} may apply."
+            ),
+            "details": {
+                "post_inspection_found": True,
+                "post_inspection_status": post_inspection.status,
+                "house_number_match": house_number_match,
+                "allocation_status_match": allocation_status_match,
+                "house_status_match": house_status_match,
+            },
+        }
+
+    # ── 7. All checks passed — termination allowed ───────────────────
+    return {
+        "valid": True,
+        "post_inspection": post_inspection,
+        "message": (
+            f"Pre-inspection validated for house {alloc_house_number}. "
+            f"Post-inspection status: {post_inspection.status}, "
+            f"condition: {post_inspection.overall_condition or 'N/A'}. "
+            f"Termination may proceed."
+        ),
+        "details": {
+            "post_inspection_found": True,
+            "post_inspection_status": post_inspection.status,
+            "house_number_match": house_number_match,
+            "allocation_status_match": allocation_status_match,
+            "house_status_match": house_status_match,
+        },
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  16. TERMINATE-WITH-CODE  (Allocated Houses sidebar integration)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def terminate_with_code(allocation, authorization_code, user, reason=""):
+    """
+    Execute a housing allocation termination by validating a previously generated
+    termination authorization code.
+
+    This is the single entry point used by the Allocated Houses table sidebar
+    when a user clicks "Terminate" and enters an authorization code that was
+    previously generated and approved from the Termination Management page.
+
+    Validation chain:
+      1. Authorization code must exist, be active, and be unused
+      2. Code must belong to the exact employee, allocation, and house
+      3. Termination case must be valid and active
+      4. Required inspection/house-condition requirements must be satisfied
+        (inspection issues must be resolved)
+      5. Admin/Manager approval must exist (status = Approved)
+      6. Allocation must still be active and eligible
+
+    Execution chain (atomic):
+      1. Close the allocation
+      2. Record termination
+      3. Release house (free rooms)
+      4. Recalculate occupancy/capacity
+      5. Set house available
+      6. Preserve complete history & audit trail
+      7. Invalidate code (single-use: code consumed)
+
+    Returns the terminated TerminationTransaction.
+    """
+    from .models import TerminationTransaction
+
+    if not authorization_code or not str(authorization_code).strip():
+        raise ValueError("Authorization code is required")
+
+    code = str(authorization_code).strip()
+
+    # ── 1. Find termination by authorization code ────────────────────
+    termination = TerminationTransaction.objects.select_for_update().filter(
+        authorization_code=code,
+        is_active=True,
+    ).select_related(
+        "allocation", "application", "house", "case",
+        "target_house", "approved_by", "created_by",
+    ).first()
+
+    if not termination:
+        raise ValueError("Invalid or unknown authorization code")
+
+    # ── 2. Code must be approved but not yet consumed ─────────────────
+    if termination.status not in (
+        TerminationTransaction.Status.APPROVED,
+        TerminationTransaction.Status.IN_PROGRESS,
+    ):
+        raise ValueError(
+            f"Authorization code is not valid for termination in "
+            f"'{termination.status}' status"
+        )
+
+    # ── 3. Code must belong to the exact allocation ──────────────────
+    if str(termination.allocation_id) != str(allocation.id):
+        raise ValueError(
+            "Authorization code does not belong to this allocation. "
+            "The code was issued for a different allocation."
+        )
+
+    # ── 4. Code must belong to the exact employee ────────────────────
+    if termination.employee_id != allocation.employee_id:
+        raise ValueError(
+            f"Authorization code employee mismatch: code is for "
+            f"{termination.employee_id}, allocation belongs to "
+            f"{allocation.employee_id}"
+        )
+
+    # ── 5. Code must belong to the exact house ───────────────────────
+    if str(termination.house_id) != str(allocation.house_id):
+        raise ValueError(
+            "Authorization code does not belong to this house. "
+            "The code was issued for a different house."
+        )
+
+    # ── 6. Allocation must still be active ────────────────────────────
+    if allocation.status != Allocation.Status.ACTIVE:
+        raise ValueError(
+            f"Allocation {allocation.allocation_no} is no longer active "
+            f"(status: {allocation.status}). Cannot process termination."
+        )
+
+    # ── 7. Inspection requirements must be satisfied ─────────────────
+    if termination.inspection_status not in (
+        TerminationTransaction.InspectionStatus.NOT_REQUIRED,
+        TerminationTransaction.InspectionStatus.WAIVED,
+    ):
+        if not termination.issues_resolved:
+            raise ValueError(
+                "Cannot terminate: inspection issues are not yet resolved. "
+                "Please resolve inspection discrepancies from the Termination "
+                "Management page before using this code."
+            )
+
+    # ── 8. Approval must exist ───────────────────────────────────────
+    if termination.approval_status != TerminationTransaction.Status.APPROVED:
+        raise ValueError(
+            "Authorization code has not been approved. "
+            "The termination must be approved before this code can be used."
+        )
+
+    # ── 8b. Pre-inspection validation (mandatory) ────────────────────
+    pre_inspection = validate_pre_inspection(allocation)
+    if not pre_inspection["valid"]:
+        raise ValueError(pre_inspection["message"])
+
+    # ── 9. Execute termination atomically ────────────────────────────
+    case = termination.case
+    application = allocation.application
+
+    with transaction.atomic():
+        termination = TerminationTransaction.objects.select_for_update().get(id=termination.id)
+        allocation = Allocation.objects.select_for_update().get(id=allocation.id)
+
+        if allocation.status != Allocation.Status.ACTIVE:
+            raise ValueError(
+                f"Allocation {allocation.allocation_no} is no longer active. "
+                f"Cannot process termination."
+            )
+
+        # ── 9a. Close the allocation ─────────────────────────────────
+        allocation.status = Allocation.Status.TERMINATED
+        allocation.occupancy_status = Allocation.Occupancy.VACATED
+        allocation.terminated_at = timezone.now()
+        allocation.terminated_by = user
+        allocation.termination_reason = (
+            f"[{case.code}] {termination.termination_reason}"
+        )
+        allocation.updated_by = user
+        allocation.save(update_fields=[
+            "status", "occupancy_status", "terminated_at", "terminated_by",
+            "termination_reason", "updated_at",
+        ])
+
+        # ── 9b. Release physical rooms ──────────────────────────────
+        house = allocation.house
+        if allocation.allocation_unit_type == Allocation.AllocationUnit.HOUSE:
+            house.free_all_rooms()
+        elif allocation.room_label:
+            house.free_room(allocation.room_label)
+        house.save()
+
+        # ── 9c. Sync application ────────────────────────────────────
+        app = HouseApplication.objects.select_for_update().get(id=application.id)
+        old_app_status = app.status
+
+        if case.category != "Transfer":
+            app.status = HouseApplication.Status.WAITING_FOR_ALLOCATION
+            app.allocated_house = None
+            app.allocated_room_label = ""
+            app.allocated_room_number = ""
+            app.allocated_at = None
+            app.allocated_by = None
+            app.allocation_notes = ""
+            app.allocation_confidence = 0
+            app.deallocation_reason = (
+                f"[{case.code}] {termination.termination_reason}"
+            )
+            app.save()
+
+        # ── 9d. Handle Transfer case ────────────────────────────────
+        new_allocation = None
+        if case.category == "Transfer" and termination.target_house:
+            target_house = House.objects.select_for_update().get(
+                id=termination.target_house_id
+            )
+            if not target_house.is_available:
+                raise ValueError(
+                    f"Target house {target_house.house_id} is no longer available"
+                )
+
+            transfer_room = allocation.room_label if (
+                allocation.allocation_unit_type == Allocation.AllocationUnit.ROOM
+            ) else ""
+            new_allocation = allocate_application(
+                app, target_house, user, "Manual",
+                notes=(
+                    f"Transfer from {house.house_number} to "
+                    f"{target_house.house_number}. {termination.termination_reason}"
+                ).strip(),
+                allow_existing=True,
+                room_label=termination.room_label if termination.room_label else transfer_room,
+            )
+            termination.target_allocation = new_allocation
+
+            AllocationLog.objects.create(
+                application=app,
+                application_no=app.application_no,
+                employee_name=app.employee_name,
+                employee_id=app.employee_id,
+                house=target_house,
+                house_hid=target_house.house_id,
+                action=AllocationLog.Action.TRANSFERRED,
+                old_status=old_app_status,
+                new_status=app.status,
+                priority_score=app.priority_score,
+                eligible_category=app.eligible_house_category,
+                score_breakdown=app.score_breakdown,
+                recommendation_reason=(
+                    f"Transfer from {house.house_number} to "
+                    f"{target_house.house_number}"
+                ),
+                notes=termination.termination_reason,
+                performed_by=user,
+                performed_by_name=user.get_full_name() if user else "",
+            )
+
+            record_audit(
+                app,
+                HouseAuditTrail.Action.TRANSFERRED,
+                user,
+                old_status=old_app_status,
+                new_status=app.status,
+                detail={
+                    "termination_no": termination.termination_no,
+                    "old_house": house.house_number,
+                    "new_house": target_house.house_number,
+                    "allocation_no": new_allocation.allocation_no if new_allocation else "",
+                },
+                note=f"House transferred: {house.house_number} → {target_house.house_number}",
+            )
+        else:
+            # ── 9e. Non-transfer: log deallocation ──────────────────
+            AllocationLog.objects.create(
+                application=app,
+                application_no=app.application_no,
+                employee_name=app.employee_name,
+                employee_id=app.employee_id,
+                house=house,
+                house_hid=house.house_id,
+                allocation_unit_type=allocation.allocation_unit_type,
+                room_label=allocation.room_label,
+                room_number=allocation.room_number,
+                action=AllocationLog.Action.DEALLOCATED,
+                old_status=old_app_status,
+                new_status=app.status,
+                priority_score=app.priority_score,
+                eligible_category=app.eligible_house_category,
+                score_breakdown=app.score_breakdown,
+                recommendation_reason=(
+                    f"[{case.code}] Terminated: {termination.termination_reason}"
+                ),
+                notes=termination.termination_reason,
+                performed_by=user,
+                performed_by_name=user.get_full_name() if user else "",
+            )
+
+            record_audit(
+                app,
+                HouseAuditTrail.Action.TERMINATED,
+                user,
+                old_status=old_app_status,
+                new_status=app.status,
+                detail={
+                    "termination_no": termination.termination_no,
+                    "allocation_no": allocation.allocation_no,
+                    "house_id": house.house_id,
+                    "room_label": allocation.room_label or None,
+                    "case": case.code,
+                },
+                note=f"Allocation terminated: {termination.termination_reason}",
+            )
+
+        # ── 9f. Mark termination completed ──────────────────────────
+        termination.status = TerminationTransaction.Status.COMPLETED
+        termination.house_release_date = timezone.now().date()
+        termination.code_verified = True
+        termination.code_verified_at = timezone.now()
+        termination.code_verified_by = user
+        if new_allocation:
+            termination.target_allocation = new_allocation
+        termination.save(update_fields=[
+            "status", "house_release_date", "target_allocation",
+            "code_verified", "code_verified_at", "code_verified_by",
+            "updated_at",
+        ])
+
+        # ── 9g. Final audit trail ───────────────────────────────────
+        record_audit(
+            termination.application,
+            HouseAuditTrail.Action.STATUS_CHANGED,
+            user,
+            old_status="Termination Approved",
+            new_status="Termination Completed (via Authorization Code)",
+            detail={
+                "termination_no": termination.termination_no,
+                "allocation_no": allocation.allocation_no,
+                "house_id": house.house_id,
+                "case": case.code,
+                "authorization_code_used": True,
+                "code_invalidated": True,
+                "inspection_baseline": bool(termination.inspection_baseline),
+                "house_released": True,
+            },
+            note=f"Termination completed via authorization code. House {house.house_number} released.",
+        )
+
+    return termination

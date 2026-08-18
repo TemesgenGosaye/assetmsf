@@ -14,6 +14,9 @@ import {
   Loader2,
   ShieldAlert,
   CalendarClock,
+  FileText,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import PageHeader from "@/components/layout/PageHeader";
@@ -32,13 +35,27 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   listAllocations,
-  terminateAllocation,
   type HouseAllocation,
 } from "@/services/houseAllocations";
+import {
+  getOrCreateHandoverReceipt,
+  type HandoverReceipt,
+} from "@/services/houseHandoverReceipt";
+import HandoverReceiptModal from "@/components/houses/HandoverReceiptModal";
+import {
+  terminateWithCode,
+  listTerminations,
+  type TerminationTransaction,
+} from "@/services/houseApplication";
+import { downloadClearanceSlipPdf } from "@/lib/clearanceSlipPdf";
+import {
+  validatePreInspection,
+} from "@/services/houseOperations";
+import type { PostInspection } from "@/services/houseOperations";
 
 function fmtDate(value?: string | null): string {
   if (!value) return "—";
@@ -73,18 +90,44 @@ export default function AllocatedHouses() {
   const canAdmin = isAdminOrManager();
 
   const [allocations, setAllocations] = useState<HouseAllocation[]>([]);
+  const [terminations, setTerminations] = useState<TerminationTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<HouseAllocation | null>(null);
   const [terminateTarget, setTerminateTarget] = useState<HouseAllocation | null>(null);
-  const [reason, setReason] = useState("");
-  const [moveToQueue, setMoveToQueue] = useState(true);
   const [terminating, setTerminating] = useState(false);
+  const [receiptTarget, setReceiptTarget] = useState<HouseAllocation | null>(null);
+  const [receipt, setReceipt] = useState<HandoverReceipt | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+
+  // ── termination authorization code ────────────────────────────────────
+  const [termAuthCode, setTermAuthCode] = useState("");
+  const [termReason, setTermReason] = useState("");
+  const [termError, setTermError] = useState("");
+
+  // ── pre-inspection validation ────────────────────────────────────────
+  const [preInspectionResult, setPreInspectionResult] = useState<{
+    valid: boolean;
+    post_inspection: PostInspection | null;
+    message: string;
+    details: {
+      post_inspection_found: boolean;
+      post_inspection_status: string;
+      house_number_match: boolean;
+      allocation_status_match: boolean;
+      house_status_match: boolean;
+    };
+  } | null>(null);
+  const [preInspectionLoading, setPreInspectionLoading] = useState(false);
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
     try {
-      const data = await listAllocations({ force });
+      const [data, terms] = await Promise.all([
+        listAllocations({ force }),
+        listTerminations(),
+      ]);
       setAllocations(data);
+      setTerminations(terms);
     } catch (e: any) {
       toast.error(e?.message || "Failed to load allocations");
     } finally {
@@ -246,6 +289,20 @@ export default function AllocatedHouses() {
     [],
   );
 
+  const handleOpenReceipt = useCallback(async (alloc: HouseAllocation) => {
+    setReceiptTarget(alloc);
+    setReceiptLoading(true);
+    try {
+      const r = await getOrCreateHandoverReceipt(alloc.id);
+      setReceipt(r);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to generate handover receipt");
+      setReceiptTarget(null);
+    } finally {
+      setReceiptLoading(false);
+    }
+  }, []);
+
   const rowActions = useCallback(
     (row: HouseAllocation): RowAction<HouseAllocation>[] => [
       {
@@ -254,36 +311,98 @@ export default function AllocatedHouses() {
         onClick: () => setDetail(row),
       },
       {
+        label: "Print Handover Receipt",
+        icon: FileText,
+        hidden: row.status !== "Active",
+        onClick: () => handleOpenReceipt(row),
+      },
+      {
+        label: "Download Clearance Slip",
+        icon: FileText,
+        hidden: row.status !== "Terminated",
+        onClick: async () => {
+          let match = terminations.find(t => t.allocation === row.id || t.allocation_no === row.allocation_no);
+          if (!match) {
+            try {
+              const freshTerms = await listTerminations();
+              setTerminations(freshTerms);
+              match = freshTerms.find(t => t.allocation === row.id || t.allocation_no === row.allocation_no);
+            } catch {}
+          }
+          if (match) {
+            downloadClearanceSlipPdf(match);
+          } else {
+            toast.error("No completed termination transaction found for this allocation");
+          }
+        },
+      },
+      {
         label: "Terminate",
         icon: LogOut,
         variant: "destructive",
         hidden: row.status !== "Active" || !canAdmin,
         onClick: () => {
-          setReason("");
-          setMoveToQueue(true);
+          setTermAuthCode("");
+          setTermReason("");
+          setTermError("");
+          setPreInspectionResult(null);
           setTerminateTarget(row);
+          // Trigger pre-inspection validation
+          setPreInspectionLoading(true);
+          validatePreInspection(row.id)
+            .then((result) => setPreInspectionResult(result))
+            .catch((err: any) => {
+              setPreInspectionResult({
+                valid: false,
+                post_inspection: null,
+                message: err?.message || "Failed to validate pre-inspection",
+                details: {
+                  post_inspection_found: false,
+                  post_inspection_status: "",
+                  house_number_match: false,
+                  allocation_status_match: false,
+                  house_status_match: false,
+                },
+              });
+            })
+            .finally(() => setPreInspectionLoading(false));
         },
       },
     ],
-    [canAdmin],
+    [canAdmin, handleOpenReceipt],
   );
 
   const handleTerminate = async () => {
     if (!terminateTarget) return;
+
+    if (!termAuthCode.trim()) {
+      toast.error("Authorization code is required");
+      return;
+    }
+
     setTerminating(true);
+    setTermError("");
     try {
-      await terminateAllocation(terminateTarget.id, {
-        reason,
-        move_to_queue: moveToQueue,
-      });
-      toast.success(
-        `Allocation ${terminateTarget.allocation_no} terminated`,
+      const result = await terminateWithCode(
+        terminateTarget.id,
+        termAuthCode.trim(),
+        termReason,
       );
-      setTerminateTarget(null);
-      setReason("");
-      await load(true);
+      if (result.error) {
+        setTermError(result.error);
+        toast.error(result.error);
+      } else {
+        toast.success(`Allocation ${terminateTarget.allocation_no} terminated successfully`);
+        setTerminateTarget(null);
+        setTermAuthCode("");
+        setTermReason("");
+        setTermError("");
+        await load(true);
+      }
     } catch (e: any) {
-      toast.error(e?.message || "Failed to terminate allocation");
+      const msg = e?.message || "Failed to terminate allocation";
+      setTermError(msg);
+      toast.error(msg);
     } finally {
       setTerminating(false);
     }
@@ -449,14 +568,68 @@ export default function AllocatedHouses() {
           )}
 
           <DialogFooter className="gap-2">
+            {detail?.status === "Active" && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDetail(null);
+                  handleOpenReceipt(detail);
+                }}
+              >
+                <FileText className="mr-2 h-4 w-4" /> Print Handover Receipt
+              </Button>
+            )}
+            {detail?.status === "Terminated" && (
+              <Button
+                variant="outline"
+                className="bg-green-50 text-green-700 border-green-300 hover:bg-green-100"
+                onClick={async () => {
+                  let match = terminations.find(t => t.allocation === detail.id || t.allocation_no === detail.allocation_no);
+                  if (!match) {
+                    try {
+                      const freshTerms = await listTerminations();
+                      setTerminations(freshTerms);
+                      match = freshTerms.find(t => t.allocation === detail.id || t.allocation_no === detail.allocation_no);
+                    } catch {}
+                  }
+                  if (match) {
+                    downloadClearanceSlipPdf(match);
+                  } else {
+                    toast.error("No completed termination transaction found for this allocation");
+                  }
+                }}
+              >
+                <FileText className="mr-2 h-4 w-4" /> Download Clearance Slip
+              </Button>
+            )}
             {detail?.status === "Active" && canAdmin && (
               <Button
                 variant="destructive"
                 onClick={() => {
                   setDetail(null);
-                  setReason("");
-                  setMoveToQueue(true);
+                  setTermAuthCode("");
+                  setTermReason("");
+                  setTermError("");
+                  setPreInspectionResult(null);
                   setTerminateTarget(detail);
+                  setPreInspectionLoading(true);
+                  validatePreInspection(detail.id)
+                    .then((result) => setPreInspectionResult(result))
+                    .catch((err: any) => {
+                      setPreInspectionResult({
+                        valid: false,
+                        post_inspection: null,
+                        message: err?.message || "Failed to validate pre-inspection",
+                        details: {
+                          post_inspection_found: false,
+                          post_inspection_status: "",
+                          house_number_match: false,
+                          allocation_status_match: false,
+                          house_status_match: false,
+                        },
+                      });
+                    })
+                    .finally(() => setPreInspectionLoading(false));
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" /> Terminate
@@ -472,9 +645,9 @@ export default function AllocatedHouses() {
       {/* ── Terminate dialog ─────────────────────────────────────────── */}
       <Dialog
         open={Boolean(terminateTarget)}
-        onOpenChange={(o) => { if (!o && !terminating) setTerminateTarget(null); }}
+        onOpenChange={(o) => { if (!o && !terminating) { setTerminateTarget(null); setTermAuthCode(""); setTermError(""); setPreInspectionResult(null); } }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <LogOut className="h-5 w-5 text-destructive" />
@@ -482,40 +655,136 @@ export default function AllocatedHouses() {
             </DialogTitle>
             <DialogDescription>
               {terminateTarget
-                ? `This will free ${terminateTarget.resource || terminateTarget.house_id} and move ${terminateTarget.employee_name}'s application back to the queue.`
+                ? `Terminate allocation ${terminateTarget.allocation_no}`
                 : ""}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Allocation info */}
+            {terminateTarget && (
+              <div className="rounded-md border bg-muted/30 p-3 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Employee</span>
+                  <span className="font-medium">{terminateTarget.employee_name} ({terminateTarget.employee_id})</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">House</span>
+                  <span className="font-medium">{terminateTarget.house_number || terminateTarget.house_id} {terminateTarget.room_label ? `— Room ${terminateTarget.room_label}` : ""}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Category</span>
+                  <span className="font-medium">{terminateTarget.house_type}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Pre-inspection validation status */}
+            {preInspectionLoading && (
+              <div className="flex items-center gap-2 rounded-md border border-muted bg-muted/30 p-3">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Validating pre-inspection status…</span>
+              </div>
+            )}
+            {!preInspectionLoading && preInspectionResult && (
+              <div className={`flex items-start gap-2 rounded-md border p-3 ${
+                preInspectionResult.valid
+                  ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/20"
+                  : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20"
+              }`}>
+                {preInspectionResult.valid ? (
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-red-600 shrink-0" />
+                )}
+                <div className={`text-[11px] ${
+                  preInspectionResult.valid
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : "text-red-700 dark:text-red-300"
+                }`}>
+                  <p className="font-semibold">
+                    {preInspectionResult.valid ? "Pre-Inspection Validated" : "Pre-Inspection Required"}
+                  </p>
+                  <p className="mt-0.5">{preInspectionResult.message}</p>
+                  {preInspectionResult.post_inspection && (
+                    <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px]">
+                      <span>Post-Inspection Status:</span>
+                      <span className="font-medium">{preInspectionResult.details.post_inspection_status}</span>
+                      <span>House Number Match:</span>
+                      <span className="font-medium">{preInspectionResult.details.house_number_match ? "Yes" : "No"}</span>
+                      <span>Condition:</span>
+                      <span className="font-medium">{preInspectionResult.post_inspection.overall_condition || "N/A"}</span>
+                      {preInspectionResult.post_inspection.damage_costs !== "0.00" && (
+                        <>
+                          <span>Damage Costs:</span>
+                          <span className="font-medium">{preInspectionResult.post_inspection.damage_costs} ETB</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Instructions */}
+            <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 dark:bg-blue-950/20">
+              <ShieldAlert className="mt-0.5 h-4 w-4 text-blue-600 shrink-0" />
+              <div className="text-[11px] text-blue-700 dark:text-blue-300">
+                <p className="font-semibold">Authorization Required</p>
+                <p className="mt-0.5">
+                  To terminate this allocation, you must enter the authorization code
+                  that was generated and approved from the{" "}
+                  <span className="font-semibold">Termination Management</span> page.
+                </p>
+                <p className="mt-0.5">
+                  The code is linked to this specific employee, allocation, and house.
+                  It will be consumed upon use and cannot be reused.
+                </p>
+              </div>
+            </div>
+
+            {/* Authorization Code */}
+            <div className="space-y-2">
+              <Label htmlFor="term-auth-code" className="text-sm font-medium">
+                Termination Authorization Code *
+              </Label>
+              <Input
+                id="term-auth-code"
+                value={termAuthCode}
+                onChange={(e) => { setTermAuthCode(e.target.value); setTermError(""); }}
+                placeholder="Paste the authorization code here..."
+                className="text-xs font-mono"
+                autoFocus
+              />
+            </div>
+
+            {/* Optional reason */}
             <div className="space-y-2">
               <Label htmlFor="term-reason" className="text-sm font-medium">
                 Termination Reason
               </Label>
               <Textarea
                 id="term-reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g. Employee transferred, house damaged, relocation…"
-                rows={3}
+                value={termReason}
+                onChange={(e) => setTermReason(e.target.value)}
+                placeholder="Optional additional reason for this termination..."
+                rows={2}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="term-queue"
-                checked={moveToQueue}
-                onCheckedChange={(v) => setMoveToQueue(Boolean(v))}
-              />
-              <Label htmlFor="term-queue" className="text-sm text-muted-foreground">
-                Return application to the allocation queue
-              </Label>
-            </div>
+
+            {/* Error display */}
+            {termError && (
+              <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 dark:bg-red-950/20">
+                <AlertTriangle className="mt-0.5 h-4 w-4 text-red-600 shrink-0" />
+                <p className="text-[11px] text-red-700 dark:text-red-300">{termError}</p>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setTerminateTarget(null)}
+              onClick={() => { setTerminateTarget(null); setTermAuthCode(""); setTermError(""); setPreInspectionResult(null); }}
               disabled={terminating}
             >
               Cancel
@@ -523,14 +792,35 @@ export default function AllocatedHouses() {
             <Button
               variant="destructive"
               onClick={handleTerminate}
-              disabled={terminating}
+              disabled={terminating || !termAuthCode.trim() || preInspectionLoading || (preInspectionResult !== null && !preInspectionResult.valid)}
             >
               {terminating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Terminate
+              Verify Code & Terminate
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Handover Receipt modal ─────────────────────────────────── */}
+      {receiptTarget && (
+        receiptLoading ? (
+          <Dialog open onOpenChange={() => { if (!receiptLoading) { setReceiptTarget(null); setReceipt(null); } }}>
+            <DialogContent className="sm:max-w-md" hideCloseButton>
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Generating receipt…</p>
+              </div>
+            </DialogContent>
+          </Dialog>
+        ) : receipt ? (
+          <HandoverReceiptModal
+            open
+            onOpenChange={(o) => { if (!o) { setReceiptTarget(null); setReceipt(null); } }}
+            receipt={receipt}
+            onReceiptUpdated={setReceipt}
+          />
+        ) : null
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { isDemoMode, getDemoUsers } from "@/lib/demo";
 import { getCachedValue, invalidateCacheByPrefix } from "@/lib/data-cache";
-import { djangoRequest, type DjangoResponse } from "./djangoAuth";
+import { djangoRequest, type DjangoResponse, resolveMediaUrl } from "./djangoAuth";
 
 export type AppUser = {
   id: string;
@@ -32,7 +32,7 @@ function djangoUserToFrontend(row: any): AppUser {
     phone: row.phone,
     last_login: row.updated_at,
     status: row.status,
-    avatar_url: row.profile_image,
+    avatar_url: resolveMediaUrl(row.profile_image),
     must_change_password: row.must_change_password ?? false,
   };
 }
@@ -47,7 +47,7 @@ function frontendUserToDjango(user: Partial<AppUser> & { password?: string; pass
   if ("phone" in user) row.phone = user.phone;
   if ("status" in user) row.status = user.status;
   if ("must_change_password" in user) row.must_change_password = user.must_change_password;
-  if ("avatar_url" in user) row.avatar_url = user.avatar_url;
+  if ("avatar_url" in user) row.profile_image = user.avatar_url;
   if ("password" in user) row.password = user.password;
   if ("password_confirm" in user) row.password_confirm = user.password_confirm;
   return row;

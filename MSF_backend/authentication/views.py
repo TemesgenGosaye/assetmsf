@@ -2,6 +2,7 @@
 Views for authentication and user management.
 """
 from rest_framework import status, generics
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import render
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -382,8 +383,23 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.filter(is_active=True)
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_field = 'id'
     
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return StandardResponse.success(serializer.data, "User updated successfully")
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return StandardResponse.success(serializer.data, "User updated successfully")
+
     def destroy(self, request, *args, **kwargs):
         """Soft delete user."""
         user = self.get_object()

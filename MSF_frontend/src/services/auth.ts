@@ -1,4 +1,4 @@
-import { API_BASE_URL, loginWithDjango, logoutFromDjango, type DjangoUser } from "./djangoAuth";
+import { API_BASE_URL, loginWithDjango, logoutFromDjango, resolveMediaUrl, type DjangoUser } from "./djangoAuth";
 
 export type MinimalUser = {
   id: string;
@@ -117,7 +117,7 @@ function sanitizeUser(row: any): MinimalUser | null {
     department: row.department ?? null,
     phone: row.phone ?? null,
     status: row.status ?? "inactive",
-    avatar_url: row.avatar_url ?? row.profile_image ?? null,
+    avatar_url: resolveMediaUrl(row.avatar_url ?? row.profile_image),
     must_change_password: row.must_change_password ?? false,
   };
 }
@@ -131,7 +131,7 @@ function djangoUserToMinimal(dj: DjangoUser): MinimalUser {
     department: dj.department,
     phone: dj.phone,
     status: dj.status,
-    avatar_url: dj.profile_image,
+    avatar_url: resolveMediaUrl(dj.profile_image),
     must_change_password: (dj as any).must_change_password ?? false,
   };
 }

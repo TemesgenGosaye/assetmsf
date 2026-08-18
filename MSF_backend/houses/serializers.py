@@ -4,10 +4,11 @@ Serializers for the houses app — CRU, allocation, scoring, logs.
 from django.db import models
 from rest_framework import serializers
 from .models import (
-    House, HouseApplication, HouseInspection, MaintenanceRequest,
+    House, HouseApplication, HouseInspection, PostInspection, MaintenanceRequest,
     HouseTransfer, RentalContract, RentalInvoice, RentalPayment,
     ScoringConfig, EligibilityRule, AllocationLog,
-    HouseOpportunity, Allocation, HouseAuditTrail,
+    HouseOpportunity, Allocation, HouseAuditTrail, HouseHandoverReceipt,
+    TerminationCase, TerminationTransaction,
 )
 from employees.models import Employee
 
@@ -462,21 +463,64 @@ class HouseAuditTrailSerializer(serializers.ModelSerializer):
 
 class HouseInspectionSerializer(serializers.ModelSerializer):
     house_hid = serializers.CharField(source="house.house_id", read_only=True, default="")
-    house_location = serializers.CharField(source="house.location", read_only=True, default="")
-    house_type = serializers.CharField(source="house.house_type", read_only=True, default="")
     inspector_name = serializers.SerializerMethodField()
     requested_by_name = serializers.CharField(source="created_by.name", read_only=True, default="")
 
     class Meta:
         model = HouseInspection
         fields = [
-            "id", "house", "house_hid", "house_location", "house_type",
+            "id", "house", "house_hid", "house_number", "house_location", "house_type",
+            "allocation_category", "capacity", "room_count", "room_labels",
+            "r1_status", "r1_occupant_name", "r1_occupant_id", "r1_notes",
+            "r2_status", "r2_occupant_name", "r2_occupant_id", "r2_notes",
+            "r3_status", "r3_occupant_name", "r3_occupant_id", "r3_notes",
+            "damaged_door", "damaged_windows", "damaged_walls",
+            "damaged_switch", "damaged_bulb", "damaged_water",
+            "inside_items", "description",
             "inspector", "inspector_name", "inspection_type", "status",
             "scheduled_date", "completed_date", "findings", "damage_costs",
-            "checklist_results", "requested_by_name",
+            "checklist_results", "overall_condition", "repair_required",
+            "estimated_repair_cost", "employee_id", "employee_name",
+            "requested_by_name",
             "created_at", "updated_at", "is_active",
         ]
         read_only_fields = ["id", "completed_date", "created_at", "updated_at", "is_active"]
+
+    def get_inspector_name(self, obj):
+        return obj.inspector.get_full_name() if obj.inspector else ""
+
+
+class PostInspectionSerializer(serializers.ModelSerializer):
+    """PostInspection shares the complete column structure with House and HouseInspection."""
+    house_hid = serializers.CharField(source="house.house_id", read_only=True, default="")
+    inspector_name = serializers.SerializerMethodField()
+    allocation_no = serializers.CharField(source="allocation.allocation_no", read_only=True, default="")
+    requested_by_name = serializers.CharField(source="created_by.name", read_only=True, default="")
+
+    class Meta:
+        model = PostInspection
+        fields = [
+            "id", "house", "house_hid", "house_number", "house_location", "house_type",
+            "allocation", "allocation_no",
+            "allocation_category", "capacity", "room_count", "room_labels",
+            "r1_status", "r1_occupant_name", "r1_occupant_id", "r1_notes",
+            "r2_status", "r2_occupant_name", "r2_occupant_id", "r2_notes",
+            "r3_status", "r3_occupant_name", "r3_occupant_id", "r3_notes",
+            "damaged_door", "damaged_windows", "damaged_walls",
+            "damaged_switch", "damaged_bulb", "damaged_water",
+            "inside_items", "description",
+            "inspector", "inspector_name", "inspection_type", "status",
+            "scheduled_date", "completed_date", "findings", "damage_costs",
+            "checklist_results", "overall_condition", "repair_required",
+            "estimated_repair_cost", "employee_id", "employee_name",
+            "allocation_status_snapshot", "house_status_snapshot",
+            "requested_by_name",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = [
+            "id", "completed_date", "created_at", "updated_at", "is_active",
+            "allocation_status_snapshot", "house_status_snapshot",
+        ]
 
     def get_inspector_name(self, obj):
         return obj.inspector.get_full_name() if obj.inspector else ""
@@ -570,3 +614,231 @@ class RentalPaymentSerializer(serializers.ModelSerializer):
             "created_at", "updated_at", "is_active",
         ]
         read_only_fields = ["id", "receipt_no", "created_at", "updated_at", "is_active"]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE HANDOVER RECEIPT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class HouseHandoverReceiptSerializer(serializers.ModelSerializer):
+    """Full serializer for the official Metahara Sugar Factory handover receipt."""
+
+    generated_by_name   = serializers.CharField(read_only=True, default="")
+    printed_by_name     = serializers.CharField(read_only=True, default="")
+    is_printed          = serializers.SerializerMethodField()
+    house_room_count    = serializers.IntegerField(source="house.room_count", read_only=True, default=1)
+
+    class Meta:
+        model  = HouseHandoverReceipt
+        fields = [
+            "id", "doc_number", "doc_status",
+            # relations
+            "allocation", "application", "house",
+            # employee snapshot
+            "employee_id", "employee_name", "job_position", "job_grade",
+            "department", "national_id", "marital_status", "family_size",
+            # house snapshot
+            "house_number", "house_type", "house_location",
+            "room_count", "house_room_count",
+            "allocation_no", "application_no", "allocation_date",
+            # inspection findings (all 4 sections)
+            "inspection_electrical", "inspection_structural",
+            "inspection_water", "inspection_admin",
+            # committee
+            "committee_members",
+            # generation
+            "generated_date", "generated_by", "generated_by_name",
+            # print tracking
+            "first_printed_at", "last_printed_at",
+            "printed_by", "printed_by_name",
+            "reprint_count", "is_printed",
+            "audit_history",
+            # base
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = [
+            "id", "doc_number", "generated_date",
+            "generated_by_name", "printed_by_name",
+            "first_printed_at", "last_printed_at",
+            "reprint_count", "is_printed",
+            "audit_history", "house_room_count",
+            "created_at", "updated_at", "is_active",
+        ]
+
+    def get_is_printed(self, obj) -> bool:
+        return obj.first_printed_at is not None
+
+
+class HouseHandoverReceiptCreateSerializer(serializers.Serializer):
+    """Input serializer for creating/generating a handover receipt from an allocation."""
+    allocation_id = serializers.UUIDField(required=True)
+
+    def validate_allocation_id(self, value):
+        try:
+            Allocation.objects.get(id=value, is_active=True)
+        except Allocation.DoesNotExist:
+            raise serializers.ValidationError("Allocation not found or inactive.")
+        return value
+
+
+class HouseHandoverReceiptUpdateSerializer(serializers.ModelSerializer):
+    """Allows editing inspection notes and committee members before printing."""
+
+    class Meta:
+        model  = HouseHandoverReceipt
+        fields = [
+            "inspection_electrical", "inspection_structural",
+            "inspection_water", "inspection_admin",
+            "committee_members", "doc_status",
+        ]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  TERMINATION
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TerminationCaseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = TerminationCase
+        fields = [
+            "id", "code", "name", "category", "description",
+            "requires_inspection", "requires_approval", "requires_documents",
+            "allowed_employment_types", "auto_verify_employment",
+            "priority", "is_active",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class TerminationTransactionSerializer(serializers.ModelSerializer):
+    case_code         = serializers.CharField(source="case.code", read_only=True)
+    case_name         = serializers.CharField(source="case.name", read_only=True)
+    case_category     = serializers.CharField(source="case.category", read_only=True)
+    case_requires_inspection = serializers.CharField(source="case.requires_inspection", read_only=True)
+    allocation_no     = serializers.CharField(source="allocation.allocation_no", read_only=True)
+    application_no    = serializers.CharField(source="application.application_no", read_only=True)
+    approved_by_name  = serializers.SerializerMethodField()
+    created_by_name   = serializers.SerializerMethodField()
+    code_generated_by_name = serializers.SerializerMethodField()
+    code_verified_by_name  = serializers.SerializerMethodField()
+    house_resource    = serializers.SerializerMethodField()
+    target_house_number = serializers.SerializerMethodField()
+    authorization_code_masked = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = TerminationTransaction
+        fields = [
+            "id", "termination_no",
+            "allocation", "allocation_no",
+            "application", "application_no",
+            "case", "case_code", "case_name", "case_category", "case_requires_inspection",
+            "employee_id", "employee_name",
+            "house", "house_number", "house_type", "room_label", "house_resource",
+            "termination_reason",
+            "effective_date", "requested_date", "house_release_date",
+            "status", "handover_status", "inspection_status",
+            "inspection_baseline", "inspection_discrepancies",
+            "issues_resolved", "handover_completed",
+            "damage_assessment", "outstanding_issues", "damage_costs",
+            "approval_status", "approved_by", "approved_by_name",
+            "approval_date", "approval_notes",
+            "authorization_code", "authorization_code_masked",
+            "code_generated_at", "code_generated_by", "code_generated_by_name",
+            "code_verified", "code_verified_at", "code_verified_by", "code_verified_by_name",
+            "target_house", "target_house_number", "target_allocation",
+            "remarks", "supporting_document",
+            "created_by", "created_by_name",
+            "created_at", "updated_at", "is_active",
+        ]
+        read_only_fields = [
+            "id", "termination_no",
+            "inspection_baseline", "inspection_discrepancies",
+            "issues_resolved", "handover_completed",
+            "authorization_code", "authorization_code_masked",
+            "code_generated_at", "code_generated_by",
+            "code_verified", "code_verified_at", "code_verified_by",
+            "created_at", "updated_at",
+        ]
+
+    def get_approved_by_name(self, obj):
+        if obj.approved_by:
+            return getattr(obj.approved_by, "name", "") or getattr(obj.approved_by, "username", "")
+        return ""
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return getattr(obj.created_by, "name", "") or getattr(obj.created_by, "username", "")
+        return ""
+
+    def get_code_generated_by_name(self, obj):
+        if obj.code_generated_by:
+            return getattr(obj.code_generated_by, "name", "") or getattr(obj.code_generated_by, "username", "")
+        return ""
+
+    def get_code_verified_by_name(self, obj):
+        if obj.code_verified_by:
+            return getattr(obj.code_verified_by, "name", "") or getattr(obj.code_verified_by, "username", "")
+        return ""
+
+    def get_house_resource(self, obj):
+        base = obj.house_number or ""
+        if obj.room_label:
+            return f"{base} — Room {obj.room_label}"
+        return base
+
+    def get_target_house_number(self, obj):
+        if obj.target_house:
+            return obj.target_house.house_number or obj.target_house.house_id
+        return ""
+
+    def get_authorization_code_masked(self, obj):
+        return obj.authorization_code or ""
+
+
+class TerminationCreateSerializer(serializers.Serializer):
+    """Input serializer for creating a termination transaction."""
+    allocation_id  = serializers.UUIDField(required=True)
+    case_id        = serializers.UUIDField(required=True)
+    effective_date = serializers.DateField(required=True)
+    reason         = serializers.CharField(required=True, allow_blank=False)
+    target_house_id = serializers.CharField(required=False, allow_blank=True, default="")
+    remarks        = serializers.CharField(required=False, allow_blank=True, default="")
+    requested_date = serializers.DateField(required=False, allow_null=True, default=None)
+
+    def validate_allocation_id(self, value):
+        try:
+            Allocation.objects.get(id=value, is_active=True)
+        except Allocation.DoesNotExist:
+            raise serializers.ValidationError("Allocation not found or inactive.")
+        return value
+
+    def validate_case_id(self, value):
+        try:
+            TerminationCase.objects.get(id=value, is_active=True)
+        except TerminationCase.DoesNotExist:
+            raise serializers.ValidationError("Termination case not found or inactive.")
+        return value
+
+
+class TerminationApprovalSerializer(serializers.Serializer):
+    """Input serializer for approving/rejecting a termination."""
+    decision = serializers.ChoiceField(choices=["Approved", "Rejected"], required=True)
+    notes    = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class TerminationVerifyCodeSerializer(serializers.Serializer):
+    """Input serializer for verifying the termination authorization code."""
+    authorization_code = serializers.CharField(required=True, min_length=4)
+
+
+class TerminationResolveIssuesSerializer(serializers.Serializer):
+    """Input serializer for resolving inspection discrepancies."""
+    resolution_notes = serializers.CharField(required=False, allow_blank=True, default="")
+    force            = serializers.BooleanField(required=False, default=False)
+
+
+class TerminateWithCodeSerializer(serializers.Serializer):
+    """Input serializer for terminating an allocation using an authorization code."""
+    authorization_code = serializers.CharField(required=True, min_length=4)
+    reason             = serializers.CharField(required=False, allow_blank=True, default="")
+

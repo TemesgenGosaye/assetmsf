@@ -64,14 +64,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  listProperties,
-  deleteProperty,
-  createProperty,
-  updateProperty,
-  type Property,
-} from "@/services/properties";
+import { listProperties, deleteProperty, createProperty, updateProperty, type Property } from "@/services/properties";
 import { listAssets, type Asset } from "@/services/assets";
+import { listUsers, type AppUser } from "@/services/users";
 import { logActivity } from "@/services/activity";
 import { trackActivity } from "@/services/notifications";
 import { getCurrentUserId, canUserEdit } from "@/services/permissions";
@@ -191,7 +186,7 @@ function PropertyDetailSheet({
               />
               <Field icon={Building2} label="Name" value={property.name} />
               <Field icon={MapPin} label="Address" value={property.address} />
-              <Field icon={User} label="Manager" value={property.manager} />
+              <Field icon={User} label="Manager" value={property.manager_name || property.manager || "—"} />
             </div>
           </div>
           <Separator />
@@ -273,6 +268,7 @@ export default function Properties() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [form, setForm] = useState({
     id: "",
     name: "",
@@ -321,6 +317,7 @@ export default function Properties() {
           type: p.type,
           status: p.status,
           manager: p.manager ?? "",
+          manager_name: p.manager_name ?? "",
           assetCount: assetCounts[p.id] ?? 0,
           userCount: 0,
         } as any;
@@ -334,6 +331,10 @@ export default function Properties() {
   useEffect(() => {
     loadPropertiesData();
   }, [loadPropertiesData]);
+
+  useEffect(() => {
+    listUsers().then(setUsers).catch(() => setUsers([]));
+  }, []);
 
   // Load accessible property ids for current user (used to filter visibility for non-admins)
   useEffect(() => {
@@ -439,6 +440,7 @@ export default function Properties() {
           address: form.address,
           type: form.type,
           status: form.status,
+          manager: form.manager || null,
         });
         crudToast.updated("Property", editingId);
         await logActivity("property_updated", `Property ${editingId} updated`);
@@ -454,6 +456,7 @@ export default function Properties() {
           address: form.address,
           type: form.type,
           status: form.status,
+          manager: form.manager || null,
         } as Property);
         crudToast.created("Property", created.id);
         await logActivity("property_created", `Property ${created.id} created`);
@@ -511,7 +514,7 @@ export default function Properties() {
     const term = debouncedSearch.trim().toLowerCase();
     const matchesTerm =
       !term ||
-      [p.name, p.address, p.id, p.type, p.manager].some((v: any) =>
+      [p.name, p.address, p.id, p.type, p.manager_name].some((v: any) =>
         (v || "").toString().toLowerCase().includes(term),
       );
     const matchesType =
@@ -798,7 +801,7 @@ export default function Properties() {
                     { header: "Address", key: "address" },
                     { header: "Type", key: "type" },
                     { header: "Status", key: "status" },
-                    { header: "Manager", key: "manager" },
+                    { header: "Manager", key: "manager_name" },
                     { header: "Asset Count", key: "assetCount" },
                   ]}
                   getRows={() => filtered.map((p) => [
@@ -807,7 +810,7 @@ export default function Properties() {
                     p.address || "",
                     p.type,
                     p.status,
-                    p.manager || "",
+                    p.manager_name || "",
                     p.assetCount ?? 0,
                   ])}
                   totalCount={filtered.length}
@@ -915,7 +918,7 @@ export default function Properties() {
                         </TableCell>
                         <TableCell className="align-middle">
                           <span className="text-sm text-foreground/80">
-                            {property.manager || "—"}
+                            {property.manager_name || "—"}
                           </span>
                         </TableCell>
                         {role === "admin" && (
@@ -1249,13 +1252,24 @@ export default function Properties() {
                       id="prop-manager"
                       label="Manager"
                     >
-                      <Input
-                        value={form.manager}
-                        onChange={(e) =>
-                          setForm({ ...form, manager: e.target.value })
+                      <Select
+                        value={form.manager || "__none__"}
+                        onValueChange={(v) =>
+                          setForm({ ...form, manager: v === "__none__" ? "" : v })
                         }
-                        placeholder="Manager name"
-                      />
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select manager" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">No manager</SelectItem>
+                          {users.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.name || u.email}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </FormField>
                   </div>
                 </div>

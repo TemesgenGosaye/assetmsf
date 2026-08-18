@@ -618,3 +618,317 @@ export async function validateEmployeeId(employeeId: string): Promise<EmployeeLo
   }
   return { valid: false };
 }
+
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  TERMINATION MANAGEMENT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export type TerminationStatus = "Pending" | "Approved" | "Rejected" | "In Progress" | "Completed" | "Cancelled";
+export type TerminationCategory = "Transfer" | "Retirement" | "Release" | "Voluntary" | "Disciplinary" | "Other";
+
+export interface TerminationCase {
+  id: string;
+  code: string;
+  name: string;
+  category: TerminationCategory;
+  description: string;
+  requires_inspection: "Always" | "Conditional" | "Never";
+  requires_approval: boolean;
+  requires_documents: boolean;
+  allowed_employment_types: string[];
+  auto_verify_employment: boolean;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TerminationTransaction {
+  id: string;
+  termination_no: string;
+  allocation: string;
+  allocation_no: string;
+  application: string;
+  application_no: string;
+  case: string;
+  case_code: string;
+  case_name: string;
+  case_category: TerminationCategory;
+  case_requires_inspection: string;
+  employee_id: string;
+  employee_name: string;
+  house: string;
+  house_number: string;
+  house_type: string;
+  room_label: string;
+  house_resource: string;
+  termination_reason: string;
+  effective_date: string;
+  requested_date: string | null;
+  house_release_date: string | null;
+  status: TerminationStatus;
+  handover_status: string;
+  inspection_status: string;
+  inspection_baseline: Record<string, any>;
+  inspection_discrepancies: any[];
+  issues_resolved: boolean;
+  handover_completed: boolean;
+  damage_assessment: Record<string, any>;
+  outstanding_issues: string;
+  damage_costs: number;
+  approval_status: TerminationStatus;
+  approved_by: string | null;
+  approved_by_name: string;
+  approval_date: string | null;
+  approval_notes: string;
+  authorization_code: string | null;
+  authorization_code_masked: string; // Plain text authorization code
+  code_generated_at: string | null;
+  code_generated_by: string | null;
+  code_generated_by_name: string;
+  code_verified: boolean;
+  code_verified_at: string | null;
+  code_verified_by: string | null;
+  code_verified_by_name: string;
+  target_house: string | null;
+  target_house_number: string;
+  target_allocation: string | null;
+  remarks: string;
+  supporting_document: string | null;
+  created_by: string;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+}
+
+export interface TerminationStats {
+  total: number;
+  pending: number;
+  approved: number;
+  in_progress: number;
+  completed: number;
+  rejected: number;
+  by_case: { case__code: string; case__name: string; case__category: string; count: number }[];
+  by_house_type: { house_type: string; count: number }[];
+}
+
+export interface AllocatedEmployee {
+  allocation_id: string;
+  allocation_no: string;
+  employee_id: string;
+  employee_name: string;
+  job_position: string;
+  job_grade: string;
+  marital_status: string;
+  family_size: number;
+  house_id: string;
+  house_number: string;
+  house_type: string;
+  room_label: string;
+  unit_type: string;
+  allocated_at: string | null;
+  application_no: string;
+}
+
+// ── Termination Cases ──────────────────────────────────────────────────
+
+export async function listTerminationCases(): Promise<TerminationCase[]> {
+  const res = await djangoRequest<any>(`/houses/termination-cases/?page_size=500`);
+  if (res.success) {
+    return Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
+  }
+  return [];
+}
+
+export async function createTerminationCase(data: Partial<TerminationCase>): Promise<TerminationCase | null> {
+  const res = await djangoRequest<any>(`/houses/termination-cases/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.success ? res.data : null;
+}
+
+export async function updateTerminationCase(id: string, data: Partial<TerminationCase>): Promise<TerminationCase | null> {
+  const res = await djangoRequest<any>(`/houses/termination-cases/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+  return res.success ? res.data : null;
+}
+
+// ── Termination Transactions ───────────────────────────────────────────
+
+export async function listTerminations(options?: {
+  status?: string;
+  case_category?: string;
+  search?: string;
+}): Promise<TerminationTransaction[]> {
+  let url = `/houses/terminations/?page_size=500`;
+  if (options?.status) url += `&status=${encodeURIComponent(options.status)}`;
+  if (options?.case_category) url += `&case_category=${encodeURIComponent(options.case_category)}`;
+  if (options?.search) url += `&search=${encodeURIComponent(options.search)}`;
+  const res = await djangoRequest<any>(url);
+  if (res.success) {
+    return Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
+  }
+  return [];
+}
+
+export async function getTermination(id: string): Promise<TerminationTransaction | null> {
+  const res = await djangoRequest<any>(`/houses/terminations/${id}/`);
+  return res.success ? res.data : null;
+}
+
+export async function createTermination(data: {
+  allocation_id: string;
+  case_id: string;
+  effective_date: string;
+  reason: string;
+  target_house_id?: string;
+  remarks?: string;
+  requested_date?: string | null;
+}): Promise<{ transaction: TerminationTransaction | null; warnings: string[]; error?: string }> {
+  const res = await djangoRequest<any>(`/houses/terminations/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  if (res.success) {
+    return {
+      transaction: res.data,
+      warnings: (res.data as any)?._warnings || [],
+    };
+  }
+  return { transaction: null, warnings: [], error: res.message || res.error || "Failed to create termination" };
+}
+
+export async function approveTermination(
+  id: string,
+  decision: "Approved" | "Rejected",
+  notes?: string,
+): Promise<{ transaction: TerminationTransaction | null; authorization_code?: string; error?: string }> {
+  const res = await djangoRequest<any>(`/houses/terminations/${id}/approve/`, {
+    method: "POST",
+    body: JSON.stringify({ decision, notes: notes || "" }),
+  });
+  if (res.success) {
+    return {
+      transaction: res.data,
+      authorization_code: (res.data as any)?._authorization_code,
+    };
+  }
+  return { transaction: null, error: res.error || "Failed" };
+}
+
+export async function verifyTerminationCode(
+  id: string,
+  authorization_code: string,
+): Promise<{ success: boolean; transaction?: TerminationTransaction; error?: string }> {
+  const res = await djangoRequest<any>(`/houses/terminations/${id}/verify-code/`, {
+    method: "POST",
+    body: JSON.stringify({ authorization_code }),
+  });
+  if (res.success) {
+    return { success: true, transaction: res.data };
+  }
+  return { success: false, error: res.error || "Verification failed" };
+}
+
+export async function resolveInspectionIssues(
+  id: string,
+  resolution_notes?: string,
+  force?: boolean,
+): Promise<TerminationTransaction | null> {
+  const res = await djangoRequest<any>(`/houses/terminations/${id}/resolve-issues/`, {
+    method: "POST",
+    body: JSON.stringify({ resolution_notes: resolution_notes || "", force: force || false }),
+  });
+  return res.success ? res.data : null;
+}
+
+export async function processTermination(
+  id: string,
+  authorization_code: string,
+): Promise<TerminationTransaction | null> {
+  const res = await djangoRequest<any>(`/houses/terminations/${id}/process/`, {
+    method: "POST",
+    body: JSON.stringify({ authorization_code }),
+  });
+  return res.success ? res.data : null;
+}
+
+// ── Terminate with Code (Allocated Houses integration) ──────────────
+
+export async function terminateWithCode(
+  allocationId: string,
+  authorizationCode: string,
+  reason?: string,
+): Promise<{ transaction: TerminationTransaction | null; error?: string }> {
+  const res = await djangoRequest<any>(
+    `/houses/terminations/${allocationId}/terminate-with-code/`,
+    {
+      method: "POST",
+      body: JSON.stringify({ authorization_code: authorizationCode, reason: reason || "" }),
+    },
+  );
+  if (res.success) {
+    return { transaction: res.data };
+  }
+  return { transaction: null, error: res.error || "Termination failed" };
+}
+
+// ── Termination Stats ──────────────────────────────────────────────────
+
+export async function getTerminationStats(): Promise<TerminationStats | null> {
+  const res = await djangoRequest<any>(`/houses/terminations/stats/`);
+  return res.success ? res.data : null;
+}
+
+// ── Allocated Employees ────────────────────────────────────────────────
+
+export async function listAllocatedEmployees(): Promise<AllocatedEmployee[]> {
+  const res = await djangoRequest<any>(`/houses/allocated-employees/?page_size=500`);
+  if (res.success) {
+    return Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
+  }
+  return [];
+}
+
+// ── Houses (for target house selection) ────────────────────────────────
+
+export async function listActiveHouses(): Promise<any[]> {
+  const res = await djangoRequest<any>(`/houses/?page_size=500&status=Active`);
+  if (res.success) {
+    return Array.isArray(res.data) ? res.data : (res.data?.results ?? []);
+  }
+  return [];
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+export const TERMINATION_STATUSES: TerminationStatus[] = [
+  "Pending", "Approved", "Rejected", "In Progress", "Completed", "Cancelled",
+];
+
+export const TERMINATION_CATEGORIES: TerminationCategory[] = [
+  "Transfer", "Retirement", "Release", "Voluntary", "Disciplinary", "Other",
+];
+
+export const TERMINATION_STATUS_COLORS: Record<string, string> = {
+  Pending: "bg-yellow-100 text-yellow-800 border-yellow-300",
+  Approved: "bg-blue-100 text-blue-800 border-blue-300",
+  Rejected: "bg-red-100 text-red-800 border-red-300",
+  "In Progress": "bg-purple-100 text-purple-800 border-purple-300",
+  Completed: "bg-green-100 text-green-800 border-green-300",
+  Cancelled: "bg-gray-100 text-gray-600 border-gray-300",
+};
+
+export const TERMINATION_CATEGORY_COLORS: Record<string, string> = {
+  Transfer: "bg-blue-100 text-blue-800 border-blue-300",
+  Retirement: "bg-amber-100 text-amber-800 border-amber-300",
+  Release: "bg-red-100 text-red-800 border-red-300",
+  Voluntary: "bg-teal-100 text-teal-800 border-teal-300",
+  Disciplinary: "bg-orange-100 text-orange-800 border-orange-300",
+  Other: "bg-gray-100 text-gray-800 border-gray-300",
+};

@@ -1,8 +1,11 @@
 /* src/styles/theme.css */
 
 :root {
-  --bg-start: #667eea;
-  --bg-end: #f093fb;
+  /* Add middle gradient color for smooth transitions */
+  --bg-middle: #5a67d8;
+  --bg-start: #2c5282;
+  --bg-end: #5e7ce8;
+  --bg-middle: #4a90e2;
   --card-bg: rgba(255, 255, 255, 0.85);
 }
 

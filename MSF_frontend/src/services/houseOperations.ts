@@ -5,15 +5,41 @@
 import { djangoRequest } from "./djangoAuth.ts";
 import { invalidateCache, getCachedValue } from "@/lib/data-cache";
 
-export type InspectionStatus = "Scheduled" | "Completed";
-export type InspectionType = "Routine" | "Move-in" | "Move-out" | "Damage" | "Periodic";
+export type InspectionStatus = "Scheduled" | "Completed" | "In Progress" | "Failed" | "Cancelled";
+export type InspectionType = "Routine" | "Move-in" | "Move-out" | "Damage" | "Periodic" | "Post-Occupancy" | "Pre-Termination";
+export type ConditionRating = "Excellent" | "Good" | "Fair" | "Poor" | "Critical" | "";
 
 export type HouseInspection = {
   id: string;
   house: string;
   house_hid: string;
+  house_number: string;
   house_location: string;
   house_type: string;
+  allocation_category: string;
+  capacity: number;
+  room_count: number;
+  room_labels: string[];
+  r1_status: string;
+  r1_occupant_name: string;
+  r1_occupant_id: string;
+  r1_notes: string;
+  r2_status: string;
+  r2_occupant_name: string;
+  r2_occupant_id: string;
+  r2_notes: string;
+  r3_status: string;
+  r3_occupant_name: string;
+  r3_occupant_id: string;
+  r3_notes: string;
+  damaged_door: boolean;
+  damaged_windows: boolean;
+  damaged_walls: boolean;
+  damaged_switch: boolean;
+  damaged_bulb: boolean;
+  damaged_water: boolean;
+  inside_items: string[];
+  description: string;
   inspector: string | null;
   inspector_name: string;
   inspection_type: string;
@@ -23,6 +49,66 @@ export type HouseInspection = {
   findings: string;
   damage_costs: string;
   checklist_results: Record<string, boolean | string> | null;
+  overall_condition: ConditionRating;
+  repair_required: boolean;
+  estimated_repair_cost: string;
+  employee_id: string;
+  employee_name: string;
+  requested_by_name: string;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+};
+
+export type PostInspection = {
+  id: string;
+  house: string;
+  house_hid: string;
+  house_number: string;
+  house_location: string;
+  house_type: string;
+  allocation: string | null;
+  allocation_no: string;
+  allocation_category: string;
+  capacity: number;
+  room_count: number;
+  room_labels: string[];
+  r1_status: string;
+  r1_occupant_name: string;
+  r1_occupant_id: string;
+  r1_notes: string;
+  r2_status: string;
+  r2_occupant_name: string;
+  r2_occupant_id: string;
+  r2_notes: string;
+  r3_status: string;
+  r3_occupant_name: string;
+  r3_occupant_id: string;
+  r3_notes: string;
+  damaged_door: boolean;
+  damaged_windows: boolean;
+  damaged_walls: boolean;
+  damaged_switch: boolean;
+  damaged_bulb: boolean;
+  damaged_water: boolean;
+  inside_items: string[];
+  description: string;
+  inspector: string | null;
+  inspector_name: string;
+  inspection_type: string;
+  status: InspectionStatus;
+  scheduled_date: string | null;
+  completed_date: string | null;
+  findings: string;
+  damage_costs: string;
+  checklist_results: Record<string, boolean | string> | null;
+  overall_condition: ConditionRating;
+  repair_required: boolean;
+  estimated_repair_cost: string;
+  employee_id: string;
+  employee_name: string;
+  allocation_status_snapshot: string;
+  house_status_snapshot: string;
   requested_by_name: string;
   created_at: string;
   updated_at: string;
@@ -230,6 +316,72 @@ export async function completeInspection(
 export async function deleteInspection(id: string): Promise<void> {
   const res = await djangoRequest<void>(`/houses/inspections/${id}/`, { method: "DELETE" });
   if (!res.success) throw new Error(res.message || "Failed to delete inspection");
+}
+
+// ─── Post-Inspections ─────────────────────────────────────────────────────
+
+export async function listPostInspections(params?: { status?: string; house?: string; employee_id?: string }): Promise<PostInspection[]> {
+  return readList<PostInspection>("/houses/post-inspections/", params as Record<string, string> | undefined);
+}
+
+export async function schedulePostInspection(data: {
+  house: string;
+  allocation?: string;
+  inspection_type?: string;
+  scheduled_date: string;
+  employee_id?: string;
+  employee_name?: string;
+}): Promise<PostInspection> {
+  const res = await djangoRequest<any>("/houses/post-inspections/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  if (res.success) return res.data as PostInspection;
+  throw new Error(res.message || "Failed to schedule post-inspection");
+}
+
+export async function completePostInspection(
+  id: string,
+  data: {
+    findings?: string;
+    damage_costs?: string;
+    checklist_results?: Record<string, boolean | string>;
+    overall_condition?: string;
+    repair_required?: boolean;
+    estimated_repair_cost?: string;
+    status?: string;
+  },
+): Promise<PostInspection> {
+  const res = await djangoRequest<any>(`/houses/post-inspections/${id}/complete/`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  if (res.success) return res.data as PostInspection;
+  throw new Error(res.message || "Failed to complete post-inspection");
+}
+
+export async function deletePostInspection(id: string): Promise<void> {
+  const res = await djangoRequest<void>(`/houses/post-inspections/${id}/`, { method: "DELETE" });
+  if (!res.success) throw new Error(res.message || "Failed to delete post-inspection");
+}
+
+export async function validatePreInspection(
+  allocationId: string,
+): Promise<{
+  valid: boolean;
+  post_inspection: PostInspection | null;
+  message: string;
+  details: {
+    post_inspection_found: boolean;
+    post_inspection_status: string;
+    house_number_match: boolean;
+    allocation_status_match: boolean;
+    house_status_match: boolean;
+  };
+}> {
+  const res = await djangoRequest<any>(`/houses/pre-inspection/validate/?allocation_id=${allocationId}`);
+  if (res.success) return res.data;
+  throw new Error(res.message || "Failed to validate pre-inspection");
 }
 
 // ─── Maintenance ────────────────────────────────────────────────────────────

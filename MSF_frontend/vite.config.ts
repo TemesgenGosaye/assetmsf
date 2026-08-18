@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 5173,
     open: "/site",
-    allowedHosts: [".trycloudflare.com", "10.3.12.34", "localhost", "127.0.0.1"],
+    allowedHosts: [".trycloudflare.com", "10.3.12.29", "10.3.12.34", "localhost", "127.0.0.1"],
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8000",

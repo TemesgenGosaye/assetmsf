@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +38,7 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
   const [showHelpCenter, setShowHelpCenter] = useState(() => cachedPrefs?.show_help_center !== false);
   const [role, setRole] = useState('');
   const [userName, setUserName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const navigate = useNavigate();
   const [perm, setPerm] = useState<Record<PageKey, { v: boolean; e: boolean }>>({} as any);
   const [auditActive, setAuditActive] = useState(false);
@@ -180,6 +182,7 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
           const parsed = JSON.parse(raw);
           setRole((parsed.role || '').toLowerCase());
           setUserName(parsed.name || parsed.email || 'User');
+          setAvatarUrl(parsed.avatar_url ?? null);
         }
       } catch {}
       try {
@@ -200,6 +203,25 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
         setHasAuditReports(false);
       }
     })();
+  }, []);
+
+  // Re-read auth_user when profile photo changes
+  useEffect(() => {
+    const handler = () => {
+      try {
+        const raw = localStorage.getItem("auth_user");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setAvatarUrl(parsed.avatar_url ?? null);
+        }
+      } catch {}
+    };
+    window.addEventListener("storage", handler);
+    window.addEventListener("auth-user-updated", handler);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener("auth-user-updated", handler);
+    };
   }, []);
 
   useEffect(() => {
@@ -528,9 +550,12 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
                 <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
                   <span className="relative flex h-full w-full items-center justify-center rounded-full bg-primary p-0.5 shadow-sm">
                     <span className="flex h-full w-full items-center justify-center rounded-full bg-background p-[1.5px]">
-                      <div className="flex h-full w-full items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <span className="text-xs font-bold">{firstName.charAt(0)}</span>
-                      </div>
+                      <Avatar className="h-full w-full">
+                        {avatarUrl && <AvatarImage src={avatarUrl} alt={userName} className="object-cover" />}
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                          {firstName.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
                     </span>
                   </span>
                   <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-background">
@@ -538,9 +563,12 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
                   </span>
                 </div>
               ) : (
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20">
-                  <span className="text-xs font-bold">{firstName.charAt(0)}</span>
-                </div>
+                <Avatar className="h-9 w-9 ring-1 ring-primary/20">
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={userName} className="object-cover" />}
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                    {firstName.charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
               )}
             </button>
           </DropdownMenuTrigger>

@@ -11,23 +11,16 @@ import {
   CircleCheck, MailCheck, TriangleAlert, Check, BadgeCheck, Loader2,
 } from "lucide-react";
 
-import { loginWithDjango, type DjangoUser } from "@/services/djangoAuth";
+import { loginWithDjango, isAuthenticated, type DjangoUser } from "@/services/djangoAuth";
 import {
   requestPasswordReset,
   verifyPasswordResetCode,
   completePasswordReset,
 } from "@/services/passwordReset";
 
-const CURRENT_USER_KEY = "current_user_id";
-
 type Step = "login" | "forgot-password" | "verify-otp" | "reset-password";
 
-const stepLabels: Record<Step, { title: string; desc: string }> = {
-  login: { title: "Sign in", desc: "Use your factory account to access the enterprise portal." },
-  "forgot-password": { title: "Reset your password", desc: "Enter your email and we'll send a verification code." },
-  "verify-otp": { title: "Check your email", desc: "Enter the 6-digit code we just sent you." },
-  "reset-password": { title: "Choose a new password", desc: "Use at least 8 characters." },
-};
+
 
 /* ------------------------------------------------------------------ */
 /*  Enterprise login — single centered access card                      */
@@ -62,24 +55,29 @@ export default function Login() {
   const [shaking, setShaking] = useState(false);
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 15000);
+    const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
   const hour = now.getHours();
   const greeting =
-    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+    hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
   const amGreeting =
     hour < 12 ? "እንደምን አነጋህ" : hour < 17 ? "እንደምን አረድክ" : "እንደምን አመሸህ";
-  const today = now.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-  const clock = now.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+
+  // Date parts
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+  const monthDay = now.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  const year = now.getFullYear();
+
+  // Time parts — always 2-digit, tabular
+  const hh = now.toLocaleTimeString("en-US", { hour: "2-digit", hour12: true }).slice(0, 2);
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  const period = now.getHours() >= 12 ? "PM" : "AM";
+
+  // kept for tooltip
+  const today = `${weekday}, ${monthDay} ${year}`;
 
   const triggerShake = () => {
     setShaking(true);
@@ -113,9 +111,7 @@ export default function Login() {
     window.dispatchEvent(new Event("storage"));
   };
 
-  const isAuthed = useMemo(() => {
-    try { return Boolean(localStorage.getItem(CURRENT_USER_KEY)); } catch { return false; }
-  }, []);
+  const isAuthed = useMemo(() => isAuthenticated(), []);
 
   useEffect(() => {
     if (isAuthed) navigate(returnTo || "/dashboard", { replace: true });
@@ -260,106 +256,61 @@ export default function Login() {
     } finally { setLoading(false); }
   };
 
-  const stepInfo = stepLabels[step];
-
-  // Force body background to match preloader on mount, restore on unmount
-  useEffect(() => {
-    const prev = document.body.style.background;
-    document.body.style.background = "none";
-    document.body.style.backgroundColor = isDark ? "hsl(220, 20%, 10%)" : "#ffffff";
-    return () => {
-      document.body.style.background = prev;
-      document.body.style.backgroundColor = "";
-    };
-  }, [isDark]);
-
-  const loaderBg = isDark
-    ? {
-        backgroundColor: "hsl(220, 20%, 10%)",
-        backgroundImage: [
-          "radial-gradient(120vmax 60vmax at 50% -10%, hsla(16,52%,58%,0.45), transparent 70%)",
-          "radial-gradient(90vmax 60vmax at 100% 100%, hsla(217,91%,60%,0.08), transparent 60%)",
-          "radial-gradient(hsl(16 52% 58% / 0.12) 1px, transparent 1.6px)",
-        ].join(", "),
-        backgroundSize: "auto, auto, 28px 28px",
-        backgroundPosition: "center, center, 0 0",
-      }
-    : {
-        backgroundColor: "#ffffff",
-        backgroundImage: [
-          "radial-gradient(120vmax 60vmax at 50% -10%, hsla(16,52%,58%,0.22), transparent 70%)",
-          "radial-gradient(90vmax 60vmax at 100% 100%, hsla(217,91%,60%,0.08), transparent 60%)",
-          "radial-gradient(hsl(16 52% 58% / 0.08) 1px, transparent 1.6px)",
-        ].join(", "),
-        backgroundSize: "auto, auto, 28px 28px",
-        backgroundPosition: "center, center, 0 0",
-      };
-
   return (
-    <div className="elogin" style={loaderBg}>
+    <div className="elogin">
       <style>{`
         .elogin {
           --el-display: 'Fraunces', Georgia, 'Times New Roman', serif;
           --el-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-          --el-brand-glow: hsla(16, 52%, 58%, 0.22);
           --el-brand-primary: hsl(16, 52%, 58%);
+          --el-brand-glow: hsla(16, 52%, 58%, 0.22);
+          --el-loader-bg: #ffffff;
           position: relative;
           min-height: 100dvh;
           width: 100%;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          /* Light mode — matches preloader exactly */
-          background-color: #ffffff;
-          background-image:
+          color: hsl(var(--foreground));
+          background:
             radial-gradient(120vmax 60vmax at 50% -10%, var(--el-brand-glow), transparent 70%),
             radial-gradient(90vmax 60vmax at 100% 100%, hsla(217, 91%, 60%, 0.08), transparent 60%),
-            radial-gradient(hsl(16 52% 58% / 0.08) 1px, transparent 1.6px);
-          background-size: auto, auto, 28px 28px;
-          background-position: center, center, 0 0;
-          color: hsl(var(--foreground));
+            radial-gradient(var(--el-brand-primary) 1px, transparent 1.6px) 0 0 / 28px 28px,
+            var(--el-loader-bg);
           font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
-
-        /* Dark mode — matches preloader dark theme */
-        .dark .elogin,
-        html.dark .elogin {
+        html.dark .elogin,
+        .dark .elogin {
           --el-brand-glow: hsla(16, 52%, 58%, 0.45);
-          background-color: hsl(220, 20%, 10%);
-          background-image:
-            radial-gradient(120vmax 60vmax at 50% -10%, var(--el-brand-glow), transparent 70%),
-            radial-gradient(90vmax 60vmax at 100% 100%, hsla(217, 91%, 60%, 0.08), transparent 60%),
-            radial-gradient(hsl(16 52% 58% / 0.12) 1px, transparent 1.6px);
-          background-size: auto, auto, 28px 28px;
-          background-position: center, center, 0 0;
+          --el-loader-bg: hsl(220 20% 10%);
         }
 
-        /* ── Ambient corner glows (matching preloader ::before / ::after) ── */
-        .elogin-bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-        .elogin-glow {
+        /* Ambient background glows — matching preloader */
+        .elogin::before, .elogin::after {
+          content: "";
           position: absolute;
           border-radius: 50%;
           filter: blur(110px);
           opacity: 0.25;
+          z-index: 0;
           pointer-events: none;
           animation: elogin-pulse 10s infinite alternate ease-in-out;
         }
-        .elogin-glow-a {
+        .elogin::before {
           top: -15%; left: -10%;
           width: 50vmin; height: 50vmin;
           background: var(--el-brand-primary);
         }
-        .elogin-glow-b {
+        .elogin::after {
           bottom: -15%; right: -10%;
           width: 45vmin; height: 45vmin;
-          background: hsl(217, 91%, 60%);
+          background: hsl(217 91% 60%);
           animation-delay: -5s;
         }
         @keyframes elogin-pulse {
           0% { transform: scale(1) translate(0, 0); }
           100% { transform: scale(1.2) translate(4%, 4%); }
         }
-        .elogin-grid { display: none; }
 
         /* ── Top bar ── */
         .elogin-top {
@@ -456,22 +407,69 @@ export default function Login() {
           letter-spacing: -0.02em; line-height: 1.1;
         }
         .elogin-desc { margin-top: 8px; font-size: 14px; color: hsl(var(--muted-foreground)); line-height: 1.5; }
-        .elogin-greet {
+        /* ── Real-time clock widget ── */
+        .elogin-clock-widget {
           margin-top: 20px;
-          display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px;
-          padding: 8px 14px;
-          border-radius: 999px;
-          background: hsl(16 52% 58% / 0.08);
-          border: 1px solid hsl(16 52% 58% / 0.18);
-          color: hsl(16 52% 40%);
-          font-size: 12.5px; font-weight: 600;
+          width: 100%;
+          display: flex; flex-direction: column; align-items: center; gap: 5px;
+          padding: 14px 20px 12px;
+          border-radius: 14px;
+          background: linear-gradient(145deg, hsl(217 91% 60% / 0.07), hsl(217 91% 60% / 0.03));
+          border: 1px solid hsl(217 91% 60% / 0.2);
+          box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.06);
         }
-        html.dark .elogin-greet {
-          color: hsl(16 52% 74%);
-          background: hsl(16 52% 58% / 0.12);
-          border-color: hsl(16 52% 58% / 0.25);
+        html.dark .elogin-clock-widget {
+          background: linear-gradient(145deg, hsl(217 91% 60% / 0.12), hsl(217 91% 60% / 0.05));
+          border-color: hsl(217 91% 60% / 0.28);
         }
-        .elogin-greet .ampm { color: hsl(var(--muted-foreground)); }
+
+        /* Time row: HH : MM : SS  AM/PM */
+        .ecw-time-row {
+          display: flex; align-items: center; gap: 0;
+          font-family: var(--el-mono);
+          font-variant-numeric: tabular-nums;
+          line-height: 1;
+        }
+        .ecw-digits {
+          font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+          color: hsl(var(--foreground));
+          min-width: 34px; text-align: center;
+        }
+        .ecw-colon {
+          font-size: 22px; font-weight: 400;
+          color: hsl(var(--muted-foreground));
+          opacity: 0.5;
+          padding: 0 2px;
+          align-self: center; margin-bottom: 2px;
+        }
+        .ecw-period {
+          font-size: 11px; font-weight: 700;
+          letter-spacing: 0.1em; text-transform: uppercase;
+          color: hsl(var(--muted-foreground));
+          align-self: flex-end; margin-bottom: 4px; margin-left: 5px;
+        }
+
+        /* Date row: Weekday · Month Day, Year */
+        .ecw-date-row {
+          display: flex; align-items: center; gap: 5px;
+          font-size: 11.5px; font-weight: 500;
+          color: hsl(var(--muted-foreground));
+          letter-spacing: 0.01em;
+        }
+        .ecw-weekday {
+          font-weight: 700;
+          color: hsl(var(--foreground));
+          opacity: 0.75;
+        }
+        .ecw-date-sep { opacity: 0.35; font-size: 10px; }
+        .ecw-monthday { color: hsl(var(--muted-foreground)); }
+        .ecw-year {
+          font-family: var(--el-mono);
+          font-size: 11px; font-weight: 600;
+          color: hsl(217 91% 55%);
+          opacity: 0.9;
+        }
+        html.dark .ecw-year { color: hsl(217 91% 70%); }
 
         /* ── Steps / pills ── */
         .elogin-steps { display: flex; align-items: center; margin-top: 24px; padding: 0 2px; }
@@ -624,13 +622,13 @@ export default function Login() {
           cursor: pointer;
           font-size: 15px; font-weight: 600;
           color: #fff;
-          background: linear-gradient(135deg, hsl(16 52% 58%), hsl(16 52% 50%));
-          box-shadow: 0 14px 30px -12px hsl(16 52% 45% / 0.6);
+          background: linear-gradient(135deg, #1e40af, #1d4ed8);
+          box-shadow: 0 14px 30px -12px rgba(29, 78, 216, 0.55);
           overflow: hidden;
           display: flex; align-items: center; justify-content: center; gap: 9px;
           transition: transform .2s, box-shadow .3s, filter .2s;
         }
-        .elogin-btn:hover { transform: translateY(-1px); box-shadow: 0 18px 38px -14px hsl(16 52% 45% / 0.65); }
+        .elogin-btn:hover { transform: translateY(-1px); background: linear-gradient(135deg, #1d4ed8, #2563eb); box-shadow: 0 18px 38px -14px rgba(29, 78, 216, 0.65); }
         .elogin-btn:active { transform: translateY(0) scale(0.99); }
         .elogin-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; box-shadow: none; }
         .elogin-ghost {
@@ -645,7 +643,7 @@ export default function Login() {
           display: flex; align-items: center; justify-content: center; gap: 8px;
           transition: background .2s, border-color .2s, transform .2s;
         }
-        .elogin-ghost:hover { background: hsl(16 52% 58% / 0.07); border-color: hsl(16 52% 58% / 0.5); transform: translateY(-1px); }
+        .elogin-ghost:hover { background: rgba(29, 78, 216, 0.07); border-color: rgba(29, 78, 216, 0.4); transform: translateY(-1px); }
 
         .elogin-divider { display: flex; align-items: center; gap: 12px; }
         .elogin-divider::before, .elogin-divider::after { content: ""; flex: 1; height: 1px; background: hsl(var(--border)); }
@@ -730,16 +728,9 @@ export default function Login() {
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .elogin-card, .elogin-step, .elogin-shake, .elogin-glow { animation: none !important; }
+          .elogin-card, .elogin-step, .elogin-shake, .elogin::before, .elogin::after { animation: none !important; }
         }
       `}</style>
-
-      {/* Minimal backdrop */}
-      <div className="elogin-bg" aria-hidden="true">
-        <div className="elogin-glow elogin-glow-a" />
-        <div className="elogin-glow elogin-glow-b" />
-        <div className="elogin-grid" />
-      </div>
 
       {/* Top bar */}
       <header className="elogin-top">
@@ -765,15 +756,40 @@ export default function Login() {
               <div className="elogin-logo">
                 <img src="/msf_logo.jpg" alt="Metahara Sugar Factory logo" />
               </div>
-              <p className="elogin-eyebrow">Metahara · Secure Portal</p>
-              <h1 className="elogin-title">{stepInfo.title}</h1>
-              <p className="elogin-desc">{stepInfo.desc}</p>
+              {step !== "login" && (
+                <>
+                  <h1 className="elogin-title">
+                    {step === "forgot-password" ? "Reset your password"
+                      : step === "verify-otp" ? "Check your email"
+                      : "Choose a new password"}
+                  </h1>
+                  <p className="elogin-desc">
+                    {step === "forgot-password" ? "Enter your email and we'll send a verification code."
+                      : step === "verify-otp" ? "Enter the 6-digit code we just sent you."
+                      : "Use at least 8 characters."}
+                  </p>
+                </>
+              )}
               {step === "login" && (
-                <p className="elogin-greet" title={`${amGreeting} · ${today}`}>
-                  <Clock3 className="h-3.5 w-3.5" />
-                  <span>{greeting} · {today}</span>
-                  <span className="elogin-mono ampm">{clock}</span>
-                </p>
+                <div className="elogin-clock-widget" title={`${amGreeting} · ${today}`} aria-label={`Current time: ${hh}:${mm}:${ss} ${period}, ${today}`}>
+                  {/* Main time display */}
+                  <div className="ecw-time-row">
+                    <span className="ecw-digits">{hh}</span>
+                    <span className="ecw-colon">:</span>
+                    <span className="ecw-digits">{mm}</span>
+                    <span className="ecw-colon">:</span>
+                    <span className="ecw-digits">{ss}</span>
+                    <span className="ecw-period">{period}</span>
+                  </div>
+
+                  {/* Date display */}
+                  <div className="ecw-date-row">
+                    <span className="ecw-weekday">{weekday}</span>
+                    <span className="ecw-date-sep">·</span>
+                    <span className="ecw-monthday">{monthDay},</span>
+                    <span className="ecw-year">{year}</span>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -828,7 +844,7 @@ export default function Login() {
                       <Input
                         id="email"
                         type="email"
-                        placeholder="name@metaharasugar.gov.et"
+                        placeholder="name@msf.com"
                         value={email}
                         onChange={(e) => { setEmail(e.target.value); setEmailError(""); setLoginError(""); setResetSuccess(false); }}
                         autoFocus
@@ -916,7 +932,7 @@ export default function Login() {
                       </>
                     ) : (
                       <>
-                        Sign in
+                        Authenticate
                         <ArrowRight className="h-[18px] w-[18px]" />
                       </>
                     )}
@@ -942,7 +958,7 @@ export default function Login() {
                       <Input
                         id="reset-email"
                         type="email"
-                        placeholder="name@metaharasugar.gov.et"
+                        placeholder="name@msf.com"
                         value={email}
                         onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
                         autoFocus
@@ -1132,12 +1148,13 @@ export default function Login() {
         <p className="elogin-foot elogin-mono">
           © 2026 Metahara Sugar Factory · IT Department
           {" · "}
-          <button
-            type="button"
-            onClick={() => navigate("/help")}
+          <a
+            href="https://t.me/Thefluxor"
+            target="_blank"
+            rel="noopener noreferrer"
           >
             Need help?
-          </button>
+          </a>
         </p>
       </main>
     </div>

@@ -19,6 +19,15 @@ function resolveApiBaseUrl(): string {
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
+// Prefix relative media URLs (e.g. /media/profile_images/...) with the backend origin.
+// The backend returns relative URLs, but the frontend may be on a different port/origin.
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
+export function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${API_ORIGIN}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 // Simple fallback storage for non‑browser environments (e.g., ts-node)
 const LS = typeof localStorage !== 'undefined' ? localStorage : {
   getItem: (key: string) => null as any,
@@ -97,12 +106,22 @@ function removeTokens() {
   }
 }
 
+/** Drop cached user identity when the JWT session is missing or invalid. */
+export function clearStoredSession() {
+  removeTokens();
+  try {
+    localStorage.removeItem('django_user');
+    localStorage.removeItem('current_user_id');
+    localStorage.removeItem('auth_user');
+  } catch {}
+}
+
 /**
  * Dispatches a custom event so any listener (e.g. the router) can redirect
  * to the login page when the session has expired.
  */
 function notifySessionExpired() {
-  removeTokens();
+  clearStoredSession();
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('sams:session-expired'));
   }
@@ -234,6 +253,7 @@ export async function loginWithDjango(email: string, password: string): Promise<
       email: loginData.user.email,
       role: normalizedRole,
       department: loginData.user.department,
+      avatar_url: resolveMediaUrl(loginData.user.profile_image),
     }));
     
     return loginData.user;
@@ -266,7 +286,7 @@ export async function logoutFromDjango(): Promise<void> {
   } catch {
     // best effort
   } finally {
-    removeTokens();
+    clearStoredSession();
   }
 }
 

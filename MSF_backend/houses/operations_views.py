@@ -5,21 +5,24 @@ house operations (occupancy, inspections, maintenance, transfers, rentals).
 Analytics endpoints are read-only so the command center can poll them freely;
 all mutations are gated behind admin/manager permissions.
 """
+from decimal import Decimal, InvalidOperation
 from rest_framework import generics, filters
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
+from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 
 from core.responses import StandardResponse
 from core.permissions import IsAdminOrManager
 from .models import (
-    House, HouseInspection, MaintenanceRequest, HouseTransfer,
+    House, HouseInspection, PostInspection, MaintenanceRequest, HouseTransfer,
     RentalContract, RentalInvoice, RentalPayment, HouseApplication,
+    Allocation,
 )
 from .serializers import (
-    HouseInspectionSerializer, MaintenanceRequestSerializer,
+    HouseInspectionSerializer, PostInspectionSerializer, MaintenanceRequestSerializer,
     HouseTransferSerializer, RentalContractSerializer,
     RentalInvoiceSerializer, RentalPaymentSerializer,
     HouseApplicationDetailSerializer,
@@ -216,6 +219,189 @@ class InspectionCompleteView(APIView):
             )
         except ValueError as e:
             return StandardResponse.bad_request(str(e))
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  POST-INSPECTIONS  (pre-termination validation)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class PostInspectionListCreateView(generics.ListCreateAPIView):
+    """CRUD for PostInspection records.  Shares the same column structure
+    as HouseInspection / House Operations for full data consistency."""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    queryset = PostInspection.objects.filter(is_active=True)
+    serializer_class = PostInspectionSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["house", "status", "inspection_type", "employee_id"]
+    search_fields = ["house__house_id", "house__location", "employee_id", "employee_name", "house_number"]
+    ordering_fields = ["scheduled_date", "created_at", "status", "overall_condition"]
+    ordering = ["-scheduled_date"]
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(PostInspectionSerializer(page, many=True).data)
+        return StandardResponse.success(
+            PostInspectionSerializer(qs, many=True).data,
+            "Post-inspections retrieved",
+        )
+
+    def create(self, request, *args, **kwargs):
+        data = dict(request.data)
+        house = self._resolve_house(data.get("house"))
+        if house is None:
+            return StandardResponse.bad_request("house is required and must exist.")
+
+        allocation = None
+        allocation_id = data.get("allocation")
+        if allocation_id:
+            try:
+                allocation = Allocation.objects.get(id=allocation_id, is_active=True)
+            except Allocation.DoesNotExist:
+                return StandardResponse.bad_request("Allocation not found")
+
+        try:
+            post_inspection = PostInspection.objects.create(
+                house=house,
+                allocation=allocation,
+                inspector=request.user,
+                inspection_type=data.get("inspection_type", "Pre-Termination"),
+                status=PostInspection.Status.SCHEDULED,
+                scheduled_date=data.get("scheduled_date", timezone.now()),
+                findings=data.get("findings", ""),
+                checklist_results=data.get("checklist_results") or {},
+                employee_id=allocation.employee_id if allocation else data.get("employee_id", ""),
+                employee_name=allocation.employee_name if allocation else data.get("employee_name", ""),
+                allocation_status_snapshot=allocation.status if allocation else "",
+                house_status_snapshot=house.status,
+                created_by=request.user,
+            )
+            return StandardResponse.created(
+                PostInspectionSerializer(post_inspection).data,
+                "Post-inspection scheduled",
+            )
+        except (KeyError, ValueError) as e:
+            return StandardResponse.bad_request(str(e))
+
+    def _resolve_house(self, value):
+        if not value:
+            return None
+        qs = House.objects.filter(is_active=True)
+        try:
+            return qs.get(id=value) if not str(value).startswith("90-") else qs.get(house_id=value)
+        except House.DoesNotExist:
+            return None
+
+
+class PostInspectionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = PostInspection.objects.filter(is_active=True)
+    serializer_class = PostInspectionSerializer
+    lookup_field = "id"
+
+    def retrieve(self, request, *args, **kwargs):
+        return StandardResponse.success(
+            PostInspectionSerializer(self.get_object()).data,
+            "Post-inspection retrieved",
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.soft_delete(request.user)
+        return StandardResponse.no_content("Post-inspection deleted")
+
+
+class PostInspectionCompleteView(APIView):
+    """Complete a post-inspection and optionally sync damage flags."""
+    permission_classes = [IsAuthenticated, IsAdminOrManager]
+
+    def post(self, request, *args, **kwargs):
+        try:
+            pi = PostInspection.objects.get(id=kwargs.get("id"), is_active=True)
+        except PostInspection.DoesNotExist:
+            return StandardResponse.not_found("Post-inspection not found")
+        try:
+            with transaction.atomic():
+                pi = PostInspection.objects.select_for_update().get(id=pi.id)
+                pi.status = request.data.get("status", PostInspection.Status.COMPLETED)
+                pi.completed_date = timezone.now()
+                findings = request.data.get("findings", "")
+                if findings:
+                    pi.findings = findings
+                damage_costs = request.data.get("damage_costs")
+                if damage_costs is not None and damage_costs != "":
+                    try:
+                        pi.damage_costs = Decimal(str(damage_costs))
+                    except (ValueError, TypeError, InvalidOperation):
+                        return StandardResponse.bad_request("Invalid damage_costs format")
+                checklist = request.data.get("checklist_results")
+                if checklist is not None:
+                    pi.checklist_results = checklist
+                overall = request.data.get("overall_condition", "")
+                if overall:
+                    pi.overall_condition = overall
+                repair = request.data.get("repair_required")
+                if repair is not None:
+                    pi.repair_required = bool(repair)
+                est_cost = request.data.get("estimated_repair_cost")
+                if est_cost is not None and est_cost != "":
+                    try:
+                        pi.estimated_repair_cost = Decimal(str(est_cost))
+                    except (ValueError, TypeError, InvalidOperation):
+                        return StandardResponse.bad_request("Invalid estimated_repair_cost format")
+                pi.save()
+
+                # Sync damage flags to house when completed
+                if pi.status == PostInspection.Status.COMPLETED and checklist:
+                    damage_flags = {
+                        "door": "damaged_door", "windows": "damaged_windows",
+                        "walls": "damaged_walls", "switch": "damaged_switch",
+                        "bulb": "damaged_bulb", "water": "damaged_water",
+                    }
+                    changed = False
+                    for key, field in damage_flags.items():
+                        value = checklist.get(key, checklist.get(field, None))
+                        if value is not None:
+                            setattr(pi.house, field, bool(value))
+                            changed = True
+                    if changed:
+                        pi.house.save(update_fields=[*damage_flags.values(), "updated_at"])
+
+            return StandardResponse.success(
+                PostInspectionSerializer(pi).data,
+                f"Post-inspection marked {pi.status}",
+            )
+        except ValueError as e:
+            return StandardResponse.bad_request(str(e))
+
+
+class PreInspectionValidationView(APIView):
+    """Standalone endpoint to check pre-inspection status for an allocation.
+    Used by the Allocated Houses page to show validation before the user
+    enters an authorization code."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        allocation_id = request.query_params.get("allocation_id")
+        if not allocation_id:
+            return StandardResponse.bad_request("allocation_id query parameter is required")
+
+        try:
+            allocation = Allocation.objects.select_related(
+                "house", "application",
+            ).get(id=allocation_id, is_active=True)
+        except Allocation.DoesNotExist:
+            return StandardResponse.not_found("Allocation not found")
+
+        from .allocation_engine import validate_pre_inspection
+        result = validate_pre_inspection(allocation)
+        result["post_inspection"] = (
+            PostInspectionSerializer(result["post_inspection"]).data
+            if result["post_inspection"] else None
+        )
+        return StandardResponse.success(result, "Pre-inspection validation complete")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -621,7 +807,6 @@ class RentalSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        from decimal import Decimal
         from django.db.models import Sum
         contracts = RentalContract.objects.filter(status=RentalContract.Status.ACTIVE)
         invoices = RentalInvoice.objects.filter(is_active=True)

@@ -13,6 +13,7 @@ export type Property = {
   type: string;
   status: string;
   manager: string | null;
+  manager_name: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -66,7 +67,8 @@ function fromDjango(row: any): Property {
     address: row.address ?? null,
     type: normalizeLabel(row.type, TYPE_MAP, "Office"),
     status: normalizeLabel(row.status, STATUS_MAP, "Active"),
-    manager: row.manager_name ?? row.manager ?? null,
+    manager: row.manager ?? null,
+    manager_name: row.manager_name ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -78,6 +80,7 @@ function toDjango(p: Partial<Property>) {
     address: p.address ?? null,
     type: denormalizeLabel(p.type, REVERSE_TYPE_MAP, "office"),
     status: denormalizeLabel(p.status, REVERSE_STATUS_MAP, "active"),
+    manager: p.manager || null,
   };
   if (p.id && p.id.trim()) {
     payload.id = p.id.trim();

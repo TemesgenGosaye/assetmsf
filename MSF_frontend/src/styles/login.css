@@ -1,43 +1,15 @@
 /* src/styles/login.css */
 
 :root {
-  --gradient-start: hsl(220, 80%, 55%);
-  --gradient-end: hsl(260, 80%, 55%);
   --card-bg: rgba(255, 255, 255, 0.12);
   --card-border: rgba(255, 255, 255, 0.2);
   --text-color: #fff;
 }
 
 [data-theme='dark'] {
-  --gradient-start: hsl(220, 30%, 20%);
-  --gradient-end: hsl(260, 30%, 20%);
   --card-bg: rgba(0, 0, 0, 0.32);
   --card-border: rgba(255, 255, 255, 0.15);
   --text-color: #e0e0e0;
-}
-
-html, body {
-  height: 100%;
-  margin: 0;
-  font-family: 'Inter', sans-serif;
-  background:
-    radial-gradient(120vmax 60vmax at 50% -10%, hsla(16, 52%, 58%, 0.22), transparent 70%),
-    radial-gradient(90vmax 60vmax at 100% 100%, hsla(217, 91%, 60%, 0.08), transparent 60%),
-    radial-gradient(hsl(16, 52%, 58%) 1px, transparent 1.6px) 0 0 / 28px 28px,
-    #ffffff;
-  color: hsl(225, 25%, 15%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-[data-theme='dark'] html, [data-theme='dark'] body, .dark html, .dark body {
-  background:
-    radial-gradient(120vmax 60vmax at 50% -10%, hsla(16, 52%, 58%, 0.45), transparent 70%),
-    radial-gradient(90vmax 60vmax at 100% 100%, hsla(217, 91%, 60%, 0.12), transparent 60%),
-    radial-gradient(hsl(16, 52%, 58%) 1px, transparent 1.6px) 0 0 / 28px 28px,
-    hsl(220, 20%, 10%);
-  color: #ffffff;
 }
 
 .login-card {

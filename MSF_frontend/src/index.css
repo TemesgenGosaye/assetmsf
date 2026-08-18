@@ -95,7 +95,7 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
-    --sidebar-background: 16 52% 96%;
+    --sidebar-background: hsl(var(--background) / 0.85);
 
     --sidebar-foreground: 240 5.3% 26.1%;
 
@@ -154,7 +154,7 @@ All colors MUST be HSL.
   --chart-created: 217 91% 70%;
   --chart-resolved: var(--success);
   --chart-backlog: var(--warning);
-  --sidebar-background: 60 3% 13%;
+  --sidebar-background: hsl(var(--background) / 0.85);
     --sidebar-foreground: 240 4.8% 95.9%;
   --sidebar-primary: 16 52% 58%;
   --sidebar-primary-foreground: 0 0% 100%;

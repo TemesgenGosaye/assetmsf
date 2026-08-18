@@ -11,7 +11,7 @@ type Props = {
 
 export default function PageHeader({ icon: Icon, title, description, actions, className }: Props) {
   return (
-    <div className={cn("flex flex-col gap-4 md:flex-row md:items-center md:justify-between", className)}>
+    <div className={cn("flex flex-col gap-4 md:flex-row md:items-center md:justify-between p-6 md:px-8", className)}>
       <div>
         <h1 className="heading-xl flex items-center gap-2">
           {Icon ? <Icon className="h-7 w-7" /> : null}

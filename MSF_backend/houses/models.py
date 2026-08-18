@@ -663,27 +663,84 @@ class AllocationLog(BaseModel):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class HouseInspection(BaseModel):
+    """House inspection record — shares the complete column structure with
+    House Operations, PostInspection, and the allocation engine so that
+    every inspection is fully traceable."""
 
     class InspectionType(models.TextChoices):
         MOVE_IN          = "Move-In",          _("Move-In")
         MOVE_OUT         = "Move-Out",         _("Move-Out")
         ROUTINE          = "Routine",          _("Routine")
         DAMAGE_ASSESSMENT = "Damage Assessment", _("Damage Assessment")
+        POST_OCCUPANCY   = "Post-Occupancy",   _("Post-Occupancy")
 
     class Status(models.TextChoices):
-        SCHEDULED = "Scheduled", _("Scheduled")
-        COMPLETED = "Completed", _("Completed")
-        FAILED    = "Failed",    _("Failed")
+        SCHEDULED  = "Scheduled",  _("Scheduled")
+        COMPLETED  = "Completed",  _("Completed")
+        FAILED     = "Failed",     _("Failed")
+        CANCELLED  = "Cancelled",  _("Cancelled")
 
-    house          = models.ForeignKey(House, on_delete=models.CASCADE, related_name="inspections")
-    inspector      = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="conducted_inspections")
-    inspection_type = models.CharField(_("type"), max_length=30, choices=InspectionType.choices, default=InspectionType.ROUTINE)
-    status          = models.CharField(_("status"), max_length=20, choices=Status.choices, default=Status.SCHEDULED)
-    scheduled_date  = models.DateTimeField(_("scheduled date"))
-    completed_date  = models.DateTimeField(_("completed date"), null=True, blank=True)
-    findings        = models.TextField(_("findings"), blank=True)
-    damage_costs    = models.DecimalField(_("damage costs"), max_digits=10, decimal_places=2, default=0.00)
+    class ConditionRating(models.TextChoices):
+        EXCELLENT = "Excellent", _("Excellent")
+        GOOD      = "Good",      _("Good")
+        FAIR      = "Fair",      _("Fair")
+        POOR      = "Poor",      _("Poor")
+        CRITICAL  = "Critical",  _("Critical")
+
+    house            = models.ForeignKey(House, on_delete=models.CASCADE, related_name="inspections")
+    inspector        = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="conducted_inspections")
+    inspection_type  = models.CharField(_("type"), max_length=30, choices=InspectionType.choices, default=InspectionType.ROUTINE)
+    status           = models.CharField(_("status"), max_length=20, choices=Status.choices, default=Status.SCHEDULED)
+    scheduled_date   = models.DateTimeField(_("scheduled date"))
+    completed_date   = models.DateTimeField(_("completed date"), null=True, blank=True)
+    findings         = models.TextField(_("findings"), blank=True)
+    damage_costs     = models.DecimalField(_("damage costs"), max_digits=10, decimal_places=2, default=0.00)
     checklist_results = models.JSONField(_("checklist results"), default=dict, blank=True)
+
+    # ── House-parity columns (full snapshot) ─────────────────────────
+    house_hid        = models.CharField(_("house HID"), max_length=20, blank=True, default="")
+    house_number     = models.CharField(_("house number"), max_length=20, blank=True, default="")
+    house_location   = models.CharField(_("house location"), max_length=255, blank=True, default="")
+    house_type       = models.CharField(_("house type"), max_length=10, blank=True, default="")
+    allocation_category = models.CharField(
+        _("allocation category"), max_length=1, blank=True, default="R",
+        choices=House.AllocationCategory.choices,
+    )
+    capacity         = models.PositiveSmallIntegerField(_("capacity"), default=1)
+    room_count       = models.PositiveSmallIntegerField(_("room count"), default=1)
+    room_labels      = models.JSONField(_("room labels"), default=list, blank=True)
+    r1_status        = models.CharField(_("R1 status"), max_length=20, blank=True, default="")
+    r1_occupant_name = models.CharField(_("R1 occupant name"), max_length=255, blank=True, default="")
+    r1_occupant_id   = models.CharField(_("R1 occupant ID"), max_length=50, blank=True, default="")
+    r1_notes         = models.CharField(_("R1 notes"), max_length=255, blank=True, default="")
+    r2_status        = models.CharField(_("R2 status"), max_length=20, blank=True, default="")
+    r2_occupant_name = models.CharField(_("R2 occupant name"), max_length=255, blank=True, default="")
+    r2_occupant_id   = models.CharField(_("R2 occupant ID"), max_length=50, blank=True, default="")
+    r2_notes         = models.CharField(_("R2 notes"), max_length=255, blank=True, default="")
+    r3_status        = models.CharField(_("R3 status"), max_length=20, blank=True, default="")
+    r3_occupant_name = models.CharField(_("R3 occupant name"), max_length=255, blank=True, default="")
+    r3_occupant_id   = models.CharField(_("R3 occupant ID"), max_length=50, blank=True, default="")
+    r3_notes         = models.CharField(_("R3 notes"), max_length=255, blank=True, default="")
+    damaged_door     = models.BooleanField(_("damaged door"), default=False)
+    damaged_windows  = models.BooleanField(_("damaged windows"), default=False)
+    damaged_walls    = models.BooleanField(_("damaged walls"), default=False)
+    damaged_switch   = models.BooleanField(_("damaged switch"), default=False)
+    damaged_bulb     = models.BooleanField(_("damaged bulb"), default=False)
+    damaged_water    = models.BooleanField(_("damaged water"), default=False)
+    inside_items     = models.JSONField(_("inside items"), default=list, blank=True)
+    description      = models.TextField(_("description"), blank=True, default="")
+
+    # ── inspection-specific ──────────────────────────────────────────
+    overall_condition = models.CharField(
+        _("overall condition"), max_length=20,
+        choices=ConditionRating.choices, blank=True, default="",
+    )
+    repair_required  = models.BooleanField(_("repair required"), default=False)
+    estimated_repair_cost = models.DecimalField(
+        _("estimated repair cost"), max_digits=10, decimal_places=2, default=0,
+    )
+    employee_id      = models.CharField(_("employee ID"), max_length=50, blank=True, default="")
+    employee_name    = models.CharField(_("employee name"), max_length=255, blank=True, default="")
 
     class Meta:
         db_table = "house_inspections"
@@ -691,6 +748,213 @@ class HouseInspection(BaseModel):
 
     def __str__(self):
         return f"Inspection ({self.inspection_type}) for {self.house.house_id}"
+
+    def save(self, *args, **kwargs):
+        if self.house_id:
+            h = self.house
+            if not self.house_hid:
+                self.house_hid = h.house_id or ""
+            if not self.house_number:
+                self.house_number = h.house_number or h.house_id or ""
+            if not self.house_location:
+                self.house_location = h.location or ""
+            if not self.house_type:
+                self.house_type = h.house_type or ""
+            if not self.allocation_category:
+                self.allocation_category = h.allocation_category or "R"
+            self.capacity = h.capacity or 1
+            self.room_count = h.room_count or 1
+            self.room_labels = h.room_labels or []
+            for prefix in ("r1", "r2", "r3"):
+                for suffix in ("_status", "_occupant_name", "_occupant_id", "_notes"):
+                    col = f"{prefix}{suffix}"
+                    if not getattr(self, col):
+                        setattr(self, col, getattr(h, col, ""))
+            if not self.damaged_door:
+                self.damaged_door = h.damaged_door
+            if not self.damaged_windows:
+                self.damaged_windows = h.damaged_windows
+            if not self.damaged_walls:
+                self.damaged_walls = h.damaged_walls
+            if not self.damaged_switch:
+                self.damaged_switch = h.damaged_switch
+            if not self.damaged_bulb:
+                self.damaged_bulb = h.damaged_bulb
+            if not self.damaged_water:
+                self.damaged_water = h.damaged_water
+            if not self.inside_items:
+                self.inside_items = h.inside_items or []
+            if not self.description:
+                self.description = h.description or ""
+        super().save(*args, **kwargs)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  POST-INSPECTION  (pre-termination validation)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class PostInspection(BaseModel):
+    """Post-occupancy / pre-termination inspection.
+
+    Before a termination can proceed, the system must verify the employee's
+    allocated house against this table.  A completed PostInspection record
+    is mandatory — without one the termination is blocked.
+
+    The model mirrors HouseInspection + House Operations columns so every
+    inspection table in the system shares the same data model.
+    """
+
+    class InspectionType(models.TextChoices):
+        MOVE_OUT         = "Move-Out",         _("Move-Out")
+        POST_OCCUPANCY   = "Post-Occupancy",   _("Post-Occupancy")
+        PRE_TERMINATION  = "Pre-Termination",  _("Pre-Termination")
+        DAMAGE_ASSESSMENT = "Damage Assessment", _("Damage Assessment")
+
+    class Status(models.TextChoices):
+        SCHEDULED  = "Scheduled",  _("Scheduled")
+        IN_PROGRESS = "In Progress", _("In Progress")
+        COMPLETED  = "Completed",  _("Completed")
+        FAILED     = "Failed",     _("Failed")
+        CANCELLED  = "Cancelled",  _("Cancelled")
+
+    class ConditionRating(models.TextChoices):
+        EXCELLENT = "Excellent", _("Excellent")
+        GOOD      = "Good",      _("Good")
+        FAIR      = "Fair",      _("Fair")
+        POOR      = "Poor",      _("Poor")
+        CRITICAL  = "Critical",  _("Critical")
+
+    # ── references ───────────────────────────────────────────────────
+    house            = models.ForeignKey(House, on_delete=models.CASCADE, related_name="post_inspections")
+    allocation       = models.ForeignKey(
+        "Allocation", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="post_inspections",
+        verbose_name=_("linked allocation"),
+    )
+    inspector        = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="conducted_post_inspections",
+    )
+
+    # ── inspection metadata (same as HouseInspection) ────────────────
+    inspection_type  = models.CharField(_("type"), max_length=30, choices=InspectionType.choices, default=InspectionType.PRE_TERMINATION)
+    status           = models.CharField(_("status"), max_length=20, choices=Status.choices, default=Status.SCHEDULED)
+    scheduled_date   = models.DateTimeField(_("scheduled date"))
+    completed_date   = models.DateTimeField(_("completed date"), null=True, blank=True)
+    findings         = models.TextField(_("findings"), blank=True)
+    damage_costs     = models.DecimalField(_("damage costs"), max_digits=10, decimal_places=2, default=0.00)
+    checklist_results = models.JSONField(_("checklist results"), default=dict, blank=True)
+
+    # ── House-parity columns (full snapshot) ─────────────────────────
+    house_hid        = models.CharField(_("house HID"), max_length=20, blank=True, default="")
+    house_number     = models.CharField(_("house number"), max_length=20, blank=True, default="")
+    house_location   = models.CharField(_("house location"), max_length=255, blank=True, default="")
+    house_type       = models.CharField(_("house type"), max_length=10, blank=True, default="")
+    allocation_category = models.CharField(
+        _("allocation category"), max_length=1, blank=True, default="R",
+        choices=House.AllocationCategory.choices,
+    )
+    capacity         = models.PositiveSmallIntegerField(_("capacity"), default=1)
+    room_count       = models.PositiveSmallIntegerField(_("room count"), default=1)
+    room_labels      = models.JSONField(_("room labels"), default=list, blank=True)
+    r1_status        = models.CharField(_("R1 status"), max_length=20, blank=True, default="")
+    r1_occupant_name = models.CharField(_("R1 occupant name"), max_length=255, blank=True, default="")
+    r1_occupant_id   = models.CharField(_("R1 occupant ID"), max_length=50, blank=True, default="")
+    r1_notes         = models.CharField(_("R1 notes"), max_length=255, blank=True, default="")
+    r2_status        = models.CharField(_("R2 status"), max_length=20, blank=True, default="")
+    r2_occupant_name = models.CharField(_("R2 occupant name"), max_length=255, blank=True, default="")
+    r2_occupant_id   = models.CharField(_("R2 occupant ID"), max_length=50, blank=True, default="")
+    r2_notes         = models.CharField(_("R2 notes"), max_length=255, blank=True, default="")
+    r3_status        = models.CharField(_("R3 status"), max_length=20, blank=True, default="")
+    r3_occupant_name = models.CharField(_("R3 occupant name"), max_length=255, blank=True, default="")
+    r3_occupant_id   = models.CharField(_("R3 occupant ID"), max_length=50, blank=True, default="")
+    r3_notes         = models.CharField(_("R3 notes"), max_length=255, blank=True, default="")
+    damaged_door     = models.BooleanField(_("damaged door"), default=False)
+    damaged_windows  = models.BooleanField(_("damaged windows"), default=False)
+    damaged_walls    = models.BooleanField(_("damaged walls"), default=False)
+    damaged_switch   = models.BooleanField(_("damaged switch"), default=False)
+    damaged_bulb     = models.BooleanField(_("damaged bulb"), default=False)
+    damaged_water    = models.BooleanField(_("damaged water"), default=False)
+    inside_items     = models.JSONField(_("inside items"), default=list, blank=True)
+    description      = models.TextField(_("description"), blank=True, default="")
+
+    # ── inspection-specific ──────────────────────────────────────────
+    overall_condition = models.CharField(
+        _("overall condition"), max_length=20,
+        choices=ConditionRating.choices, blank=True, default="",
+    )
+    repair_required  = models.BooleanField(_("repair required"), default=False)
+    estimated_repair_cost = models.DecimalField(
+        _("estimated repair cost"), max_digits=10, decimal_places=2, default=0,
+    )
+    employee_id      = models.CharField(_("employee ID"), max_length=50, blank=True, default="")
+    employee_name    = models.CharField(_("employee name"), max_length=255, blank=True, default="")
+
+    # ── status comparison with allocation ────────────────────────────
+    allocation_status_snapshot = models.CharField(
+        _("allocation status at inspection"), max_length=20, blank=True, default="",
+        help_text=_("Snapshot of the linked allocation's status when inspection was created."),
+    )
+    house_status_snapshot = models.CharField(
+        _("house status at inspection"), max_length=20, blank=True, default="",
+        help_text=_("Snapshot of the house's status when inspection was created."),
+    )
+
+    class Meta:
+        db_table = "house_post_inspections"
+        ordering = ["-scheduled_date"]
+        verbose_name = _("post inspection")
+        verbose_name_plural = _("post inspections")
+        indexes = [
+            models.Index(fields=["house", "status"]),
+            models.Index(fields=["employee_id", "status"]),
+        ]
+
+    def __str__(self):
+        return f"PostInspection ({self.inspection_type}) for {self.house.house_id} — {self.status}"
+
+    def save(self, *args, **kwargs):
+        if self.house_id:
+            h = self.house
+            if not self.house_hid:
+                self.house_hid = h.house_id or ""
+            if not self.house_number:
+                self.house_number = h.house_number or h.house_id or ""
+            if not self.house_location:
+                self.house_location = h.location or ""
+            if not self.house_type:
+                self.house_type = h.house_type or ""
+            if not self.allocation_category:
+                self.allocation_category = h.allocation_category or "R"
+            self.capacity = h.capacity or 1
+            self.room_count = h.room_count or 1
+            self.room_labels = h.room_labels or []
+            for prefix in ("r1", "r2", "r3"):
+                for suffix in ("_status", "_occupant_name", "_occupant_id", "_notes"):
+                    col = f"{prefix}{suffix}"
+                    if not getattr(self, col):
+                        setattr(self, col, getattr(h, col, ""))
+            if not self.damaged_door:
+                self.damaged_door = h.damaged_door
+            if not self.damaged_windows:
+                self.damaged_windows = h.damaged_windows
+            if not self.damaged_walls:
+                self.damaged_walls = h.damaged_walls
+            if not self.damaged_switch:
+                self.damaged_switch = h.damaged_switch
+            if not self.damaged_bulb:
+                self.damaged_bulb = h.damaged_bulb
+            if not self.damaged_water:
+                self.damaged_water = h.damaged_water
+            if not self.inside_items:
+                self.inside_items = h.inside_items or []
+            if not self.description:
+                self.description = h.description or ""
+            if self.allocation_id and not self.allocation_status_snapshot:
+                self.allocation_status_snapshot = self.allocation.status or ""
+            if not self.house_status_snapshot:
+                self.house_status_snapshot = h.status or ""
+        super().save(*args, **kwargs)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1151,3 +1415,371 @@ class HouseAuditTrail(BaseModel):
 
     def __str__(self):
         return f"{self.action}: {self.application.application_no} ({self.actor_name})"
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  HOUSE HANDOVER RECEIPT  (የተለቀቁ ቤቶች ተረካቢ ኮሚቴ መረጃ)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class HouseHandoverReceipt(BaseModel):
+    """
+    Official handover/inspection receipt generated when a house is allocated.
+
+    One receipt per allocation (enforced by unique constraint). Subsequent
+    print actions increment reprint_count and append to audit_history rather
+    than creating new records.
+
+    Template reference: Metahara Sugar Factory - የተለቀቁ ቤቶች ተረካቢ ኮሚቴ መረጃ
+    """
+
+    class DocStatus(models.TextChoices):
+        DRAFT   = "Draft",   _("Draft")
+        ACTIVE  = "Active",  _("Active")
+        VOIDED  = "Voided",  _("Voided")
+
+    # ── identifiers ───────────────────────────────────────────────────────
+    doc_number  = models.CharField(
+        _("document number"), max_length=20, unique=True, blank=True, db_index=True,
+        help_text=_("Auto-generated: HHR-0001 format."),
+    )
+
+    # ── links (each allocation → exactly one receipt) ─────────────────────
+    allocation  = models.OneToOneField(
+        Allocation, on_delete=models.PROTECT,
+        related_name="handover_receipt",
+        help_text=_("The allocation this receipt covers."),
+    )
+    application = models.ForeignKey(
+        HouseApplication, on_delete=models.PROTECT,
+        related_name="handover_receipts",
+    )
+    house       = models.ForeignKey(
+        House, on_delete=models.PROTECT,
+        related_name="handover_receipts",
+    )
+
+    # ── employee snapshot (immutable at generation time) ──────────────────
+    employee_id      = models.CharField(_("employee ID"), max_length=50)
+    employee_name    = models.CharField(_("employee name"), max_length=255)
+    job_position     = models.CharField(_("job position"), max_length=255, blank=True, default="")
+    job_grade        = models.CharField(_("job grade"), max_length=50, blank=True, default="")
+    department       = models.CharField(_("department"), max_length=255, blank=True, default="")
+    national_id      = models.CharField(_("national ID"), max_length=50, blank=True, default="")
+    marital_status   = models.CharField(_("marital status"), max_length=20, blank=True, default="")
+    family_size      = models.PositiveIntegerField(_("family size"), default=1)
+
+    # ── house snapshot ────────────────────────────────────────────────────
+    house_number     = models.CharField(_("house number"), max_length=20, blank=True, default="")
+    house_type       = models.CharField(_("house type"), max_length=10, blank=True, default="")
+    house_location   = models.CharField(_("house location"), max_length=255, blank=True, default="")
+    room_count       = models.PositiveSmallIntegerField(_("room count"), default=1)
+    allocation_no    = models.CharField(_("allocation number"), max_length=20, blank=True, default="")
+    application_no   = models.CharField(_("application number"), max_length=20, blank=True, default="")
+    allocation_date  = models.DateField(_("allocation date"), null=True, blank=True)
+
+    # ── inspection sections (填写前 left blank, editable before print) ─────
+    inspection_electrical = models.TextField(
+        _("2.1 ኤሌክትሪክ ክፍል (electrical findings)"), blank=True, default="",
+    )
+    inspection_structural = models.TextField(
+        _("2.2 የሕንፃ ክፍል (structural findings)"), blank=True, default="",
+    )
+    inspection_water      = models.TextField(
+        _("2.3 የውሃ ክፍል (water findings)"), blank=True, default="",
+    )
+    inspection_admin      = models.TextField(
+        _("2.4 የቤት አስተዳደር (admin/management findings)"), blank=True, default="",
+    )
+
+    # ── committee ─────────────────────────────────────────────────────────
+    committee_members = models.JSONField(
+        _("committee members"),
+        default=list,
+        blank=True,
+        help_text=_("List of up to 4 committee member names."),
+    )
+
+    # ── document status & generation metadata ─────────────────────────────
+    doc_status       = models.CharField(
+        _("document status"), max_length=10,
+        choices=DocStatus.choices, default=DocStatus.ACTIVE, db_index=True,
+    )
+    generated_date   = models.DateField(_("generated date"), auto_now_add=True)
+    generated_by     = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="generated_handover_receipts",
+    )
+    generated_by_name = models.CharField(_("generated by name"), max_length=255, blank=True, default="")
+
+    # ── print tracking ────────────────────────────────────────────────────
+    first_printed_at  = models.DateTimeField(_("first printed at"), null=True, blank=True)
+    last_printed_at   = models.DateTimeField(_("last printed at"), null=True, blank=True)
+    printed_by        = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="printed_handover_receipts",
+    )
+    printed_by_name   = models.CharField(_("last printed by name"), max_length=255, blank=True, default="")
+    reprint_count     = models.PositiveIntegerField(_("reprint count"), default=0)
+
+    # ── full audit history (list of {event, user, timestamp, ...}) ────────
+    audit_history = models.JSONField(
+        _("audit history"), default=list, blank=True,
+        help_text=_("Chronological list of print/reprint events."),
+    )
+
+    class Meta:
+        db_table             = "house_handover_receipts"
+        verbose_name         = _("house handover receipt")
+        verbose_name_plural  = _("house handover receipts")
+        ordering             = ["-generated_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["allocation"]),
+            models.Index(fields=["employee_id"]),
+            models.Index(fields=["doc_number"]),
+            models.Index(fields=["doc_status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.doc_number} – {self.employee_name} → {self.house_number} ({self.doc_status})"
+
+    def save(self, *args, **kwargs):
+        if not self.doc_number:
+            last = HouseHandoverReceipt.objects.filter(
+                doc_number__startswith="HHR-"
+            ).order_by("-doc_number").first()
+            if last:
+                try:
+                    num = int(last.doc_number.split("-")[1]) + 1
+                except (IndexError, ValueError):
+                    num = 1
+            else:
+                num = 1
+            self.doc_number = f"HHR-{num:04d}"
+        super().save(*args, **kwargs)
+
+    def record_print_event(self, user, action: str = "printed"):
+        """
+        Record a print/reprint event. Mutates and saves the instance.
+        Call this after the client confirms it triggered the print dialog.
+        """
+        now = timezone.now()
+        if not self.first_printed_at:
+            self.first_printed_at = now
+        else:
+            self.reprint_count += 1
+        self.last_printed_at = now
+        self.printed_by      = user
+        self.printed_by_name = getattr(user, "name", "") or getattr(user, "username", "")
+
+        event = {
+            "action":    action,
+            "user_id":   str(user.pk) if user else None,
+            "user_name": self.printed_by_name,
+            "timestamp": now.isoformat(),
+            "reprint_no": self.reprint_count,
+        }
+        history = list(self.audit_history or [])
+        history.append(event)
+        self.audit_history = history
+
+        self.save(update_fields=[
+            "first_printed_at", "last_printed_at",
+            "printed_by", "printed_by_name",
+            "reprint_count", "audit_history", "updated_at",
+        ])
+        return event
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  TERMINATION CASE  (configurable, database-driven)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TerminationCase(BaseModel):
+    """
+    Configurable termination case definitions stored in the database.
+    Each case represents a valid reason category for ending a housing allocation.
+    """
+
+    class Category(models.TextChoices):
+        TRANSFER   = "Transfer",    _("Changed House / Transfer")
+        RETIREMENT = "Retirement",  _("Retirement")
+        RELEASE    = "Release",     _("Release From Factory Employment")
+        VOLUNTARY  = "Voluntary",   _("Voluntary Surrender")
+        DISCIPLINARY = "Disciplinary", _("Disciplinary Action")
+        OTHER      = "Other",       _("Other")
+
+    class HandoverRequired(models.TextChoices):
+        ALWAYS     = "Always",     _("Always Required")
+        CONDITIONAL = "Conditional", _("Conditional")
+        NEVER      = "Never",      _("Not Required")
+
+    code         = models.CharField(_("case code"), max_length=30, unique=True, db_index=True)
+    name         = models.CharField(_("case name"), max_length=100)
+    category     = models.CharField(_("category"), max_length=20, choices=Category.choices, db_index=True)
+    description  = models.TextField(_("description"), blank=True, default="")
+    requires_inspection = models.CharField(
+        _("inspection requirement"),
+        max_length=20,
+        choices=HandoverRequired.choices,
+        default=HandoverRequired.ALWAYS,
+    )
+    requires_approval = models.BooleanField(_("requires approval"), default=True)
+    requires_documents = models.BooleanField(_("requires supporting documents"), default=False)
+    allowed_employment_types = models.JSONField(
+        _("allowed employment types"),
+        default=list,
+        blank=True,
+        help_text=_("Employment types this case applies to. Empty = all types."),
+    )
+    auto_verify_employment = models.BooleanField(
+        _("auto-verify employment status"),
+        default=True,
+        help_text=_("When true, the system checks employee employment status matches the case."),
+    )
+    priority = models.PositiveIntegerField(_("evaluation order"), default=0)
+    is_active = models.BooleanField(_("active"), default=True, db_index=True)
+
+    class Meta:
+        db_table = "termination_cases"
+        verbose_name = _("termination case")
+        verbose_name_plural = _("termination cases")
+        ordering = ["priority", "name"]
+
+    def __str__(self):
+        return f"{self.code} – {self.name}"
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  TERMINATION TRANSACTION
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TerminationTransaction(BaseModel):
+    """
+    Authoritative record of a housing allocation termination.
+    Every termination must go through this model — never a simple delete.
+    """
+
+    class Status(models.TextChoices):
+        PENDING        = "Pending",        _("Pending")
+        APPROVED       = "Approved",       _("Approved")
+        REJECTED       = "Rejected",       _("Rejected")
+        IN_PROGRESS    = "In Progress",    _("In Progress")
+        COMPLETED      = "Completed",      _("Completed")
+        CANCELLED      = "Cancelled",      _("Cancelled")
+
+    class HandoverStatus(models.TextChoices):
+        PENDING        = "Pending",        _("Pending")
+        IN_PROGRESS    = "In Progress",    _("In Progress")
+        COMPLETED      = "Completed",      _("Completed")
+        WAIVED         = "Waived",         _("Waived")
+
+    class InspectionStatus(models.TextChoices):
+        NOT_REQUIRED   = "Not Required",   _("Not Required")
+        SCHEDULED      = "Scheduled",      _("Scheduled")
+        COMPLETED      = "Completed",      _("Completed")
+        FAILED         = "Failed",         _("Failed")
+        WAIVED         = "Waived",         _("Waived")
+
+    termination_no = models.CharField(_("termination number"), max_length=20, unique=True, blank=True, db_index=True)
+
+    # ── references ────────────────────────────────────────────────────────
+    allocation     = models.ForeignKey(Allocation, on_delete=models.PROTECT, related_name="termination_transactions")
+    application    = models.ForeignKey(HouseApplication, on_delete=models.PROTECT, related_name="termination_transactions")
+    case           = models.ForeignKey(TerminationCase, on_delete=models.PROTECT, related_name="transactions")
+
+    # ── employee snapshot ─────────────────────────────────────────────────
+    employee_id    = models.CharField(_("employee ID"), max_length=50)
+    employee_name  = models.CharField(_("employee name"), max_length=255)
+
+    # ── house snapshot ────────────────────────────────────────────────────
+    house          = models.ForeignKey(House, on_delete=models.PROTECT, related_name="termination_transactions")
+    house_number   = models.CharField(_("house number"), max_length=20, blank=True, default="")
+    house_type     = models.CharField(_("house category"), max_length=10, blank=True, default="")
+    room_label     = models.CharField(_("room label"), max_length=20, blank=True, default="")
+
+    # ── termination details ──────────────────────────────────────────────
+    termination_reason = models.TextField(_("termination reason"))
+    effective_date     = models.DateField(_("effective date"))
+    requested_date     = models.DateField(_("requested date"), null=True, blank=True)
+    house_release_date = models.DateField(_("house release date"), null=True, blank=True)
+
+    # ── workflow status ──────────────────────────────────────────────────
+    status             = models.CharField(_("status"), max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
+    handover_status    = models.CharField(_("handover status"), max_length=20, choices=HandoverStatus.choices, default=HandoverStatus.PENDING)
+    inspection_status  = models.CharField(_("inspection status"), max_length=20, choices=InspectionStatus.choices, default=InspectionStatus.NOT_REQUIRED)
+
+    # ── damage / assessment ──────────────────────────────────────────────
+    damage_assessment  = models.JSONField(_("damage assessment"), default=dict, blank=True)
+    outstanding_issues = models.TextField(_("outstanding issues"), blank=True, default="")
+    damage_costs       = models.DecimalField(_("damage costs"), max_length=10, max_digits=10, decimal_places=2, default=0)
+
+    # ── approval ─────────────────────────────────────────────────────────
+    approval_status    = models.CharField(_("approval status"), max_length=20, choices=Status.choices, default=Status.PENDING)
+    approved_by        = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_terminations")
+    approval_date      = models.DateTimeField(_("approval date"), null=True, blank=True)
+    approval_notes     = models.TextField(_("approval notes"), blank=True, default="")
+
+    # ── transfer target (for Transfer case) ──────────────────────────────
+    target_house       = models.ForeignKey(House, on_delete=models.SET_NULL, null=True, blank=True, related_name="termination_transfers_to", verbose_name=_("target house (transfer)"))
+    target_allocation  = models.ForeignKey(Allocation, on_delete=models.SET_NULL, null=True, blank=True, related_name="terminated_from_transfer", verbose_name=_("new allocation (transfer)"))
+
+    # ── inspection baseline (snapshot at termination creation) ───────────
+    inspection_baseline = models.JSONField(
+        _("inspection baseline snapshot"),
+        default=dict, blank=True,
+        help_text=_("Snapshot of house inspection/health status at termination creation time."),
+    )
+    inspection_discrepancies = models.JSONField(
+        _("inspection discrepancies"),
+        default=list, blank=True,
+        help_text=_("List of discrepancies between allocation baseline and current house status."),
+    )
+    issues_resolved = models.BooleanField(_("all issues resolved"), default=False)
+    handover_completed = models.BooleanField(_("handover completed"), default=False)
+
+    # ── secure authorization code ────────────────────────────────────────
+    authorization_code = models.CharField(
+        _("termination authorization code"),
+        max_length=64, unique=True, blank=True, null=True, db_index=True,
+        help_text=_("Secure, non-predictable code required to execute the termination."),
+    )
+    code_generated_at   = models.DateTimeField(_("code generated at"), null=True, blank=True)
+    code_generated_by   = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="generated_term_codes", verbose_name=_("code generated by"),
+    )
+    code_verified       = models.BooleanField(_("code verified"), default=False)
+    code_verified_at    = models.DateTimeField(_("code verified at"), null=True, blank=True)
+    code_verified_by    = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="verified_term_codes", verbose_name=_("code verified by"),
+    )
+
+    # ── metadata ─────────────────────────────────────────────────────────
+    remarks            = models.TextField(_("remarks"), blank=True, default="")
+    supporting_document = models.FileField(_("supporting document"), upload_to="termination_docs/", null=True, blank=True)
+
+    class Meta:
+        db_table = "termination_transactions"
+        verbose_name = _("termination transaction")
+        verbose_name_plural = _("termination transactions")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["allocation", "status"]),
+            models.Index(fields=["employee_id", "status"]),
+            models.Index(fields=["case", "status"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.termination_no} – {self.employee_name} ({self.case.code})"
+
+    def save(self, *args, **kwargs):
+        if not self.termination_no:
+            last = TerminationTransaction.objects.filter(
+                termination_no__startswith="TERM-"
+            ).order_by("-termination_no").first()
+            num = int(last.termination_no.split("-")[1]) + 1 if last else 1
+            self.termination_no = f"TERM-{num:04d}"
+        super().save(*args, **kwargs)

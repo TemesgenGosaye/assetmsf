@@ -97,7 +97,7 @@ breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Properties", to: "/
           fields: [
             { icon: Hash, label: "Property ID", value: <span className="font-mono text-xs">{property.id}</span> },
             { icon: MapPin, label: "Address", value: property.address },
-            { icon: User, label: "Manager", value: property.manager },
+            { icon: User, label: "Manager", value: property.manager_name || property.manager || "—" },
           ],
         },
       ]}

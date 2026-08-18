@@ -38,6 +38,7 @@ import {
   ExternalLink,
   Sparkles,
   History,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SheetClose } from "@/components/ui/sheet";
@@ -95,6 +96,7 @@ const baseNav: NavItem[] = [
   { name: "Allocation Console", href: "/houses/allocate", icon: Sparkles },
   { name: "Allocation History", href: "/houses/allocations/history", icon: History },
   { name: "Operations", href: "/houses/operations", icon: Wrench },
+  { name: "Terminations", href: "/houses/terminations", icon: AlertTriangle },
   { name: "New Application", href: "/house-application/new", icon: FilePlus },
   { name: "My Applications", href: "/house-application/my", icon: Files },
   { name: "Application Status", href: "/house-application/status", icon: ClipboardList },
@@ -123,7 +125,7 @@ const badgeToneClasses: Record<BadgeTone, string> = {
   destructive: "border border-destructive/60 bg-destructive text-destructive-foreground shadow-sm dark:bg-destructive/80",
   warning: "border border-warning/60 bg-warning text-warning-foreground shadow-sm dark:bg-warning/80",
   primary: "border border-primary/50 bg-primary text-primary-foreground shadow-sm dark:bg-primary/80",
-  muted: "border border-border/60 bg-muted/70 text-foreground shadow-sm dark:bg-sidebar-accent dark:text-foreground",
+  muted: "border border-border/60 bg-muted/70 text-foreground shadow-sm dark:bg-background dark:text-foreground",
 };
 
 const navGroupBlueprint: Array<{ key: string; title: string; items: string[] }> = [
@@ -299,8 +301,8 @@ function NavGroupDropdown({
                     className={cn(
                       "absolute -left-px top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full transition-all duration-150",
                       isSubActive
-                        ? "bg-sidebar-primary opacity-100"
-                        : "bg-transparent opacity-0 group-hover/sub:bg-sidebar-foreground/25 group-hover/sub:opacity-100"
+                        ? "bg-background opacity-100"
+                        : "bg-transparent opacity-0 group-hover/sub:bg-background/25 group-hover/sub:opacity-100"
                     )}
                   />
 
@@ -422,8 +424,8 @@ function NavGroupFlyout({
         className={cn(
           "group/nav flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
           isAnySubActive || open
-            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+            ? "bg-background text-sidebar-accent-foreground shadow-sm"
+            : "text-sidebar-foreground/70 hover:bg-background/50 hover:text-sidebar-accent-foreground"
         )}
       >
         <entry.icon
@@ -458,7 +460,7 @@ function NavGroupFlyout({
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border/60 bg-muted/40 px-4 py-3">
               <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary/10 text-sidebar-primary">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-background/10 text-sidebar-primary">
                   <entry.icon className="h-4 w-4" strokeWidth={2} />
                 </span>
                 <div className="leading-tight">
@@ -471,7 +473,7 @@ function NavGroupFlyout({
               <Link
                 to={entry.href}
                 onClick={onNavigate}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-sidebar-primary transition-colors hover:bg-sidebar-accent/60"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-sidebar-primary transition-colors hover:bg-background/60"
               >
                 View All
                 <ExternalLink className="h-3 w-3" />
@@ -494,24 +496,24 @@ function NavGroupFlyout({
                     className={cn(
                       "group/item relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors duration-150",
                       isSubActive
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                        ? "bg-background text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-background/50 hover:text-sidebar-accent-foreground"
                     )}
                   >
                     {/* Active accent bar */}
                     <span
                       className={cn(
-                        "absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-sidebar-primary transition-opacity",
+                        "absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-background-primary transition-opacity",
                         isSubActive ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sidebar-accent/60 text-sidebar-foreground/70 transition-colors group-hover/item:bg-sidebar-accent group-hover/item:text-sidebar-primary">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-background/60 text-sidebar-foreground/70 transition-colors group-hover/item:bg-background group-hover/item:text-sidebar-primary">
                       <sub.icon className="h-3.5 w-3.5" strokeWidth={2} />
                     </span>
                     <span className="flex flex-1 items-center justify-between truncate">
                       <span className="truncate">{sub.name}</span>
                       {count > 0 && (
-                        <span className="rounded-full bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sidebar-foreground/70">
+                        <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-sidebar-foreground/70">
                           {count}
                         </span>
                       )}
@@ -983,8 +985,8 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
 
   if (isMobile) {
     return (
-      <div className={cn("flex h-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground", className)}>
-        <div className="relative overflow-hidden border-b border-sidebar-border bg-sidebar-accent/20">
+      <div className={cn("flex h-full flex-col overflow-hidden bg-background text-sidebar-foreground", className)}>
+        <div className="relative overflow-hidden border-b border-sidebar-border bg-background/20">
           <div className="relative px-5 pt-6 pb-5 text-sidebar-foreground">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -1007,7 +1009,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
               <SheetClose asChild>
                 <button
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent text-sidebar-foreground shadow-sm transition hover:bg-sidebar-accent/80"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-sidebar-border bg-background text-sidebar-foreground shadow-sm transition hover:bg-background/80"
                   aria-label="Close navigation"
                 >
                   <ChevronLeft className="h-5 w-5" />
@@ -1022,7 +1024,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
               <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-sidebar-foreground/60">
                 {group.title}
               </p>
-              <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-sidebar-accent/10 shadow-sm">
+              <div className="overflow-hidden rounded-3xl border border-sidebar-border bg-background/10 shadow-sm">
                 {group.items.map((entry, idx) => {
                   // Submenu item → same horizontal tiles as desktop
                   if (entry.submenu && entry.submenu.length > 0) {
@@ -1045,14 +1047,14 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
                       className={cn(
                         "relative flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors duration-200",
                         entry.isActive
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
+                          ? "bg-background text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground hover:bg-background/50 hover:text-sidebar-accent-foreground",
                         idx !== group.items.length - 1 ? "border-b border-sidebar-border/50" : ""
                       )}
                     >
                       <span className={cn(
                         "flex h-10 w-10 items-center justify-center rounded-2xl transition-colors",
-                        entry.isActive ? "bg-sidebar-primary text-sidebar-primary-foreground" : "bg-sidebar-accent/50 text-sidebar-foreground"
+                        entry.isActive ? "bg-background-primary text-sidebar-primary-foreground" : "bg-background/50 text-sidebar-foreground"
                       )}>
                         <entry.icon className="h-5 w-5" strokeWidth={1.6} />
                       </span>
@@ -1082,7 +1084,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
         </div>
         <div className="border-t border-sidebar-border px-4 py-5">
             <div className="mb-3">
-              <Link to="/status" onClick={onNavigate} className="flex items-center justify-center gap-2 rounded-full bg-sidebar-accent/30 border border-sidebar-border py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
+              <Link to="/status" onClick={onNavigate} className="flex items-center justify-center gap-2 rounded-full bg-background/30 border border-sidebar-border py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:bg-background hover:text-sidebar-foreground transition-colors">
                 <div className={cn("h-2 w-2 rounded-full animate-pulse", 
                   overallStatus === 'operational' ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" : 
                   overallStatus === 'degraded' ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : 
@@ -1103,7 +1105,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
     <div
       className={cn(
         "group/sidebar relative h-full overflow-hidden border-r border-sidebar-border transition-[width] duration-300 ease-in-out",
-        "bg-sidebar text-sidebar-foreground",
+        "bg-background text-sidebar-foreground",
         isMobile ? "w-full" : collapsed ? "w-[70px]" : "w-72",
         className
       )}
@@ -1140,7 +1142,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
               }
             }}
             className={cn(
-              "h-8 w-8 rounded-lg p-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "h-8 w-8 rounded-lg p-0 text-sidebar-foreground/70 hover:bg-background hover:text-sidebar-accent-foreground",
               collapsed && "mx-auto"
             )}
           >
@@ -1165,8 +1167,8 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
                   className={cn(
                     "group/nav relative flex h-10 w-10 mx-auto items-center justify-center rounded-lg transition-all duration-200",
                     entry.isActive
-                      ? "bg-sidebar-accent text-sidebar-primary shadow-sm"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      ? "bg-background text-sidebar-primary shadow-sm"
+                      : "text-sidebar-foreground/70 hover:bg-background hover:text-sidebar-accent-foreground"
                   )}
                   onClick={onNavigate}
                   title={entry.name}
@@ -1203,8 +1205,8 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
                         className={cn(
                           "group/nav flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
                           entry.isActive
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                            ? "bg-background text-sidebar-accent-foreground shadow-sm"
+                            : "text-sidebar-foreground/70 hover:bg-background/50 hover:text-sidebar-accent-foreground"
                         )}
                         onClick={onNavigate}
                       >
@@ -1218,7 +1220,7 @@ export function Sidebar({ className, isMobile, onNavigate }: SidebarProps) {
                                 "inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 text-[10px] font-bold ring-1 ring-inset",
                                 badge.tone === 'destructive' ? "bg-red-500/10 text-red-600 ring-red-500/20 dark:bg-red-500/20 dark:text-red-400" :
                                 badge.tone === 'warning' ? "bg-amber-500/10 text-amber-600 ring-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400" :
-                                "bg-sidebar-accent text-sidebar-foreground ring-sidebar-border"
+                                "bg-background text-sidebar-foreground ring-sidebar-border"
                               )}
                             >
                               {badge.value}

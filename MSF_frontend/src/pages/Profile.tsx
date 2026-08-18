@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import Breadcrumbs from "@/components/layout/Breadcrumbs";
 import { listUsers, updateUser, type AppUser } from "@/services/users";
-import { djangoRequest } from "@/services/djangoAuth";
+import { djangoRequest, resolveMediaUrl } from "@/services/djangoAuth";
 import { trackActivity } from "@/services/notifications";
 import { cn } from "@/lib/utils";
 import {
@@ -128,7 +128,7 @@ export default function Profile() {
         setName(me.name || "");
         setPhone(me.phone || "");
         setDept(me.department || "");
-        if (me.avatar_url) setPhotoPreview(me.avatar_url);
+        if (me.avatar_url) setPhotoPreview(me.avatar_url.includes("?") ? me.avatar_url : `${me.avatar_url}?t=${Date.now()}`);
         setEmailNotif(localStorage.getItem("profile_email_notif") !== "0");
       } catch {
         toast({ title: "Failed to load profile", variant: "destructive" });
@@ -144,6 +144,11 @@ export default function Profile() {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       toast({ title: "File too large", description: "Maximum size is 5 MB.", variant: "destructive" });
+      return;
+    }
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Invalid file type", description: "Allowed: JPEG, PNG, WebP, GIF.", variant: "destructive" });
       return;
     }
     setPhotoFile(file);
@@ -174,17 +179,25 @@ export default function Profile() {
         body: photoFile ? fd : JSON.stringify({ profile_image: null }),
       });
       if (!res.success) throw new Error(res.message || "Failed");
+      const rawUrl: string | null = resolveMediaUrl(res.data?.profile_image);
+      const avatarUrl = rawUrl ? `${rawUrl}?t=${Date.now()}` : null;
       const updated: AppUser = {
         ...user,
-        avatar_url: res.data?.profile_image ?? null,
+        avatar_url: avatarUrl,
       };
       setUser(updated);
       setPhotoChanged(false);
-      // sync header avatar
+      if (avatarUrl) setPhotoPreview(avatarUrl);
+      // sync header avatar + notify layout components
       try {
-        const raw = localStorage.getItem("auth_user");
-        if (raw) localStorage.setItem("auth_user", JSON.stringify({ ...JSON.parse(raw), avatar_url: updated.avatar_url }));
+        const stored = localStorage.getItem("auth_user");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          parsed.avatar_url = avatarUrl;
+          localStorage.setItem("auth_user", JSON.stringify(parsed));
+        }
       } catch {}
+      window.dispatchEvent(new Event("auth-user-updated"));
       toast({ title: "Photo updated" });
     } catch (e: any) {
       toast({ title: "Photo update failed", description: e?.message, variant: "destructive" });

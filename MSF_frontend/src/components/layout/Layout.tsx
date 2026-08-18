@@ -255,7 +255,7 @@ export function Layout({ children }: LayoutProps) {
           )}
         </div>
         <main ref={mainRef} className={cn(
-          "flex-1 min-h-0 overflow-auto overscroll-contain bg-muted/30",
+          "flex-1 min-h-0 overflow-auto overscroll-contain bg-gradient-to-r from-[var(--bg-start)] via-[var(--bg-middle)] to-[var(--bg-end)]",
           "p-4 md:p-6",
           isMobile && "pb-32"
         )}>

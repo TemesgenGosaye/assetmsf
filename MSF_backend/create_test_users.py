@@ -49,7 +49,71 @@ users_to_create = [
         'role': 'ADMIN',
         'is_staff': True,
         'is_superuser': False
-    }
+    },
+    {
+        'email': 'temesgen@msf.com',
+        'password': 'admin123',
+        'name': 'Temesgen',
+        'role': 'ADMIN',
+        'is_staff': True,
+        'is_superuser': False
+    },
+    {
+        'email': 'biniam@msf.com',
+        'password': 'admin123',
+        'name': 'Biniam',
+        'role': 'ADMIN',
+        'is_staff': True,
+        'is_superuser': False
+    },
+    {
+        'email': 'ermias@msf.com',
+        'password': 'admin123',
+        'name': 'Ermias',
+        'role': 'ADMIN',
+        'is_staff': True,
+        'is_superuser': False
+    },
+    {
+        'email': 'yitgesu@msf.com',
+        'password': 'admin123',
+        'name': 'Yitgesu',
+        'role': 'ADMIN',
+        'is_staff': True,
+        'is_superuser': False
+    },
+    {
+        'email': 'lebata@msf.com',
+        'password': 'admin123',
+        'name': 'Lebata',
+        'role': 'ADMIN',
+        'is_staff': True,
+        'is_superuser': False
+    },
+    {
+        'email': 'tsegaye@msf.com',
+        'password': 'admin123',
+        'name': 'Tsegaye',
+        'role': 'ADMIN',
+        'is_staff': True,
+        'is_superuser': False
+    },
+    {
+        'email': 'abdi@msf.com',
+        'password': 'admin123',
+        'name': 'Abdi',
+        'role': 'APPLICANT',
+        'is_staff': False,
+        'is_superuser': False
+    },
+    {
+        'email': 'helen@msf.com',
+        'password': 'admin123',
+        'name': 'Helen',
+        'role': 'APPLICANT',
+        'is_staff': False,
+        'is_superuser': False
+    },
 ]
 
 print("Seeding test users...")

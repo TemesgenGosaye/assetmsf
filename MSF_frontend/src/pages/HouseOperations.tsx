@@ -44,6 +44,10 @@ import {
   scheduleInspection,
   completeInspection,
   deleteInspection,
+  listPostInspections,
+  schedulePostInspection,
+  completePostInspection,
+  deletePostInspection,
   listMaintenance,
   createMaintenanceRequest,
   updateMaintenanceStatus,
@@ -63,6 +67,7 @@ import {
   getRentRollMatrix,
   invalidateHouseOperationsCache,
   type HouseInspection,
+  type PostInspection,
   type MaintenanceRequest,
   type HouseTransfer,
   type RentalContract,
@@ -148,6 +153,9 @@ export default function HouseOperations() {
           <TabsTrigger value="inspections">
             <ClipboardCheck className="mr-2 h-4 w-4" /> Inspections
           </TabsTrigger>
+          <TabsTrigger value="post-inspections">
+            <ClipboardCheck className="mr-2 h-4 w-4" /> Post-Inspections
+          </TabsTrigger>
           <TabsTrigger value="maintenance">
             <Hammer className="mr-2 h-4 w-4" /> Maintenance
           </TabsTrigger>
@@ -161,6 +169,9 @@ export default function HouseOperations() {
 
         <TabsContent value="inspections" className="mt-4">
           <InspectionsTab canAdmin={canAdmin} />
+        </TabsContent>
+        <TabsContent value="post-inspections" className="mt-4">
+          <PostInspectionsTab canAdmin={canAdmin} />
         </TabsContent>
         <TabsContent value="maintenance" className="mt-4">
           <MaintenanceTab canAdmin={canAdmin} />
@@ -432,6 +443,329 @@ function InspectionsTab({ canAdmin }: { canAdmin: boolean }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCompleteTarget(null)}>Cancel</Button>
             <Button onClick={handleComplete} disabled={busy}>{busy ? "Saving…" : "Complete Inspection"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
+// ─── Post-Inspections (pre-termination validation) ─────────────────────────
+
+function PostInspectionsTab({ canAdmin }: { canAdmin: boolean }) {
+  const [rows, setRows] = useState<PostInspection[]>([]);
+  const [houses, setHouses] = useState<House[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [completeTarget, setCompleteTarget] = useState<PostInspection | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const [form, setForm] = useState({
+    house: "",
+    inspection_type: "Pre-Termination",
+    scheduled_date: "",
+    findings: "",
+    employee_id: "",
+    employee_name: "",
+  });
+  const [completeForm, setCompleteForm] = useState({
+    findings: "",
+    damage_costs: "",
+    overall_condition: "Good",
+    repair_required: false,
+    estimated_repair_cost: "",
+    door: false,
+    windows: false,
+    walls: false,
+    switch: false,
+    bulb: false,
+    water: false,
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [p, h] = await Promise.all([listPostInspections(), listHouses()]);
+      setRows(p);
+      setHouses(h);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load post-inspections");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const resetForm = () =>
+    setForm({ house: "", inspection_type: "Pre-Termination", scheduled_date: "", findings: "", employee_id: "", employee_name: "" });
+
+  const handleCreate = async () => {
+    if (!form.house || !form.scheduled_date) {
+      toast.error("House and scheduled date are required");
+      return;
+    }
+    setBusy(true);
+    try {
+      await schedulePostInspection(form);
+      toast.success("Post-inspection scheduled");
+      setOpen(false);
+      resetForm();
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to schedule post-inspection");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!completeTarget) return;
+    setBusy(true);
+    try {
+      await completePostInspection(completeTarget.id, {
+        findings: completeForm.findings,
+        damage_costs: completeForm.damage_costs,
+        overall_condition: completeForm.overall_condition,
+        repair_required: completeForm.repair_required,
+        estimated_repair_cost: completeForm.estimated_repair_cost,
+        checklist_results: {
+          door: completeForm.door,
+          windows: completeForm.windows,
+          walls: completeForm.walls,
+          switch: completeForm.switch,
+          bulb: completeForm.bulb,
+          water: completeForm.water,
+        },
+      });
+      toast.success("Post-inspection completed — house condition synced");
+      setCompleteTarget(null);
+      invalidateHousingAnalyticsCache();
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to complete post-inspection");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const conditionColor = (c: string) => {
+    switch (c) {
+      case "Excellent": return "text-emerald-600";
+      case "Good": return "text-blue-600";
+      case "Fair": return "text-amber-600";
+      case "Poor": return "text-orange-600";
+      case "Critical": return "text-red-600";
+      default: return "text-muted-foreground";
+    }
+  };
+
+  const cols: ColDef<PostInspection>[] = [
+    { key: "house_hid", header: "House", width: "w-28", sortable: true, pinned: true, value: (r) => r.house_hid },
+    { key: "house_type", header: "Type", width: "w-20", value: (r) => r.house_type, cell: (r) => <Badge variant="outline">{r.house_type}</Badge> },
+    { key: "house_location", header: "Location", width: "min-w-[140px]", value: (r) => r.house_location },
+    { key: "employee_name", header: "Employee", width: "min-w-[140px]", value: (r) => r.employee_name || "—" },
+    { key: "inspection_type", header: "Kind", width: "w-28", value: (r) => r.inspection_type, cell: (r) => <span className="text-sm capitalize">{r.inspection_type}</span> },
+    { key: "status", header: "Status", width: "w-28", value: (r) => r.status, badge: true },
+    { key: "overall_condition", header: "Condition", width: "w-28", value: (r) => r.overall_condition || "—", cell: (r) => <span className={`text-sm font-medium ${conditionColor(r.overall_condition)}`}>{r.overall_condition || "—"}</span> },
+    { key: "scheduled_date", header: "Scheduled", width: "w-28", sortable: true, value: (r) => fmtDate(r.scheduled_date) },
+    { key: "completed_date", header: "Completed", width: "w-28", value: (r) => fmtDate(r.completed_date) },
+    { key: "inspector_name", header: "Inspector", width: "min-w-[120px]", value: (r) => r.inspector_name },
+    { key: "damage_costs", header: "Damage Cost", width: "w-28", align: "right", value: (r) => r.damage_costs, cell: (r) => fmtMoney(r.damage_costs) },
+    { key: "repair_required", header: "Repair", width: "w-20", value: (r) => r.repair_required ? "Yes" : "No", cell: (r) => r.repair_required ? <Badge variant="destructive">Yes</Badge> : <Badge variant="outline">No</Badge> },
+    {
+      key: "findings",
+      header: "Findings",
+      width: "min-w-[180px]",
+      value: (r) => r.findings,
+      cell: (r) => <span className="line-clamp-2 text-sm text-muted-foreground">{r.findings || "—"}</span>,
+    },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-base">Post-Inspections (Pre-Termination)</CardTitle>
+          <CardDescription>Mandatory inspections before allocation termination can proceed</CardDescription>
+        </div>
+        <Button onClick={() => setOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Schedule Post-Inspection
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <DataTable
+          tableKey="houses:post-inspections"
+          exportFileName="house-post-inspections"
+          reportTitle="House Post-Inspection Records"
+          columns={cols}
+          data={rows}
+          rowKey={(r) => r.id}
+          loading={loading}
+          searchable
+          searchPlaceholder="Search house, employee or location…"
+          pageSize={12}
+          emptyMessage="No post-inspections scheduled."
+          rowActions={(r) => [
+            {
+              label: "Mark Completed",
+              icon: CheckCircle2,
+              hidden: !canAdmin || r.status === "Completed",
+              onClick: () => {
+                setCompleteForm({
+                  findings: r.findings ?? "",
+                  damage_costs: "",
+                  overall_condition: r.overall_condition || "Good",
+                  repair_required: r.repair_required,
+                  estimated_repair_cost: "",
+                  door: false, windows: false, walls: false, switch: false, bulb: false, water: false,
+                });
+                setCompleteTarget(r);
+              },
+            },
+            {
+              label: "Delete",
+              icon: Trash2,
+              variant: "destructive",
+              onClick: async () => {
+                try {
+                  await deletePostInspection(r.id);
+                  toast.success("Post-inspection deleted");
+                  await load();
+                } catch (e: any) {
+                  toast.error(e?.message || "Failed to delete post-inspection");
+                }
+              },
+            },
+          ]}
+        />
+      </CardContent>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Schedule Post-Inspection</DialogTitle>
+            <DialogDescription>Create a post-inspection record for a house before termination.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>House</Label>
+              <Select value={form.house} onValueChange={(v) => setForm({ ...form, house: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select house" />
+                </SelectTrigger>
+                <SelectContent>
+                  {houses.map((h) => (
+                    <SelectItem key={h.id} value={h.id}>
+                      {h.house_id} · {h.location} · {h.house_type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <Select value={form.inspection_type} onValueChange={(v) => setForm({ ...form, inspection_type: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["Pre-Termination", "Post-Occupancy", "Move-Out", "Damage Assessment"].map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Scheduled date</Label>
+                <Input type="date" value={form.scheduled_date} onChange={(e) => setForm({ ...form, scheduled_date: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Employee ID (optional)</Label>
+                <Input value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} placeholder="EMP-XXXX" />
+              </div>
+              <div className="space-y-2">
+                <Label>Employee Name (optional)</Label>
+                <Input value={form.employee_name} onChange={(e) => setForm({ ...form, employee_name: e.target.value })} placeholder="Full name" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Findings (optional)</Label>
+              <Textarea value={form.findings} onChange={(e) => setForm({ ...form, findings: e.target.value })} placeholder="Pre-inspection notes…" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={busy}>{busy ? "Scheduling…" : "Schedule"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!completeTarget} onOpenChange={(v) => !v && setCompleteTarget(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Complete Post-Inspection — {completeTarget?.house_hid}</DialogTitle>
+            <DialogDescription>Record findings, condition rating, and sync damage flags to the house.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Findings</Label>
+              <Textarea value={completeForm.findings} onChange={(e) => setCompleteForm({ ...completeForm, findings: e.target.value })} placeholder="Condition notes…" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>Overall Condition</Label>
+                <Select value={completeForm.overall_condition} onValueChange={(v) => setCompleteForm({ ...completeForm, overall_condition: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["Excellent", "Good", "Fair", "Poor", "Critical"].map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Damage Costs (ETB)</Label>
+                <Input type="number" min={0} value={completeForm.damage_costs} onChange={(e) => setCompleteForm({ ...completeForm, damage_costs: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Repair Cost (ETB)</Label>
+                <Input type="number" min={0} value={completeForm.estimated_repair_cost} onChange={(e) => setCompleteForm({ ...completeForm, estimated_repair_cost: e.target.value })} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={completeForm.repair_required}
+                onCheckedChange={(v) => setCompleteForm({ ...completeForm, repair_required: !!v })}
+              />
+              <Label className="text-sm">Repair Required</Label>
+            </div>
+            <div className="space-y-2">
+              <Label className="mb-2 block">Damaged Fixtures</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  ["door", "Door"], ["windows", "Windows"], ["walls", "Walls"],
+                  ["switch", "Switch"], ["bulb", "Bulb"], ["water", "Water"],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={completeForm[key]}
+                      onCheckedChange={(v) => setCompleteForm({ ...completeForm, [key]: !!v })}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompleteTarget(null)}>Cancel</Button>
+            <Button onClick={handleComplete} disabled={busy}>{busy ? "Saving…" : "Complete Post-Inspection"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -61,6 +61,7 @@ import EligibilityConfigPage from "./pages/EligibilityConfigPage";
 import HouseApplicationNew from "./pages/HouseApplicationNew";
 import HouseApplicationMy from "./pages/HouseApplicationMy";
 import HouseApplicationStatus from "./pages/HouseApplicationStatus";
+import TerminationManagement from "./pages/TerminationManagement";
 import Properties from "./pages/Properties";
 import PropertyDetails from "./pages/PropertyDetails";
 import HouseDetails from "./pages/HouseDetails";
@@ -102,7 +103,7 @@ const updateFavicon = () => {
   }
 };
 
-import { isAuthenticated, getCurrentUser } from "@/services/djangoAuth";
+import { isAuthenticated, getCurrentUser, clearStoredSession } from "@/services/djangoAuth";
 import { normalizeRole } from "@/services/permissions";
 
 function SessionLoading() {
@@ -133,6 +134,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     (async () => {
       if (!isAuthenticated()) {
+        clearStoredSession();
         if (!cancelled) setState("invalid");
         return;
       }
@@ -141,13 +143,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
       const user = await getCurrentUser().catch(() => null);
       if (cancelled) return;
       if (!user) {
-        try {
-          localStorage.removeItem("django_access_token");
-          localStorage.removeItem("django_refresh_token");
-          localStorage.removeItem("django_user");
-          localStorage.removeItem("current_user_id");
-          localStorage.removeItem("auth_user");
-        } catch {}
+        clearStoredSession();
         if (!cancelled) setState("invalid");
         return;
       }
@@ -422,6 +418,14 @@ const App = () => (
                 <RequireView page="houses">
                   <HouseOperations />
                 </RequireView>
+              }
+            />
+            <Route
+              path="/houses/terminations"
+              element={
+                <RoleGate roles={["admin", "manager"]}>
+                  <TerminationManagement />
+                </RoleGate>
               }
             />
             <Route

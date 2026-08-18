@@ -15,11 +15,20 @@ from .views import (
     AllocationListView, AllocationDetailView,
     AllocateView, TerminateAllocationView,
     ApplicationAuditView,
+    HandoverReceiptListCreateView, HandoverReceiptDetailView, HandoverReceiptPrintView,
+    TerminationCaseListCreateView, TerminationCaseDetailView,
+    TerminationTransactionListCreateView, TerminationTransactionDetailView,
+    TerminationApproveView, TerminationProcessView,
+    TerminationVerifyCodeView, TerminationResolveIssuesView,
+    TerminateWithCodeView,
+    TerminationStatsView, AllocatedEmployeesListView,
 )
 from .operations_views import (
     HousingAnalyticsView, AvailableHousesView, ConflictDetectionView,
     ResolveConflictView, RecommendationsView, OccupancyView,
     InspectionListCreateView, InspectionDetailView, InspectionCompleteView,
+    PostInspectionListCreateView, PostInspectionDetailView, PostInspectionCompleteView,
+    PreInspectionValidationView,
     MaintenanceListCreateView, MaintenanceDetailView, MaintenanceStatusView,
     TransferListCreateView, TransferDetailView, TransferDecideView, TransferCompleteView,
     ContractListCreateView, ContractDetailView, ContractTerminateView,
@@ -62,6 +71,11 @@ urlpatterns = [
     path("allocate/",                  AllocateView.as_view(),                       name="allocate"),
     path("allocations/<uuid:id>/terminate/", TerminateAllocationView.as_view(),      name="allocation_terminate"),
 
+    # ── Handover receipts ──────────────────────────────────────────────
+    path("handover-receipts/",                HandoverReceiptListCreateView.as_view(), name="handover_receipt_list_create"),
+    path("handover-receipts/<uuid:id>/",      HandoverReceiptDetailView.as_view(),     name="handover_receipt_detail"),
+    path("handover-receipts/<uuid:id>/print/", HandoverReceiptPrintView.as_view(),     name="handover_receipt_print"),
+
     # ── Audit timeline ─────────────────────────────────────────────────
     path("applications/<uuid:id>/audit/", ApplicationAuditView.as_view(),            name="application_audit"),
 
@@ -89,6 +103,12 @@ urlpatterns = [
     path("inspections/<uuid:id>/",     InspectionDetailView.as_view(),               name="inspection_detail"),
     path("inspections/<uuid:id>/complete/", InspectionCompleteView.as_view(),        name="inspection_complete"),
 
+    # ── House operations: post-inspections (pre-termination) ───────────
+    path("post-inspections/",          PostInspectionListCreateView.as_view(),       name="post_inspection_list_create"),
+    path("post-inspections/<uuid:id>/", PostInspectionDetailView.as_view(),          name="post_inspection_detail"),
+    path("post-inspections/<uuid:id>/complete/", PostInspectionCompleteView.as_view(), name="post_inspection_complete"),
+    path("pre-inspection/validate/",   PreInspectionValidationView.as_view(),        name="pre_inspection_validate"),
+
     # ── House operations: maintenance ──────────────────────────────────
     path("maintenance-requests/",      MaintenanceListCreateView.as_view(),          name="maintenance_list_create"),
     path("maintenance-requests/<uuid:id>/", MaintenanceDetailView.as_view(),         name="maintenance_detail"),
@@ -110,4 +130,17 @@ urlpatterns = [
     path("invoices/<uuid:id>/payments/", InvoicePaymentsView.as_view(),              name="invoice_payments"),
     path("payments/",                  PaymentListCreateView.as_view(),              name="payment_list_create"),
     path("rentals/summary/",           RentalSummaryView.as_view(),                  name="rental_summary"),
+
+    # ── Termination management ─────────────────────────────────────────
+    path("termination-cases/",                TerminationCaseListCreateView.as_view(),          name="termination_case_list_create"),
+    path("termination-cases/<uuid:id>/",      TerminationCaseDetailView.as_view(),              name="termination_case_detail"),
+    path("terminations/",                     TerminationTransactionListCreateView.as_view(),   name="termination_list_create"),
+    path("terminations/<uuid:id>/",           TerminationTransactionDetailView.as_view(),       name="termination_detail"),
+    path("terminations/<uuid:id>/approve/",   TerminationApproveView.as_view(),                 name="termination_approve"),
+    path("terminations/<uuid:id>/verify-code/", TerminationVerifyCodeView.as_view(),            name="termination_verify_code"),
+    path("terminations/<uuid:id>/resolve-issues/", TerminationResolveIssuesView.as_view(),      name="termination_resolve_issues"),
+    path("terminations/<uuid:id>/process/",   TerminationProcessView.as_view(),                 name="termination_process"),
+    path("terminations/<uuid:id>/terminate-with-code/", TerminateWithCodeView.as_view(),          name="terminate_with_code"),
+    path("terminations/stats/",               TerminationStatsView.as_view(),                   name="termination_stats"),
+    path("allocated-employees/",              AllocatedEmployeesListView.as_view(),             name="allocated_employees_list"),
 ]
