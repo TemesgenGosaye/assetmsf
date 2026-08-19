@@ -174,7 +174,7 @@ export default function AssetAnalytics() {
           icon={Package}
           title="Total Assets"
           value={analytics?.totals.total_assets ?? 0}
-          caption={`${(analytics?.totals.total_quantity ?? 0).toLocaleString()} units tracked`}
+          caption={`${(analytics?.totals.total_assets ?? 0).toLocaleString()} assets tracked`}
           variant="blue"
         />
         <MetricCard

@@ -17,12 +17,15 @@ from django.utils import timezone
 from core.responses import StandardResponse
 from core.permissions import IsAdminOrManager
 from .models import (
-    House, HouseInspection, PostInspection, MaintenanceRequest, HouseTransfer,
+    House, HouseInspection, PostInspection, MaintenanceRequest,
+    MaintenanceRequestLog, HouseTransfer,
     RentalContract, RentalInvoice, RentalPayment, HouseApplication,
     Allocation,
 )
 from .serializers import (
-    HouseInspectionSerializer, PostInspectionSerializer, MaintenanceRequestSerializer,
+    HouseInspectionSerializer, PostInspectionSerializer,
+    MaintenanceRequestSerializer, MaintenanceRequestCreateSerializer,
+    MaintenanceRequestCivilWorkUpdateSerializer, MaintenanceRequestLogSerializer,
     HouseTransferSerializer, RentalContractSerializer,
     RentalInvoiceSerializer, RentalPaymentSerializer,
     HouseApplicationDetailSerializer,
@@ -405,51 +408,48 @@ class PreInspectionValidationView(APIView):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  MAINTENANCE REQUESTS
+#  MAINTENANCE REQUESTS (Legacy + Civil Work)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class MaintenanceListCreateView(generics.ListCreateAPIView):
+    """Legacy list/create view for backward compatibility."""
     permission_classes = [IsAuthenticated]
     queryset = MaintenanceRequest.objects.filter(is_active=True)
     serializer_class = MaintenanceRequestSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["house", "status", "priority"]
-    search_fields = ["house__house_id", "title", "assigned_to"]
-    ordering_fields = ["created_at", "priority", "status", "cost"]
+    search_fields = ["house__house_id", "title"]
+    ordering_fields = ["created_at", "priority", "status"]
     ordering = ["-created_at"]
 
     def list(self, request, *args, **kwargs):
         qs = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(qs)
-        if page is not None:
-            return self.get_paginated_response(MaintenanceRequestSerializer(page, many=True).data)
-        return StandardResponse.success(MaintenanceRequestSerializer(qs, many=True).data, "Maintenance requests retrieved")
+        serializer = self.get_serializer(qs, many=True)
+        return StandardResponse.success(serializer.data, "Maintenance requests retrieved")
 
     def create(self, request, *args, **kwargs):
         data = request.data
-        house = self._resolve_house(data.get("house"))
-        if house is None:
-            return StandardResponse.bad_request("house is required and must exist.")
+        house_id = data.get("house")
+        if not house_id:
+            return StandardResponse.bad_request("house is required.")
         try:
-            req = operations_service.create_maintenance_request(
-                user=request.user,
-                house=house,
-                title=data.get("title", ""),
-                description=data.get("description", ""),
-                priority=data.get("priority", "Medium"),
-            )
-            return StandardResponse.created(MaintenanceRequestSerializer(req).data, "Maintenance request created")
-        except ValueError as e:
-            return StandardResponse.bad_request(str(e))
-
-    def _resolve_house(self, value):
-        if not value:
-            return None
-        qs = House.objects.filter(is_active=True)
-        try:
-            return qs.get(id=value) if not str(value).startswith("90-") else qs.get(house_id=value)
+            house = House.objects.get(id=house_id, is_active=True)
         except House.DoesNotExist:
-            return None
+            return StandardResponse.bad_request("House not found.")
+
+        req = MaintenanceRequest.objects.create(
+            house=house,
+            requested_by=request.user,
+            title=data.get("title", ""),
+            description=data.get("description", ""),
+            category=data.get("category", "General"),
+            priority=data.get("priority", "Medium"),
+            status=MaintenanceRequest.Status.SUBMITTED,
+            created_by=request.user,
+        )
+        _log_maintenance_event(req, MaintenanceRequestLog.EventType.SUBMITTED, request.user,
+                               note=f"Request submitted by {request.user.name or request.user.email}")
+        return StandardResponse.created(MaintenanceRequestSerializer(req).data, "Maintenance request created")
 
 
 class MaintenanceDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -468,7 +468,7 @@ class MaintenanceDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class MaintenanceStatusView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminOrManager]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, *args, **kwargs):
         try:
@@ -476,20 +476,339 @@ class MaintenanceStatusView(APIView):
         except MaintenanceRequest.DoesNotExist:
             return StandardResponse.not_found("Maintenance request not found")
         new_status = request.data.get("status")
-        if new_status not in ("Pending", "In Progress", "Completed", "Cancelled"):
-            return StandardResponse.bad_request("Invalid status")
+        valid_statuses = [c[0] for c in MaintenanceRequest.Status.choices]
+        if new_status not in valid_statuses:
+            return StandardResponse.bad_request(f"Invalid status. Valid: {', '.join(valid_statuses)}")
+        old = req.status
+        req.status = new_status
+        if new_status == MaintenanceRequest.Status.COMPLETED:
+            req.resolved_at = timezone.now()
+            req.completion_date = timezone.now().date()
+        if request.data.get("actual_cost") is not None:
+            req.actual_cost = Decimal(str(request.data["actual_cost"]))
+        if request.data.get("resolution_notes"):
+            req.resolution_notes = request.data["resolution_notes"]
+        if request.data.get("rejection_reason"):
+            req.rejection_reason = request.data["rejection_reason"]
+        req.save()
+        _log_maintenance_event(req, MaintenanceRequestLog.EventType.STATUS_CHANGE, request.user,
+                               old_value=old, new_value=new_status,
+                               note=f"Status changed from {old} to {new_status}")
+        return StandardResponse.success(MaintenanceRequestSerializer(req).data, f"Status changed to {new_status}")
+
+def _log_maintenance_event(request_obj, event_type, actor, old_value="", new_value="", note=""):
+    """Create an immutable audit log entry for a maintenance request."""
+    MaintenanceRequestLog.objects.create(
+        request=request_obj,
+        event_type=event_type,
+        actor=actor,
+        actor_name=actor.name or actor.email if actor else "",
+        old_value=old_value,
+        new_value=new_value,
+        note=note,
+    )
+
+
+class ApplicantMaintenanceSubmitView(generics.CreateAPIView):
+    """
+    Applicant-only endpoint to submit maintenance requests for their allocated houses.
+    Only users with APPLICANT role can access this. The request is automatically
+    routed to the Civil Work Department with status 'Submitted'.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = MaintenanceRequestCreateSerializer
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        if user.role not in ("APPLICANT", "REQUESTER", "ADMIN", "SUPER_ADMIN"):
+            return StandardResponse.forbidden("Only applicants can submit maintenance requests from this form.")
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        house = serializer.validated_data["house"]
+        req = MaintenanceRequest.objects.create(
+            house=house,
+            requested_by=user,
+            title=serializer.validated_data["title"],
+            description=serializer.validated_data["description"],
+            category=serializer.validated_data.get("category", "General"),
+            priority=serializer.validated_data.get("priority", "Medium"),
+            status=MaintenanceRequest.Status.SUBMITTED,
+            created_by=user,
+        )
+
+        _log_maintenance_event(
+            req, MaintenanceRequestLog.EventType.SUBMITTED, user,
+            note=f"Request submitted by {user.name or user.email}"
+        )
+
+        return StandardResponse.created(
+            MaintenanceRequestSerializer(req).data,
+            "Maintenance request submitted successfully. It will be reviewed by the Civil Work Department."
+        )
+
+
+class ApplicantMaintenanceListView(generics.ListAPIView):
+    """
+    Applicant-only endpoint to list their own maintenance requests.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = MaintenanceRequestSerializer
+
+    def get_queryset(self):
+        return MaintenanceRequest.objects.filter(
+            requested_by=self.request.user,
+            is_active=True,
+        ).select_related("house", "requested_by", "received_by", "civil_work_assigned_to")
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(qs, many=True)
+        return StandardResponse.success(serializer.data, "Your maintenance requests retrieved")
+
+
+class CivilWorkPanelView(generics.ListAPIView):
+    """
+    Civil Work Department panel — lists all submitted maintenance requests
+    for authorized civil work users (admin, manager, field_staff).
+    Supports filtering by status, priority, category.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = MaintenanceRequestSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["status", "priority", "category"]
+    search_fields = ["title", "description", "house__house_id", "house__location", "requested_by__name"]
+    ordering_fields = ["created_at", "priority", "status", "category"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = MaintenanceRequest.objects.filter(is_active=True).select_related(
+            "house", "requested_by", "received_by", "civil_work_assigned_to"
+        )
+        # Admins/Managers see all, field_staff see only assigned to them
+        if user.role in ("FIELD_STAFF",):
+            qs = qs.filter(civil_work_assigned_to=user)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        qs = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(qs, many=True)
+        return StandardResponse.success(serializer.data, "Civil work panel data retrieved")
+
+
+class CivilWorkReceiveView(APIView):
+    """
+    Civil Work department receives a submitted maintenance request.
+    Transitions status from 'Submitted' to 'Received' and logs the event.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
         try:
-            req = operations_service.update_maintenance_status(
-                user=request.user,
-                request_obj=req,
-                new_status=new_status,
-                cost=request.data.get("cost"),
-                assigned_to=request.data.get("assigned_to", ""),
-                resolution_note=request.data.get("resolution_note", ""),
+            req = MaintenanceRequest.objects.get(id=kwargs["id"], is_active=True)
+        except MaintenanceRequest.DoesNotExist:
+            return StandardResponse.not_found("Maintenance request not found")
+
+        if req.status != MaintenanceRequest.Status.SUBMITTED:
+            return StandardResponse.bad_request(f"Only 'Submitted' requests can be received. Current status: {req.status}")
+
+        req.status = MaintenanceRequest.Status.RECEIVED
+        req.received_by = request.user
+        req.received_at = timezone.now()
+        req.save(update_fields=["status", "received_by", "received_at", "updated_at"])
+
+        _log_maintenance_event(
+            req, MaintenanceRequestLog.EventType.RECEIVED, request.user,
+            old_value="Submitted", new_value="Received",
+            note=f"Received by {request.user.name or request.user.email}"
+        )
+
+        return StandardResponse.success(
+            MaintenanceRequestSerializer(req).data,
+            "Request received by Civil Work Department"
+        )
+
+
+class CivilWorkAssignView(APIView):
+    """
+    Civil Work department assigns a request to a team member.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        try:
+            req = MaintenanceRequest.objects.get(id=kwargs["id"], is_active=True)
+        except MaintenanceRequest.DoesNotExist:
+            return StandardResponse.not_found("Maintenance request not found")
+
+        if req.status not in (MaintenanceRequest.Status.RECEIVED, MaintenanceRequest.Status.IN_PROGRESS, MaintenanceRequest.Status.ON_HOLD):
+            return StandardResponse.bad_request("Cannot assign request in its current status")
+
+        assignee_id = request.data.get("civil_work_assigned_to")
+        if not assignee_id:
+            return StandardResponse.bad_request("civil_work_assigned_to is required")
+
+        from authentication.models import User as AuthUser
+        try:
+            assignee = AuthUser.objects.get(id=assignee_id)
+        except AuthUser.DoesNotExist:
+            return StandardResponse.not_found("Assignee user not found")
+
+        old_assignee = req.civil_work_assigned_to_id
+        req.civil_work_assigned_to = assignee
+        if req.status == MaintenanceRequest.Status.RECEIVED:
+            req.status = MaintenanceRequest.Status.IN_PROGRESS
+        req.save(update_fields=["civil_work_assigned_to", "status", "updated_at"])
+
+        _log_maintenance_event(
+            req, MaintenanceRequestLog.EventType.ASSIGNED, request.user,
+            old_value=str(old_assignee or ""),
+            new_value=str(assignee_id),
+            note=f"Assigned to {assignee.name or assignee.email} by {request.user.name or request.user.email}"
+        )
+
+        return StandardResponse.success(
+            MaintenanceRequestSerializer(req).data,
+            f"Request assigned to {assignee.name or assignee.email}"
+        )
+
+
+class CivilWorkUpdateView(APIView):
+    """
+    Civil Work department updates a maintenance request — status, notes, cost, etc.
+    Full lifecycle management: progress, hold, complete, reject.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, *args, **kwargs):
+        try:
+            req = MaintenanceRequest.objects.get(id=kwargs["id"], is_active=True)
+        except MaintenanceRequest.DoesNotExist:
+            return StandardResponse.not_found("Maintenance request not found")
+
+        serializer = MaintenanceRequestCivilWorkUpdateSerializer(req, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        old_status = req.status
+        old_priority = req.priority
+        updates = serializer.validated_data
+
+        # Apply updates
+        for field, value in updates.items():
+            setattr(req, field, value)
+
+        # Handle completion
+        if updates.get("status") == MaintenanceRequest.Status.COMPLETED:
+            req.resolved_at = timezone.now()
+            req.completion_date = timezone.now().date()
+
+        # Handle rejection
+        if updates.get("status") == MaintenanceRequest.Status.REJECTED:
+            if not updates.get("rejection_reason"):
+                return StandardResponse.bad_request("rejection_reason is required when rejecting a request")
+
+        req.save()
+
+        # Log status change
+        if "status" in updates and old_status != req.status:
+            _log_maintenance_event(
+                req, MaintenanceRequestLog.EventType.STATUS_CHANGE, request.user,
+                old_value=old_status, new_value=req.status,
+                note=f"Status changed from {old_status} to {req.status}"
             )
-            return StandardResponse.success(MaintenanceRequestSerializer(req).data, f"Status → '{new_status}'")
-        except ValueError as e:
-            return StandardResponse.bad_request(str(e))
+
+        # Log rejection
+        if req.status == MaintenanceRequest.Status.REJECTED and updates.get("rejection_reason"):
+            _log_maintenance_event(
+                req, MaintenanceRequestLog.EventType.REJECTED, request.user,
+                note=f"Rejected: {updates['rejection_reason']}"
+            )
+
+        # Log completion
+        if req.status == MaintenanceRequest.Status.COMPLETED:
+            _log_maintenance_event(
+                req, MaintenanceRequestLog.EventType.COMPLETED, request.user,
+                note=f"Completed by {request.user.name or request.user.email}"
+            )
+
+        # Log assignment change
+        if "civil_work_assigned_to" in updates:
+            _log_maintenance_event(
+                req, MaintenanceRequestLog.EventType.ASSIGNED, request.user,
+                new_value=str(updates["civil_work_assigned_to"]),
+                note=f"Assigned to user {updates['civil_work_assigned_to']}"
+            )
+
+        # Log cost update
+        if "actual_cost" in updates and updates["actual_cost"] is not None:
+            _log_maintenance_event(
+                req, MaintenanceRequestLog.EventType.COST_UPDATED, request.user,
+                new_value=str(updates["actual_cost"]),
+                note=f"Actual cost set to {updates['actual_cost']}"
+            )
+
+        return StandardResponse.success(
+            MaintenanceRequestSerializer(req).data,
+            "Request updated successfully"
+        )
+
+
+class CivilWorkStatsView(APIView):
+    """
+    Civil Work Department dashboard statistics.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        qs = MaintenanceRequest.objects.filter(is_active=True)
+
+        total = qs.count()
+        by_status = {}
+        for status_val, _label in MaintenanceRequest.Status.choices:
+            by_status[status_val] = qs.filter(status=status_val).count()
+
+        by_priority = {}
+        for priority_val, _label in MaintenanceRequest.Priority.choices:
+            by_priority[priority_val] = qs.filter(priority=priority_val).count()
+
+        by_category = {}
+        for cat_val, _label in MaintenanceRequest.Category.choices:
+            count = qs.filter(category=cat_val).count()
+            if count > 0:
+                by_category[cat_val] = count
+
+        # Average completion time for completed requests
+        from django.db.models import Avg, F
+        completed = qs.filter(
+            status=MaintenanceRequest.Status.COMPLETED,
+            resolved_at__isnull=False,
+        )
+        avg_hours = None
+        if completed.exists():
+            durations = []
+            for r in completed.only("created_at", "resolved_at"):
+                if r.resolved_at:
+                    durations.append((r.resolved_at - r.created_at).total_seconds() / 3600)
+            if durations:
+                avg_hours = round(sum(durations) / len(durations), 1)
+
+        # SLA breach count (requests older than 7 days not completed)
+        seven_days_ago = timezone.now() - timezone.timedelta(days=7)
+        overdue_count = qs.filter(
+            status__in=["Submitted", "Received", "In Progress"],
+            created_at__lt=seven_days_ago,
+        ).count()
+
+        return StandardResponse.success({
+            "total": total,
+            "by_status": by_status,
+            "by_priority": by_priority,
+            "by_category": by_category,
+            "avg_resolution_hours": avg_hours,
+            "overdue_count": overdue_count,
+        }, "Civil work statistics retrieved")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

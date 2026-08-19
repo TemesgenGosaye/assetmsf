@@ -1145,14 +1145,14 @@ export function Header({ onMenuClick }: HeaderProps) {
           className={cn(
             "group relative flex items-center justify-center",
             "h-9 w-9 rounded-lg",
-            "border border-slate-600/60",
-            "bg-slate-700/60",
-            "text-slate-300",
+            "border border-[#2a5c38]/70",
+            "bg-[#1a4a2e]/70",
+            "text-emerald-100",
             "transition-all duration-200",
-            "hover:border-blue-500/50 hover:bg-slate-700 hover:text-blue-400",
+            "hover:border-[#cc7c5e]/50 hover:bg-[#1a4a2e] hover:text-[#cc7c5e]",
             "focus-visible:outline-none",
             "focus-visible:ring-2",
-            "focus-visible:ring-blue-400/40"
+            "focus-visible:ring-[#cc7c5e]/40"
           )}
         >
           <Bell
@@ -1160,8 +1160,8 @@ export function Header({ onMenuClick }: HeaderProps) {
               "h-[18px] w-[18px]",
               "transition-all duration-200",
               unreadCount > 0
-                ? "text-blue-400 group-hover:text-blue-300"
-                : "text-slate-300 group-hover:text-blue-400"
+                ? "text-[#cc7c5e] group-hover:text-[#e09070]"
+                : "text-emerald-100 group-hover:text-[#cc7c5e]"
             )}
             strokeWidth={1.8}
           />
@@ -1721,20 +1721,20 @@ export function Header({ onMenuClick }: HeaderProps) {
         "app-header sticky top-0 z-50",
         "h-16 md:h-[68px]",
         "border-b transition-all duration-300",
-        "bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 backdrop-blur-xl",
+        "bg-gradient-to-r from-[#0d2e1f] via-[#163d28] to-[#0d2e1f] backdrop-blur-xl",
         scrolled
-          ? "border-slate-700 shadow-[0_4px_24px_rgba(0,0,0,0.25)]"
-          : "border-slate-700/60 shadow-[0_2px_12px_rgba(0,0,0,0.15)]"
+          ? "border-[#2a5c38] shadow-[0_4px_24px_rgba(0,0,0,0.30)]"
+          : "border-[#2a5c38]/60 shadow-[0_2px_12px_rgba(0,0,0,0.18)]"
       )}
     >
       {/* ======================================================
-          BLUEPRINT / INSTRUMENT-PANEL BACKGROUND
+          AMBIENT BACKGROUND ACCENTS
       ======================================================= */}
 
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-20 top-0 h-full w-80 bg-gradient-to-r from-blue-600/10 to-transparent" />
-        <div className="absolute right-0 top-0 h-full w-60 bg-gradient-to-l from-indigo-600/8 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent" />
+        <div className="absolute -left-20 top-0 h-full w-80 bg-gradient-to-r from-[#cc7c5e]/8 to-transparent" />
+        <div className="absolute right-0 top-0 h-full w-60 bg-gradient-to-l from-emerald-600/6 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#cc7c5e]/40 to-transparent" />
       </div>
 
       {/* ======================================================
@@ -1752,14 +1752,14 @@ export function Header({ onMenuClick }: HeaderProps) {
               className={cn(
                 "group inline-flex h-9 w-9 items-center justify-center",
                 "rounded-lg",
-                "border border-slate-600/60",
-                "bg-slate-700/60",
-                "text-slate-300",
+                "border border-[#2a5c38]/70",
+                "bg-[#1a4a2e]/70",
+                "text-emerald-100",
                 "shadow-sm",
                 "transition-all duration-200",
-                "hover:border-blue-500/50",
-                "hover:bg-slate-700",
-                "hover:text-blue-400"
+                "hover:border-[#cc7c5e]/50",
+                "hover:bg-[#1a4a2e]",
+                "hover:text-[#cc7c5e]"
               )}
             >
               <Menu className="h-[18px] w-[18px] transition-transform group-hover:scale-105" />
@@ -1773,14 +1773,14 @@ export function Header({ onMenuClick }: HeaderProps) {
               className={cn(
                 "group inline-flex h-9 w-9 items-center justify-center",
                 "rounded-lg",
-                "border border-slate-600/60",
-                "bg-slate-700/60",
-                "text-slate-300",
+                "border border-[#2a5c38]/70",
+                "bg-[#1a4a2e]/70",
+                "text-emerald-100",
                 "shadow-sm",
                 "transition-all duration-200",
-                "hover:border-blue-500/50",
-                "hover:bg-slate-700",
-                "hover:text-blue-400"
+                "hover:border-[#cc7c5e]/50",
+                "hover:bg-[#1a4a2e]",
+                "hover:text-[#cc7c5e]"
               )}
             >
               <Search className="h-[17px] w-[17px] transition-transform group-hover:scale-105" />
@@ -1793,8 +1793,8 @@ export function Header({ onMenuClick }: HeaderProps) {
             className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5"
             aria-label="Go to dashboard"
           >
-            <span className="font-mono text-[15px] font-bold tracking-[0.18em] text-slate-100">
-              EAM<span className="text-blue-400">S</span>
+            <span className="font-mono text-[15px] font-bold tracking-[0.18em] text-emerald-50">
+              EAM<span className="text-[#cc7c5e]">S</span>
             </span>
           </Link>
 
@@ -1808,18 +1808,18 @@ export function Header({ onMenuClick }: HeaderProps) {
               aria-label="Toggle theme"
               className={cn(
                 "h-9 w-9 rounded-lg p-0",
-                "border border-slate-600/60",
-                "bg-slate-700/60 text-slate-300",
+                "border border-[#2a5c38]/70",
+                "bg-[#1a4a2e]/70 text-emerald-100",
                 "transition-all duration-200",
-                "hover:border-blue-500/50",
-                "hover:bg-slate-700",
-                "hover:text-blue-400"
+                "hover:border-[#cc7c5e]/50",
+                "hover:bg-[#1a4a2e]",
+                "hover:text-[#cc7c5e]"
               )}
             >
               {isDark ? (
                 <Sun className="h-[17px] w-[17px] text-amber-400" />
               ) : (
-                <Moon className="h-[17px] w-[17px] text-slate-300" />
+                <Moon className="h-[17px] w-[17px] text-emerald-200" />
               )}
             </Button>
 
@@ -1842,15 +1842,15 @@ export function Header({ onMenuClick }: HeaderProps) {
             className="flex shrink-0 items-center gap-2.5"
             aria-label="Go to dashboard"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-md border border-blue-500/30 bg-blue-500/10">
-              <Radio className="h-4 w-4 text-blue-400" strokeWidth={1.8} />
+            <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[#cc7c5e]/30 bg-[#cc7c5e]/10">
+              <Radio className="h-4 w-4 text-[#cc7c5e]" strokeWidth={1.8} />
             </div>
 
             <div className="hidden flex-col leading-none lg:flex">
-              <span className="font-mono text-[15px] font-bold tracking-[0.16em] text-slate-100">
-                EAM<span className="text-blue-400">S</span>
+              <span className="font-mono text-[15px] font-bold tracking-[0.16em] text-emerald-50">
+                EAM<span className="text-[#cc7c5e]">S</span>
               </span>
-              <span className="mt-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-slate-400">
+              <span className="mt-0.5 text-[9px] font-mono uppercase tracking-[0.2em] text-emerald-300/70">
                 Metahara Sugar Factory
               </span>
             </div>
@@ -1866,7 +1866,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                   "pointer-events-none absolute left-3.5 top-1/2",
                   "h-[16px] w-[16px]",
                   "-translate-y-1/2",
-                  "text-slate-400"
+                  "text-emerald-300/60"
                 )}
               />
 
@@ -1875,19 +1875,19 @@ export function Header({ onMenuClick }: HeaderProps) {
                 placeholder="Search anything..."
                 className={cn(
                   "h-10 w-full rounded-lg",
-                  "border border-slate-600/60",
-                  "bg-slate-700/50",
+                  "border border-[#2a5c38]/70",
+                  "bg-[#1a4a2e]/60",
                   "pl-10 pr-16",
-                  "text-sm text-slate-100",
-                  "placeholder:text-slate-400",
+                  "text-sm text-emerald-50",
+                  "placeholder:text-emerald-300/50",
                   "shadow-inner",
                   "transition-all duration-200",
-                  "hover:border-slate-500",
-                  "hover:bg-slate-700/80",
-                  "focus:border-blue-500/60",
-                  "focus:bg-slate-700",
-                  "focus:ring-4 focus:ring-blue-500/10",
-                  "focus-visible:ring-4 focus-visible:ring-blue-500/10"
+                  "hover:border-[#2a5c38]",
+                  "hover:bg-[#1a4a2e]/80",
+                  "focus:border-[#cc7c5e]/60",
+                  "focus:bg-[#1a4a2e]",
+                  "focus:ring-4 focus:ring-[#cc7c5e]/10",
+                  "focus-visible:ring-4 focus-visible:ring-[#cc7c5e]/10"
                 )}
                 readOnly
                 onFocus={() =>
@@ -1904,11 +1904,11 @@ export function Header({ onMenuClick }: HeaderProps) {
                     "pointer-events-none absolute right-2 top-1/2",
                     "-translate-y-1/2",
                     "rounded-md",
-                    "border border-slate-600/60",
-                    "bg-slate-800",
+                    "border border-[#2a5c38]/70",
+                    "bg-[#0d2e1f]",
                     "px-2 py-1",
                     "text-[10px] font-mono font-semibold tracking-wide",
-                    "text-slate-400",
+                    "text-emerald-300/70",
                     "shadow-sm"
                   )}
                 >
@@ -1927,24 +1927,24 @@ export function Header({ onMenuClick }: HeaderProps) {
                 className={cn(
                   "hidden lg:flex items-center gap-3",
                   "rounded-lg px-3.5 py-2",
-                  "border border-slate-600/60",
-                  "bg-slate-700/50",
+                  "border border-[#2a5c38]/70",
+                  "bg-[#1a4a2e]/60",
                   "shadow-sm",
                   "transition-all duration-200",
-                  "hover:border-blue-500/40",
-                  "hover:bg-slate-700"
+                  "hover:border-[#cc7c5e]/40",
+                  "hover:bg-[#1a4a2e]"
                 )}
               >
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 bg-emerald-400" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-slate-800 bg-emerald-400" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-[#0d2e1f] bg-emerald-400" />
                 </span>
 
                 <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="text-[9px] font-mono font-medium uppercase tracking-[0.16em] text-slate-400">
+                  <span className="text-[9px] font-mono font-medium uppercase tracking-[0.16em] text-emerald-300/70">
                     {greeting} · Online
                   </span>
-                  <span className="text-xs font-bold text-slate-100">
+                  <span className="text-xs font-bold text-emerald-50">
                     {firstName || fullName || "Administrator"}
                   </span>
                 </div>
@@ -1952,7 +1952,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             )}
 
             {/* DIVIDER */}
-            <div className="hidden h-7 w-px bg-slate-600/60 sm:block" />
+            <div className="hidden h-7 w-px bg-[#2a5c38]/70 sm:block" />
 
             {/* THEME */}
             <Button
@@ -1962,18 +1962,18 @@ export function Header({ onMenuClick }: HeaderProps) {
               aria-label="Toggle theme"
               className={cn(
                 "h-9 w-9 rounded-lg p-0",
-                "border border-slate-600/60",
-                "bg-slate-700/60 text-slate-300",
+                "border border-[#2a5c38]/70",
+                "bg-[#1a4a2e]/70 text-emerald-100",
                 "transition-all duration-200",
-                "hover:border-blue-500/50",
-                "hover:bg-slate-700",
-                "hover:text-blue-400"
+                "hover:border-[#cc7c5e]/50",
+                "hover:bg-[#1a4a2e]",
+                "hover:text-[#cc7c5e]"
               )}
             >
               {isDark ? (
                 <Sun className="h-[17px] w-[17px] text-amber-400" />
               ) : (
-                <Moon className="h-[17px] w-[17px] text-slate-300" />
+                <Moon className="h-[17px] w-[17px] text-emerald-200" />
               )}
             </Button>
 

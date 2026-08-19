@@ -460,7 +460,7 @@ export default function Employees() {
                 <SelectTrigger className="h-8 w-40 text-sm"><SelectValue placeholder="Department" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Departments</SelectItem>
-                  {departments.filter(d => d.id).map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                  {departments.filter(d => d.id).map(d => <SelectItem key={d.id} value={d.id}>{d.name}{d.code ? ` (${d.code})` : ''}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -557,7 +557,7 @@ export default function Employees() {
                   <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Department <span className="text-destructive">*</span></Label>
                   <Select value={form.department ?? "__none__"} onValueChange={v => setForm({ ...form, department: v === "__none__" ? null : v })}>
                     <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
-                    <SelectContent>{departments.filter(d => d.id).map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                    <SelectContent>{departments.filter(d => d.id).map(d => <SelectItem key={d.id} value={d.id}>{d.name}{d.code ? ` (${d.code})` : ''}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">

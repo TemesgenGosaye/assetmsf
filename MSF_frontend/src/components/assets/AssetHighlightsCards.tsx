@@ -26,10 +26,7 @@ export default function AssetHighlightsCards({ assets }: Props) {
     const expiringSoon = assets.filter(
       (a: any) => String(a.status).toLowerCase() === "expiring soon",
     ).length;
-    const quantity = assets.reduce(
-      (sum, asset) => sum + Number(asset.quantity || 0),
-      0,
-    );
+    const quantity = 0;
 
     return [
       {
@@ -56,19 +53,11 @@ export default function AssetHighlightsCards({ assets }: Props) {
         value: expiringSoon.toLocaleString(),
         caption: "Due within 30 days",
       },
-      {
-        key: "quantity",
-        title: "Total Quantity",
-        icon: Calendar,
-        variant: "violet",
-        value: quantity.toLocaleString(),
-        caption: "Units across tracked assets",
-      },
     ];
   }, [assets]);
 
   return (
-    <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-4">
+    <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3">
       {items.map((item) => (
         <MetricCard
           key={item.key}

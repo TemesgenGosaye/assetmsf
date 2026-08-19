@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     House, HouseApplication, HouseInspection, MaintenanceRequest,
-    HouseTransfer, RentalContract, RentalInvoice, RentalPayment,
+    MaintenanceRequestLog, HouseTransfer, RentalContract, RentalInvoice, RentalPayment,
     ScoringConfig, EligibilityRule, AllocationLog,
 )
 
@@ -53,9 +53,16 @@ class HouseInspectionAdmin(admin.ModelAdmin):
 
 @admin.register(MaintenanceRequest)
 class MaintenanceRequestAdmin(admin.ModelAdmin):
-    list_display  = ("title", "house", "priority", "status", "cost", "created_at")
-    list_filter   = ("priority", "status")
+    list_display  = ("title", "house", "category", "priority", "status", "actual_cost", "created_at")
+    list_filter   = ("priority", "status", "category")
     search_fields = ("title", "house__house_id")
+
+
+@admin.register(MaintenanceRequestLog)
+class MaintenanceRequestLogAdmin(admin.ModelAdmin):
+    list_display  = ("request", "event_type", "actor_name", "created_at")
+    list_filter   = ("event_type",)
+    search_fields = ("request__title", "actor_name")
 
 
 @admin.register(HouseTransfer)

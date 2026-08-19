@@ -1339,7 +1339,7 @@ export default function Audit() {
                       <SelectContent>
                         {departments.filter(d => d.name).map((d) => (
                           <SelectItem key={d.id || d.name} value={d.name}>
-                            {d.name}
+                            {d.name}{d.code ? ` (${d.code})` : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>

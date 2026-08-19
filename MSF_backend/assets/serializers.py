@@ -37,7 +37,7 @@ class AssetSerializer(serializers.ModelSerializer):
             'useful_life_years', 'salvage_value', 'current_value',
             'depreciation_rate', 'accumulated_depreciation', 'status',
             'condition', 'amc_enabled', 'amc_provider', 'amc_start_date',
-            'amc_end_date', 'amc_cost', 'quantity', 'expiry_date', 'notes',
+            'amc_end_date', 'amc_cost', 'expiry_date', 'notes',
             'metadata', 'image', 'documents', 'is_under_warranty',
             'is_amc_active', 'current_value_calculated', 'annual_depreciation_value',
             'created_at', 'updated_at', 'is_active'
@@ -76,7 +76,7 @@ class AssetCreateSerializer(serializers.ModelSerializer):
             'useful_life_years', 'salvage_value', 'current_value',
             'depreciation_rate', 'accumulated_depreciation', 'status',
             'condition', 'amc_enabled', 'amc_provider', 'amc_start_date',
-            'amc_end_date', 'amc_cost', 'quantity', 'expiry_date', 'notes',
+            'amc_end_date', 'amc_cost', 'expiry_date', 'notes',
             'metadata', 'image', 'documents'
         ]
         extra_kwargs = {
@@ -270,7 +270,7 @@ class AssetUpdateSerializer(serializers.ModelSerializer):
             'useful_life_years', 'salvage_value', 'current_value',
             'depreciation_rate', 'accumulated_depreciation', 'status',
             'condition', 'amc_enabled', 'amc_provider', 'amc_start_date',
-            'amc_end_date', 'amc_cost', 'quantity', 'expiry_date', 'notes',
+            'amc_end_date', 'amc_cost', 'expiry_date', 'notes',
             'metadata', 'image', 'documents'
         ]
         extra_kwargs = {

@@ -49,7 +49,7 @@ print("\n--- CREATE ---")
 create_data = {
     "name": "Test Laptop",
     "property": str(prop.id),
-    "department": "IT",
+    "department": "MANAGEMENT INFORMATION SYSTEM",
     "location": "Room 101",
     "quantity": 1,
     "condition": "good",
@@ -81,7 +81,7 @@ print(f"Name: {body['data']['name']}, Condition: {body['data']['condition']}")
 print("\n--- UPDATE ---")
 update_data = {
     "name": "Updated Laptop",
-    "department": "Finance",
+    "department": "FINANCE DEPARTMENT",
     "location": "Room 202",
     "quantity": 2,
     "condition": "excellent",

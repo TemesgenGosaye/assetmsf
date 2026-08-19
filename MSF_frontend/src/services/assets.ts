@@ -31,7 +31,6 @@ export type Asset = {
   owner?: string | null;
   owner_name?: string | null;
   owner_email?: string | null;
-  quantity: number;
   purchaseDate: string | Date | null;
   purchaseCost?: number | string | null;
   poNumber?: string | null;
@@ -85,7 +84,7 @@ function djangoAssetToFrontend(row: any): Asset {
     qr_code: row.qr_code ?? null,
     rfid: row.rfid ?? null,
     serialNumber: row.serial_number ?? null,
-    name: row.name,
+    name: row.description || row.item_type_name || row.asset_code || "Asset",
     description: row.description ?? null,
     notes: row.notes ?? null,
     type: row.category_name || row.item_type_name || row.subcategory || "Uncategorized",
@@ -102,7 +101,6 @@ function djangoAssetToFrontend(row: any): Asset {
     owner: row.owner ?? null,
     owner_name: row.owner_name ?? null,
     owner_email: row.owner_email ?? null,
-    quantity: Number(row.quantity ?? 1) || 1,
     purchaseDate: row.purchase_date ?? null,
     purchaseCost: row.purchase_cost ?? null,
     poNumber: row.po_number ?? null,
@@ -145,7 +143,7 @@ function djangoAssetToFrontend(row: any): Asset {
 
 export function formDataToDjango(formData: any): any {
   const row: any = {};
-  row.name = formData.itemName;
+  row.name = formData.itemTypeName || formData.description || formData.type || "Asset";
   row.description = formData.description;
   row.notes = formData.notes;
   row.subcategory = formData.subcategory;
@@ -154,7 +152,6 @@ export function formDataToDjango(formData: any): any {
   row.property = formData.property;
   row.department = formData.department;
   row.location = formData.location;
-  row.quantity = parseInt(formData.quantity, 10);
   row.purchase_date = formatDate(formData.purchaseDate);
   row.expiry_date = formatDate(formData.expiryDate);
   row.po_number = formData.poNumber;
@@ -186,6 +183,10 @@ export function formDataToDjango(formData: any): any {
   row.amc_end_date = formatDate(formData.amcEndDate);
   row.amc_cost = numOrNull(formData.amcCost);
   row.status = "active";
+  // Item type: resolve code to DB id via item_type_name sent to backend
+  if (formData.itemType) {
+    row.item_type_name = formData.itemTypeName || formData.itemType;
+  }
   return row;
 }
 
@@ -237,7 +238,6 @@ function frontendAssetToDjango(asset: Partial<Asset>): any {
   if ("model" in asset) row.model = asset.model;
   if ("department" in asset) row.department = asset.department;
   if ("location" in asset) row.location = asset.location;
-  if ("quantity" in asset) row.quantity = asset.quantity;
   if ("purchaseDate" in asset)
     row.purchase_date = formatDate(asset.purchaseDate);
   if ("expiryDate" in asset) row.expiry_date = formatDate(asset.expiryDate);
@@ -266,6 +266,9 @@ function frontendAssetToDjango(asset: Partial<Asset>): any {
   if ("condition" in asset) row.condition = normalizeCondition(asset.condition);
   if ("status" in asset) row.status = normalizeStatus(asset.status);
   if ("serialNumber" in asset) row.serial_number = asset.serialNumber;
+  if ("type" in asset && asset.type) {
+    row.item_type_name = asset.item_type_name || asset.type;
+  }
   if ("amcEnabled" in asset) row.amc_enabled = asset.amcEnabled;
   if ("amcProvider" in asset) row.amc_provider = asset.amcProvider;
   if ("amcStartDate" in asset)
@@ -307,8 +310,8 @@ export async function listAssets(options?: {
 export async function createAsset(asset: Partial<Asset>): Promise<Asset> {
   if (isDemoMode()) throw new Error("DEMO_READONLY");
   const payload = frontendAssetToDjango(asset);
-  if (asset.type) {
-    (payload as any).item_type_name = asset.type;
+  if (asset.type || asset.item_type_name) {
+    (payload as any).item_type_name = asset.item_type_name || asset.type;
   }
   if (asset.owner) {
     payload.owner = asset.owner;
@@ -341,8 +344,8 @@ export async function updateAsset(
 ): Promise<Asset> {
   if (isDemoMode()) throw new Error("DEMO_READONLY");
   const payload = frontendAssetToDjango(patch);
-  if (patch.type) {
-    (payload as any).item_type_name = patch.type;
+  if (patch.type || patch.item_type_name) {
+    (payload as any).item_type_name = patch.item_type_name || patch.type;
   }
   if (patch.owner) {
     payload.owner = patch.owner;

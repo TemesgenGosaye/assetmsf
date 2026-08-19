@@ -602,7 +602,7 @@ export default function AssetTable({
                       {isVisible("name") && (
                         <TableCell>
                           <span className="max-w-[220px] truncate font-semibold leading-5 text-foreground">
-                            {asset.name || asset.id}
+                            {asset.description || asset.name || asset.id}
                           </span>
                         </TableCell>
                       )}
@@ -665,7 +665,7 @@ export default function AssetTable({
                       )}
                       {isVisible("qty") && (
                         <TableCell className="text-center text-xs font-semibold">
-                          {Number(asset.quantity) || 0}
+                          —
                         </TableCell>
                       )}
                       {isVisible("purchaseDate") && (

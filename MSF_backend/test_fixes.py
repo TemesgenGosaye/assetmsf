@@ -24,7 +24,7 @@ print('Logged in')
 # 1. Empty expiry_date (was broken before fix)
 s, d = req('POST', '/assets/', {
     'asset_code': 'TEST-EMPTY-DATE', 'name': 'Empty Date Test',
-    'property': 'PROP-001', 'department': 'IT', 'quantity': 1,
+    'property': 'PROP-001', 'department': 'MANAGEMENT INFORMATION SYSTEM', 'quantity': 1,
     'status': 'active', 'condition': 'good', 'expiry_date': '',
 }, token)
 msg = d.get('message')
@@ -36,7 +36,7 @@ if errs:
 # 2. Inactive property PROP-002 (now should be active)
 s, d = req('POST', '/assets/', {
     'asset_code': 'TEST-PROP002', 'name': 'Prop 002 Test',
-    'property': 'PROP-002', 'department': 'IT', 'quantity': 1,
+    'property': 'PROP-002', 'department': 'MANAGEMENT INFORMATION SYSTEM', 'quantity': 1,
     'status': 'active', 'condition': 'good',
 }, token)
 msg = d.get('message')
@@ -45,7 +45,7 @@ print(f'[TEST 2] PROP-002 (now active): {s} - {msg}')
 # 3. Full frontend payload with sample item type
 s, d = req('POST', '/assets/', {
     'asset_code': '60-0-00-999', 'name': 'Frontend Style Test',
-    'property': 'PROP-001', 'department': 'Logistics', 'quantity': 1,
+    'property': 'PROP-001', 'department': 'LOGISTICS', 'quantity': 1,
     'purchase_date': None, 'expiry_date': None, 'po_number': None,
     'condition': 'good', 'status': 'active', 'location': None,
     'description': None, 'serial_number': None,

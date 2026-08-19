@@ -46,11 +46,11 @@ def seed_db():
 
     # 2. Departments
     dept_data = [
-        {'name': 'Administration', 'code': 'ADM', 'description': 'Company Administration'},
-        {'name': 'Information Technology', 'code': 'IT', 'description': 'IT Support & Systems'},
-        {'name': 'Logistics', 'code': 'LOG', 'description': 'Logistics, Warehouse, and Transport'},
-        {'name': 'Production', 'code': 'PROD', 'description': 'Factory and Production operations'},
-        {'name': 'Finance', 'code': 'FIN', 'description': 'Accounting and Finance'}
+        {'name': 'MANAGER OFFICE', 'code': '23', 'description': 'Factory manager office and administration'},
+        {'name': 'MANAGEMENT INFORMATION SYSTEM', 'code': '23.2.3', 'description': 'Management information system'},
+        {'name': 'LOGISTICS', 'code': '25', 'description': 'Logistics and supply chain'},
+        {'name': 'PRODUCTION', 'code': '22', 'description': 'Sugar production operations'},
+        {'name': 'FINANCE DEPARTMENT', 'code': '24', 'description': 'Finance and accounting'}
     ]
     
     depts = {}
@@ -254,7 +254,7 @@ def seed_db():
             'name': 'Dell Latitude 5420',
             'serial_number': 'DELL-SN-12345',
             'property_id': 'PROP-001',
-            'department': 'Information Technology',
+            'department': 'MANAGEMENT INFORMATION SYSTEM',
             'quantity': 1,
             'purchase_cost': Decimal('1200.00'),
             'purchase_date': date(2025, 1, 10),
@@ -269,7 +269,7 @@ def seed_db():
             'name': 'HP ProBook 450',
             'serial_number': 'HP-SN-67890',
             'property_id': 'PROP-001',
-            'department': 'Finance',
+            'department': 'FINANCE DEPARTMENT',
             'quantity': 1,
             'purchase_cost': Decimal('1000.00'),
             'purchase_date': date(2025, 2, 15),
@@ -284,7 +284,7 @@ def seed_db():
             'name': 'Toyota Hilux',
             'serial_number': 'TOY-HILUX-987',
             'property_id': 'PROP-002',
-            'department': 'Logistics',
+            'department': 'LOGISTICS',
             'quantity': 1,
             'purchase_cost': Decimal('35000.00'),
             'purchase_date': date(2024, 6, 20),
@@ -299,7 +299,7 @@ def seed_db():
             'name': 'Executive Mahogany Desk',
             'serial_number': 'FUR-DSK-001',
             'property_id': 'PROP-001',
-            'department': 'Administration',
+            'department': 'MANAGER OFFICE',
             'quantity': 1,
             'purchase_cost': Decimal('450.00'),
             'purchase_date': date(2023, 11, 5),
@@ -314,7 +314,7 @@ def seed_db():
             'name': 'Cummins 150kVA Generator',
             'serial_number': 'GEN-CUM-999',
             'property_id': 'PROP-003',
-            'department': 'Production',
+            'department': 'PRODUCTION',
             'quantity': 1,
             'purchase_cost': Decimal('15000.00'),
             'purchase_date': date(2023, 1, 15),

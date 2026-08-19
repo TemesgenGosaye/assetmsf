@@ -747,7 +747,7 @@ export default function Assets() {
           case "name":
             return (a.name || "").localeCompare(b.name || "");
           case "qty":
-            return (b.quantity || 0) - (a.quantity || 0);
+            return 0;
           case "department": {
             const da = (a.department || "").toString();
             const db = (b.department || "").toString();
@@ -799,7 +799,7 @@ export default function Assets() {
         case "department": return asset.department || "";
         case "location": return asset.location || "";
         case "owner": return asset.owner_name || asset.owner || "";
-        case "qty": return asset.quantity ?? 0;
+        case "qty": return 0;
         case "purchaseDate": return asset.purchaseDate || "";
         case "expiryDate": return asset.expiryDate || "";
         case "purchaseCost": return asset.purchaseCost ?? "";
@@ -926,7 +926,7 @@ export default function Assets() {
       if (!isDemoMode()) {
         const propertyCodeRaw = assetData.property;
         const seqPrefix = `${typePrefix(assetData.itemType)}0-0-00-`;
-        const quantity = Math.max(1, Number(assetData.quantity) || 1);
+        const quantity = 1;
         const baseSeq = nextSequence(
           cachedAssets && cachedAssets.length ? cachedAssets : assets,
           seqPrefix,
@@ -942,7 +942,6 @@ export default function Assets() {
             barcode: assetData.barcode || null,
             rfid: assetData.rfid || null,
             department: assetData.department,
-            quantity: Number(assetData.quantity || 1),
             purchaseDate: toISODate(assetData.purchaseDate),
             expiryDate: toISODate(assetData.expiryDate),
             poNumber: assetData.poNumber || null,
@@ -988,8 +987,9 @@ export default function Assets() {
           const makeAsset = (seq: number) =>
             ({
               asset_code: `${seqPrefix}${String(seq).padStart(3, "0")}`,
-              name: assetData.itemName,
+              name: assetData.itemName || assetData.description || "Asset",
               type: assetData.itemType,
+              item_type_name: assetData.itemTypeName || assetData.itemType,
               subcategory: assetData.subcategory || null,
               manufacturer: assetData.manufacturer || null,
               model: assetData.model || null,
@@ -997,7 +997,7 @@ export default function Assets() {
               rfid: assetData.rfid || null,
               property_id: propertyCodeRaw,
               department: assetData.department,
-              quantity: Math.max(1, Number(assetData.quantity) || 1),
+              quantity: 1,
               purchaseDate: toISODate(assetData.purchaseDate),
               expiryDate: toISODate(assetData.expiryDate),
               poNumber: assetData.poNumber || null,
@@ -1073,7 +1073,6 @@ export default function Assets() {
             rfid: selectedAsset.rfid ?? "",
             property: selectedAsset.property_id ?? selectedAsset.property ?? "",
             department: selectedAsset.department ?? "",
-            quantity: selectedAsset.quantity ?? 1,
             purchaseDate: selectedAsset.purchaseDate
               ? new Date(selectedAsset.purchaseDate)
               : undefined,
@@ -1209,11 +1208,6 @@ export default function Assets() {
   };
 
   const handleGenerateQR = (asset: any) => {
-    // Always generate a QR for the selected asset without splitting its quantity into multiple asset records
-    const qty = Number(asset.quantity) || 1;
-    if (qty > 1) {
-      toast.info(`Generating a single QR for this item (quantity: ${qty}).`);
-    }
     setSelectedAsset(asset);
     setShowQRGenerator(true);
   };
@@ -1309,7 +1303,6 @@ export default function Assets() {
           type: a.type,
           property: propsById[a.property]?.name || a.property,
           department: a.department || "",
-          quantity: a.quantity,
           serialNumber: a.serialNumber || "",
           condition: a.condition || "",
           status: a.status,

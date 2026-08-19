@@ -183,7 +183,7 @@ export default function RequestEditModal({ open, asset, onClose, onSubmitted }: 
                           list = [{ id: 'cur', name: cur } as any, ...list];
                         }
                       }
-                      return list.filter(d => d.name).map(d => (<SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>));
+                      return list.filter(d => d.name).map(d => (<SelectItem key={d.id} value={d.name}>{d.name}{d.code ? ` (${d.code})` : ''}</SelectItem>));
                     })()}
                   </SelectContent>
                 </Select>

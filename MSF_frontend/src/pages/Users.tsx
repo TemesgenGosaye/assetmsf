@@ -166,7 +166,7 @@ const seedLocalUsersIfEmpty = () => {
       name: "John Doe",
       email: "john.doe@company.com",
       role: "Admin",
-      department: "IT",
+      department: "MANAGEMENT INFORMATION SYSTEM",
       phone: "+1 (555) 123-4567",
       last_login: "2024-01-15",
       status: "Active",
@@ -177,7 +177,7 @@ const seedLocalUsersIfEmpty = () => {
       name: "Jane Smith",
       email: "jane.smith@company.com",
       role: "User",
-      department: "HR",
+      department: "HUMAN RESOURCE DEPARTMENT",
       phone: "+1 (555) 234-5678",
       last_login: "2024-01-14",
       status: "Active",
@@ -188,7 +188,7 @@ const seedLocalUsersIfEmpty = () => {
       name: "Mike Johnson",
       email: "mike.johnson@company.com",
       role: "User",
-      department: "Finance",
+      department: "FINANCE DEPARTMENT",
       phone: "+1 (555) 345-6789",
       last_login: "2024-01-10",
       status: "Inactive",
@@ -199,7 +199,7 @@ const seedLocalUsersIfEmpty = () => {
       name: "Sarah Wilson",
       email: "sarah.wilson@company.com",
       role: "Manager",
-      department: "Operations",
+      department: "PRODUCTION",
       phone: "+1 (555) 456-7890",
       last_login: "2024-01-15",
       status: "Active",
@@ -1560,7 +1560,7 @@ export default function Users() {
                                       key={d.id}
                                       value={(d.name || "").toLowerCase()}
                                     >
-                                      {d.name}
+                                      {d.name}{d.code ? ` (${d.code})` : ''}
                                     </SelectItem>
                                   ))}
                               </SelectContent>
@@ -2841,7 +2841,7 @@ export default function Users() {
                               key={d.id}
                               value={(d.name || "").toLowerCase()}
                             >
-                              {d.name}
+                              {d.name}{d.code ? ` (${d.code})` : ''}
                             </SelectItem>
                           ))}
                       </SelectContent>

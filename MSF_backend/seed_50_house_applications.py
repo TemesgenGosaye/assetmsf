@@ -34,7 +34,7 @@ def seed_50_house_applications():
         from departments.models import Department
         departments = list(Department.objects.all())
         if not departments:
-            dept, _ = Department.objects.get_or_create(code="GEN", defaults={"name": "General"})
+            dept, _ = Department.objects.get_or_create(code="23", defaults={"name": "MANAGER OFFICE"})
             departments = [dept]
         
         first_names = ["Abebe", "Kebede", "Tigist", "Almaz", "Dawit", "Meseret", "Solomon", "Hiwot", "Girma", "Aster", "Bereket", "Meskerm", "Yohannes", "Selam", "Samuel", "Hanna", "Natnael", "Edom", "Kalkidan", "Ephrem"]

@@ -347,7 +347,7 @@ export function TopNavBar({ onMenuToggle }: TopNavBarProps) {
   })();
 
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] w-full items-center border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-2 h-14">
+    <div className="grid grid-cols-[1fr_auto_1fr] w-full items-center border-b border-[#2a5c38]/60 bg-gradient-to-r from-[#0d2e1f] via-[#163d28] to-[#0d2e1f] backdrop-blur supports-[backdrop-filter]:from-[#0d2e1f]/90 px-2 h-14">
       {/* Left brand + mobile toggle + Search */}
       <div className="flex items-center gap-2 justify-start">
         <button

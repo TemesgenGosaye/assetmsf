@@ -5,7 +5,7 @@ from django.db import models
 from rest_framework import serializers
 from .models import (
     House, HouseApplication, HouseInspection, PostInspection, MaintenanceRequest,
-    HouseTransfer, RentalContract, RentalInvoice, RentalPayment,
+    MaintenanceRequestLog, HouseTransfer, RentalContract, RentalInvoice, RentalPayment,
     ScoringConfig, EligibilityRule, AllocationLog,
     HouseOpportunity, Allocation, HouseAuditTrail, HouseHandoverReceipt,
     TerminationCase, TerminationTransaction,
@@ -526,21 +526,104 @@ class PostInspectionSerializer(serializers.ModelSerializer):
         return obj.inspector.get_full_name() if obj.inspector else ""
 
 
+class MaintenanceRequestLogSerializer(serializers.ModelSerializer):
+    actor_name_display = serializers.CharField(source="actor.name", read_only=True, default="")
+
+    class Meta:
+        model = MaintenanceRequestLog
+        fields = [
+            "id", "request", "event_type", "actor", "actor_name",
+            "actor_name_display", "old_value", "new_value", "note", "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
 class MaintenanceRequestSerializer(serializers.ModelSerializer):
     house_hid = serializers.CharField(source="house.house_id", read_only=True, default="")
+    house_number = serializers.CharField(source="house.house_number", read_only=True, default="")
     house_location = serializers.CharField(source="house.location", read_only=True, default="")
     house_type = serializers.CharField(source="house.house_type", read_only=True, default="")
     requested_by_name = serializers.CharField(source="requested_by.name", read_only=True, default="")
+    requested_by_email = serializers.CharField(source="requested_by.email", read_only=True, default="")
+    received_by_name = serializers.CharField(source="received_by.name", read_only=True, default="")
+    civil_work_assigned_to_name = serializers.CharField(source="civil_work_assigned_to.name", read_only=True, default="")
+    request_number = serializers.ReadOnlyField()
+    logs = MaintenanceRequestLogSerializer(many=True, read_only=True)
 
     class Meta:
         model = MaintenanceRequest
         fields = [
-            "id", "house", "house_hid", "house_location", "house_type",
-            "requested_by", "requested_by_name", "title", "description",
-            "priority", "status", "cost", "assigned_to", "resolved_at",
+            "id", "request_number",
+            "house", "house_hid", "house_number", "house_location", "house_type",
+            "requested_by", "requested_by_name", "requested_by_email",
+            "title", "description", "category", "priority", "status",
+            "received_by", "received_by_name", "received_at",
+            "civil_work_assigned_to", "civil_work_assigned_to_name",
+            "civil_work_notes", "rejection_reason", "resolution_notes",
+            "estimated_cost", "actual_cost",
+            "resolved_at", "completion_date",
+            "logs",
             "created_at", "updated_at", "is_active",
         ]
-        read_only_fields = ["id", "resolved_at", "created_at", "updated_at", "is_active"]
+        read_only_fields = [
+            "id", "resolved_at", "completion_date",
+            "created_at", "updated_at", "is_active",
+        ]
+
+
+class MaintenanceRequestCreateSerializer(serializers.ModelSerializer):
+    """Serializer for applicants submitting maintenance requests."""
+
+    class Meta:
+        model = MaintenanceRequest
+        fields = [
+            "house", "title", "description", "category", "priority",
+        ]
+
+    def validate_house(self, value):
+        """Verify the applicant has an active allocation for this house."""
+        user = self.context["request"].user
+        from houses.models import Allocation
+        has_allocation = Allocation.objects.filter(
+            house=value,
+            application__requester=user,
+            status=Allocation.Status.ACTIVE,
+        ).exists()
+        if not has_allocation:
+            raise serializers.ValidationError("You do not have an active allocation for this house.")
+        return value
+
+
+class MaintenanceRequestCivilWorkUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for Civil Work department updating maintenance requests."""
+
+    class Meta:
+        model = MaintenanceRequest
+        fields = [
+            "status", "priority", "civil_work_assigned_to",
+            "civil_work_notes", "rejection_reason", "resolution_notes",
+            "estimated_cost", "actual_cost", "category",
+        ]
+
+    def validate_status(self, value):
+        """Validate status transition."""
+        if self.instance:
+            current = self.instance.status
+            valid_transitions = {
+                "Submitted": ["Received", "Cancelled"],
+                "Received": ["In Progress", "On Hold", "Rejected", "Cancelled"],
+                "In Progress": ["On Hold", "Completed", "Cancelled"],
+                "On Hold": ["In Progress", "Cancelled"],
+                "Completed": [],
+                "Rejected": [],
+                "Cancelled": [],
+            }
+            allowed = valid_transitions.get(current, [])
+            if value not in allowed:
+                raise serializers.ValidationError(
+                    f"Cannot transition from '{current}' to '{value}'. Allowed: {', '.join(allowed) or 'none'}"
+                )
+        return value
 
 
 class HouseTransferSerializer(serializers.ModelSerializer):

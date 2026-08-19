@@ -79,6 +79,8 @@ import ApplicantApplicationNew from "./pages/applicant/ApplicantApplicationNew";
 import ApplicantMyApplications from "./pages/applicant/ApplicantMyApplications";
 import ApplicantApplicationStatus from "./pages/applicant/ApplicantApplicationStatus";
 import ApplicantProfile from "./pages/applicant/ApplicantProfile";
+import ApplicantMaintenanceRequest from "./pages/applicant/ApplicantMaintenanceRequest";
+import CivilWorkPanel from "./pages/CivilWorkPanel";
 // SingleDeviceGuard removed per user request
 
 import RequireView from "@/components/session/RequireView";
@@ -551,6 +553,14 @@ const App = () => (
             />
             <Route path="/tickets" element={<Tickets />} />
             <Route path="/tickets/:id" element={<TicketDetails />} />
+            <Route
+              path="/civil-work"
+              element={
+                <RoleGate roles={["admin", "manager", "field_staff"]}>
+                  <CivilWorkPanel />
+                </RoleGate>
+              }
+            />
             <Route path="/newsletter" element={<Newsletter />} />
             <Route path="/help" element={<Help />} />
             <Route
@@ -712,6 +722,14 @@ const App = () => (
               element={
                 <RoleGate roles={["applicant"]}>
                   <ApplicantProfile />
+                </RoleGate>
+              }
+            />
+            <Route
+              path="/applicant/maintenance"
+              element={
+                <RoleGate roles={["applicant"]}>
+                  <ApplicantMaintenanceRequest />
                 </RoleGate>
               }
             />

@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 
 import { printClearanceSlip, downloadClearanceSlipPdf } from "@/lib/clearanceSlipPdf";
+import ClearanceSlipModal from "@/components/houses/ClearanceSlipModal";
 import PageHeader from "../components/layout/PageHeader";
 import Breadcrumbs from "../components/layout/Breadcrumbs";
 
@@ -98,6 +99,7 @@ export default function TerminationManagement() {
   const [filterCategory, setFilterCategory] = useState("all");
 
   const [selectedTermination, setSelectedTermination] = useState<TerminationTransaction | null>(null);
+  const [slipTarget, setSlipTarget] = useState<TerminationTransaction | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
@@ -513,8 +515,8 @@ export default function TerminationManagement() {
                                 {t.status === "Completed" && (
                                   <Button
                                     variant="ghost" size="sm" className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    onClick={() => downloadClearanceSlipPdf(t)}
-                                    title="Download Clearance Slip"
+                                    onClick={() => setSlipTarget(t)}
+                                    title="View Clearance Slip"
                                   >
                                     <FileText className="h-3.5 w-3.5" />
                                   </Button>
@@ -947,8 +949,8 @@ export default function TerminationManagement() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDetail(false)} className="text-xs">Close</Button>
             {selectedTermination?.status === "Completed" && (
-              <Button onClick={() => downloadClearanceSlipPdf(selectedTermination)} className="text-xs bg-green-600 hover:bg-green-700">
-                <FileText className="mr-1.5 h-3.5 w-3.5" /> Download Clearance Slip
+              <Button onClick={() => { setShowDetail(false); setSlipTarget(selectedTermination); }} className="text-xs bg-green-600 hover:bg-green-700">
+                <FileText className="mr-1.5 h-3.5 w-3.5" /> Clearance Slip
               </Button>
             )}
             {selectedTermination?.status === "Pending" && (
@@ -1198,6 +1200,15 @@ export default function TerminationManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Clearance Slip modal ──────────────────────────────────── */}
+      {slipTarget && (
+        <ClearanceSlipModal
+          open
+          onOpenChange={(o) => { if (!o) setSlipTarget(null); }}
+          slip={slipTarget}
+        />
+      )}
     </div>
   );
 }

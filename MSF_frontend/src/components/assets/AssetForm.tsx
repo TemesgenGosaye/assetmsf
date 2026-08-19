@@ -34,8 +34,9 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { listProperties, type Property } from "@/services/properties";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
-import { ITEM_TYPE_PREFIXES } from "@/services/itemTypes";
+import { ASSET_GROUPS, GROUP_BY_CODE, type AssetGroup, type AssetItem } from "@/services/assetMaster";
 import { listDepartments, type Department } from "@/services/departments";
+import { ItemGroupSelector } from "@/components/assets/ItemGroupSelector";
 import { listUserDepartmentAccess } from "@/services/userDeptAccess";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -60,7 +61,6 @@ export function AssetForm({
     description: initialData?.description || "",
     notes: initialData?.notes || "",
     purchaseDate: initialData?.purchaseDate || undefined,
-    quantity: initialData?.quantity || "",
     itemType: initialData?.itemType || "",
     expiryDate: initialData?.expiryDate || undefined,
     poNumber: initialData?.poNumber || "",
@@ -94,9 +94,7 @@ export function AssetForm({
     warrantyEndDate: initialData?.warrantyExpiry || initialData?.warrantyEndDate || undefined,
   });
   const [properties, setProperties] = useState<Property[]>([]);
-  const [itemTypes, setItemTypes] = useState<string[]>(
-    Object.keys(ITEM_TYPE_PREFIXES),
-  );
+  const [selectedGroup, setSelectedGroup] = useState<string>(initialData?.itemType ? (GROUP_BY_CODE[initialData.itemType?.split(':')[0]?.trim()]?.code || '') : '');
   const [departments, setDepartments] = useState<Department[]>([]);
   const [allowedDeptNames, setAllowedDeptNames] = useState<string[] | null>(
     null,
@@ -111,8 +109,8 @@ export function AssetForm({
       description: initialData?.description || "",
       notes: initialData?.notes || "",
       purchaseDate: initialData?.purchaseDate || undefined,
-      quantity: initialData?.quantity || "",
       itemType: initialData?.itemType || "",
+      itemTypeName: initialData?.itemTypeName || "",
       expiryDate: initialData?.expiryDate || undefined,
       poNumber: initialData?.poNumber || "",
       property: initialData?.property || "",
@@ -217,7 +215,7 @@ export function AssetForm({
       } catch {
         /* properties stay empty */
       }
-      // Item types are now hardcoded from ITEM_TYPE_PREFIXES keys
+      // Load departments
       try {
         const list = await listDepartments();
         setDepartments(list);
@@ -403,10 +401,7 @@ export function AssetForm({
 
     // Collect all field errors at once so the user sees every problem inline
     const errors: Record<string, string> = {};
-    if (!toSubmit.itemName) errors.itemName = "Item Name is required";
-    if (!toSubmit.quantity) errors.quantity = "Quantity is required";
-    if (role === "admin" && !toSubmit.itemType)
-      errors.itemType = "Item Type is required";
+    if (!toSubmit.itemType) errors.itemType = "Asset item type is required";
     if (!toSubmit.property) errors.property = "Property is required";
     if (!deptVal) errors.department = "Department is required";
     if (!locVal) errors.location = "Location is required";
@@ -460,8 +455,8 @@ export function AssetForm({
           description: "",
           notes: "",
           purchaseDate: undefined,
-          quantity: "",
           itemType: "",
+          itemTypeName: "",
           expiryDate: undefined,
           poNumber: "",
           property: "",
@@ -527,82 +522,25 @@ export function AssetForm({
           <ClipboardList className="h-4 w-4 text-primary" />
           Asset Essentials
         </div>
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-1">
           <div className="space-y-2">
-            <Label htmlFor="itemName">Item Name *</Label>
-            <Input
-              id="itemName"
-              value={formData.itemName}
-              onChange={(e) => handleInputChange("itemName", e.target.value)}
-              placeholder="e.g., Dell Laptop, Office Chair"
-              aria-invalid={Boolean(fieldErrors.itemName)}
-              className={cn(
-                fieldErrors.itemName &&
-                  "border-destructive focus-visible:ring-destructive/40"
-              )}
-              required
-            />
-            {fieldErrors.itemName && (
-              <p className="text-xs font-medium text-destructive">
-                {fieldErrors.itemName}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="quantity">Quantity *</Label>
-            <Input
-              id="quantity"
-              type="number"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={formData.quantity}
-              onChange={(e) => handleInputChange("quantity", e.target.value)}
-              onWheel={(e) => {
-                // Prevent accidental value changes (and large rerenders) when scrolling over the input
-                // Blurring is a simple, reliable way across browsers
-                try {
-                  (e.currentTarget as HTMLInputElement).blur();
-                } catch {}
-              }}
-              placeholder="Enter quantity"
-              min="1"
-              aria-invalid={Boolean(fieldErrors.quantity)}
-              className={cn(
-                fieldErrors.quantity &&
-                  "border-destructive focus-visible:ring-destructive/40"
-              )}
-              required
-            />
-            {fieldErrors.quantity && (
-              <p className="text-xs font-medium text-destructive">
-                {fieldErrors.quantity}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="itemType">Item Type *</Label>
-            <Select
+            <Label htmlFor="itemType">Asset Item Type *</Label>
+            <ItemGroupSelector
               value={formData.itemType}
-              onValueChange={(value) => handleInputChange("itemType", value)}
-            >
-              <SelectTrigger
-                className={cn(
-                  fieldErrors.itemType &&
-                    "border-destructive focus-visible:ring-destructive/40"
-                )}
-              >
-                <SelectValue placeholder="Select item type" />
-              </SelectTrigger>
-              <SelectContent>
-                {itemTypes.filter(Boolean).map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={(code, label) => {
+                const item = ASSET_GROUPS.flatMap(g => g.items).find(i => i.code === code);
+                if (item) {
+                  setSelectedGroup(item.groupCode);
+                  handleInputChange("itemType", item.code);
+                  handleInputChange("itemTypeName", label);
+                } else if (!code) {
+                  setSelectedGroup("");
+                  handleInputChange("itemType", "");
+                  handleInputChange("itemTypeName", "");
+                }
+              }}
+              error={Boolean(fieldErrors.itemType)}
+            />
             {fieldErrors.itemType && (
               <p className="text-xs font-medium text-destructive">
                 {fieldErrors.itemType}
@@ -735,7 +673,7 @@ export function AssetForm({
                     .filter((d) => d.name)
                     .map((d) => (
                       <SelectItem key={d.id} value={d.name}>
-                        {d.name}
+                        {d.name}{d.code ? ` (${d.code})` : ''}
                       </SelectItem>
                     ));
                 })()}
@@ -802,47 +740,6 @@ export function AssetForm({
               value={formData.model}
               onChange={(e) => handleInputChange("model", e.target.value)}
               placeholder="e.g., Latitude 5520, Aeron Chair, iPhone 15"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-6 rounded-2xl border border-border/60 bg-background/80 p-6">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <ClipboardList className="h-4 w-4 text-primary" />
-          Identification Codes
-        </div>
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="serialNumber">Serial Number</Label>
-            <Input
-              id="serialNumber"
-              value={formData.serialNumber}
-              onChange={(e) =>
-                handleInputChange("serialNumber", e.target.value)
-              }
-              placeholder="Asset serial number"
-              className="font-mono text-sm"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="barcode">Barcode / UPC</Label>
-            <Input
-              id="barcode"
-              value={formData.barcode}
-              onChange={(e) => handleInputChange("barcode", e.target.value)}
-              placeholder="Barcode value"
-              className="font-mono text-sm"
-            />
-          </div>
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="rfid">RFID / Tag ID</Label>
-            <Input
-              id="rfid"
-              value={formData.rfid}
-              onChange={(e) => handleInputChange("rfid", e.target.value)}
-              placeholder="RFID tag or asset tag identifier"
-              className="font-mono text-sm"
             />
           </div>
         </div>

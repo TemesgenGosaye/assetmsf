@@ -1226,7 +1226,7 @@ export default function Reports() {
                   <SelectContent>
                     <SelectItem value="ALL">All Departments</SelectItem>
                     {departments.filter(d => d.name).map((d) => (
-                      <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                      <SelectItem key={d.id} value={d.name}>{d.name}{d.code ? ` (${d.code})` : ''}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1356,7 +1356,7 @@ export default function Reports() {
                       <SelectContent>
                         <SelectItem value="ALL">All Departments</SelectItem>
                         {departments.filter(d => d.name).map((d) => (
-                          <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                          <SelectItem key={d.id} value={d.name}>{d.name}{d.code ? ` (${d.code})` : ''}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1683,7 +1683,7 @@ export default function Reports() {
                         <SelectContent>
                           <SelectItem value="ALL">All departments</SelectItem>
                           {apDepartments.filter(d => d.name).map(d => (
-                            <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                            <SelectItem key={d.id} value={d.name}>{d.name}{d.code ? ` (${d.code})` : ''}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>

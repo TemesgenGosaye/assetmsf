@@ -14,17 +14,90 @@ from datetime import date
 from decimal import Decimal
 
 DEPARTMENTS = [
-    # (code, name, description)
-    ("GM",    "General Management",           "Factory general administration and strategic oversight"),
-    ("PROD",  "Sugar Production",             "Cane crushing, boiling, crystallization and sugar processing"),
-    ("AGRI",  "Agriculture & Plantation",     "Cane cultivation, irrigation and harvesting operations"),
-    ("ENGG",  "Engineering & Maintenance",    "Mechanical, electrical and civil maintenance"),
-    ("HR",    "Human Resources",              "Staffing, welfare and industrial relations"),
-    ("FIN",   "Finance & Accounts",           "Accounting, payroll and financial control"),
-    ("PROC",  "Procurement & Logistics",      "Supplies, stores and transport"),
-    ("IT",    "Information Technology",       "Computing, networks and automation systems"),
-    ("QC",    "Quality Control & Laboratory", "Product testing and quality assurance"),
-    ("MED",   "Medical Services",             "Factory clinic and occupational health"),
+    # (code, name, description, parent_code, level, sort_order)
+    ("12",    "CIVIL WORK",                                    "Civil works and infrastructure",           None,   0,  100),
+    ("13",    "L.P.C.D",                                       "Livestock & Plantation Crop Development", None,   0,  200),
+    ("14",    "CULTIVATION",                                   "Cane cultivation operations",              None,   0,  300),
+    ("14.1",  "TILLAGE",                                       "Land preparation and tillage",             "14",   1,  310),
+    ("14.2",  "CULTIVATION",                                   "Cane cultivation field operations",        "14",   1,  320),
+    ("15",    "PLANTATION",                                    "Plantation operations",                    None,   0,  400),
+    ("15.1",  "ABADIR A",                                      "Abadir A estate",                          "15",   1,  401),
+    ("15.2",  "ABADIR B",                                      "Abadir B estate",                          "15",   1,  402),
+    ("15.3",  "ABADIR C",                                      "Abadir C estate",                          "15",   1,  403),
+    ("15.4",  "ABADIR EXTENSION",                              "Abadir Extension estate",                  "15",   1,  404),
+    ("15.5",  "ABADIR FRUIT",                                  "Abadir Fruit estate",                      "15",   1,  405),
+    ("15.6",  "MERTI 1ST EAST",                                "Merti 1st East estate",                    "15",   1,  406),
+    ("15.7",  "MERTI 1ST AWASH",                               "Merti 1st Awash estate",                   "15",   1,  407),
+    ("15.8",  "MERTI 2ND CHORE",                               "Merti 2nd Chore estate",                   "15",   1,  408),
+    ("15.9",  "MERTI 2ND G/GOLLA",                             "Merti 2nd G/Golla estate",                 "15",   1,  409),
+    ("15.10", "MERTI 2ND KENIFA",                              "Merti 2nd Kenifa estate",                  "15",   1,  410),
+    ("15.11", "MERTI 3RD KIKAN",                               "Merti 3rd Kikan estate",                   "15",   1,  411),
+    ("15.12", "MERTI 3RD SOUTH",                               "Merti 3rd South estate",                   "15",   1,  412),
+    ("15.13", "MERTI 3RD R.LAND",                              "Merti 3rd R.Land estate",                  "15",   1,  413),
+    ("15.14", "NORTH",                                         "North plantation",                         "15",   1,  414),
+    ("15.15", "RATU CULTURE",                                  "Ratu Culture estate",                      "15",   1,  415),
+    ("16",    "AGRICULTURE RESEARCH",                          "Agricultural research and development",    None,   0,  500),
+    ("17",    "HARVESTING",                                    "Cane harvesting operations",               None,   0,  600),
+    ("17.1",  "SEED CANE & IRRIGATION",                        "Seed cane production and irrigation",      "17",   1,  601),
+    ("17.2",  "CANE CUTTING",                                  "Cane cutting field operations",            "17",   1,  602),
+    ("17.3",  "HAULAGE",                                       "Cane haulage transport",                   "17",   1,  603),
+    ("18",    "F.E.S",                                         "Field Equipment Service",                  None,   0,  700),
+    ("18.1",  "ESTATE CAR & MOTORCYCLE",                       "Estate car and motorcycle fleet",          "18",   1,  701),
+    ("18.2",  "HEAVY EQUIPMENT",                               "Heavy equipment fleet",                    "18",   1,  702),
+    ("18.3",  "WHEEL TRACTOR",                                 "Wheel tractor fleet",                      "18",   1,  703),
+    ("19",    "COMMERCIAL DEPARTMENT",                         "Commercial and sales operations",          None,   0,  800),
+    ("21",    "TECHNICAL",                                     "Technical and maintenance services",       None,   0,  900),
+    ("21.1",  "PREVENTIVE MAINTENANCE, EXTRACTION AND POWER PLANT", "Preventive maintenance and power plant", "21", 1, 910),
+    ("21.2",  "INSTRUMENT WORKSHOP",                           "Instrument workshop",                      "21",   1,  920),
+    ("21.3",  "ELECTRICAL WORKSHOP",                           "Electrical workshop",                      "21",   1,  930),
+    ("21.4",  "MECHANICAL WORKSHOP",                           "Mechanical workshop",                      "21",   1,  940),
+    ("21.5",  "FABRICATION WORKSHOP",                          "Fabrication workshop",                     "21",   1,  950),
+    ("22",    "PRODUCTION",                                    "Sugar production operations",              None,   0, 1000),
+    ("23",    "MANAGER OFFICE",                                "Factory manager office and administration",None,   0, 1100),
+    ("23.1",  "LEGAL SERVICE",                                 "Legal advisory and compliance",            "23",   1, 1110),
+    ("23.2",  "MANAGEMENT SERVICE",                            "Management services",                      "23",   1, 1120),
+    ("23.2.1","ORGANIZATION AND METHODS",                      "Organization and methods",                 "23.2", 2, 1121),
+    ("23.2.2","PLANNING, BUSINESS DEVELOPMENT AND BUDGET PREPARATION", "Planning, business development and budget", "23.2", 2, 1122),
+    ("23.2.3","MANAGEMENT INFORMATION SYSTEM",                 "Management information system",            "23.2", 2, 1123),
+    ("23.3",  "ESTATE SERVICE",                                "Estate service operations",                "23",   1, 1130),
+    ("23.3.1","GENERAL SERVICE",                               "General service",                          "23.3", 2, 1131),
+    ("23.3.2","PUBLIC RELATION",                               "Public relations",                         "23.3", 2, 1132),
+    ("23.4",  "BOARD OF DIRECTORS",                            "Board of directors",                       "23",   1, 1140),
+    ("24",    "FINANCE DEPARTMENT",                            "Finance and accounting",                   None,   0, 1200),
+    ("24.1",  "GENERAL ACCOUNTING",                            "General accounting",                       "24",   1, 1210),
+    ("24.2",  "COST ACCOUNTING",                               "Cost accounting",                          "24",   1, 1220),
+    ("24.3",  "BUDGET CONTROL AND FINANCIAL ANALYSIS",         "Budget control and financial analysis",    "24",   1, 1230),
+    ("25",    "LOGISTICS",                                     "Logistics and supply chain",               None,   0, 1300),
+    ("25.1",  "MATERIAL REQUIREMENT PLANNING",                 "Material requirement planning",            "25",   1, 1310),
+    ("25.2",  "STORE ADMINISTRATION",                          "Store administration",                     "25",   1, 1320),
+    ("26",    "HUMAN RESOURCE DEPARTMENT",                     "Human resource management",                None,   0, 1400),
+    ("26.2",  "MANPOWER PLANNING AND TRAINING",                "Manpower planning and training",           "26",   1, 1420),
+    ("26.3",  "EMPLOYMENT AND ADMINISTRATION",                 "Employment and administration",            "26",   1, 1430),
+    ("26.4",  "EMPLOYEE RELATION",                             "Employee relations",                       "26",   1, 1440),
+    ("27",    "GUEST HOUSE",                                   "Guest house management",                   None,   0, 1500),
+    ("28",    "BUILDING",                                      "Building maintenance",                     None,   0, 1600),
+    ("29",    "PARK AND LANSE",                                "Park and landscape",                       None,   0, 1700),
+    ("30",    "MEDICAL SERVICE",                               "Medical and health services",              None,   0, 1800),
+    ("30.1",  "MEDICAL SECTION",                               "Medical section",                          "30",   1, 1810),
+    ("30.2",  "PUBLIC HEALTH",                                 "Public health",                            "30",   1, 1820),
+    ("31",    "W.P.E — WORKERS PARTY OF ETHIOPIA",             "Workers Party of Ethiopia",                None,   0, 1900),
+    ("32",    "LABOUR UNION",                                  "Labour union",                             None,   0, 2000),
+    ("33",    "WORKERS CONTROL COMMITTEE",                     "Workers control committee",                None,   0, 2100),
+    ("33.1",  "ANTI-CORRUPTION OFFICE",                        "Anti-corruption office",                   "33",   1, 2110),
+    ("34",    "SECURITY",                                      "Security services",                        None,   0, 2200),
+    ("35",    "T.D.C",                                         "T.D.C",                                    None,   0, 2300),
+    ("36",    "REWA",                                          "REWA",                                     None,   0, 2400),
+    ("37",    "REYA",                                          "REYA",                                     None,   0, 2500),
+    ("38",    "POLICE",                                        "Police",                                   None,   0, 2600),
+    ("39",    "FRUIT",                                         "Fruit operations",                         None,   0, 2700),
+    ("40",    "CUSTOMS",                                       "Customs",                                  None,   0, 2800),
+    ("50",    "WORKER CLUB",                                   "Worker club",                              None,   0, 2900),
+    ("51",    "FAMILY CLUB",                                   "Family club",                              None,   0, 3000),
+    ("52",    "COMMUNITY CENTER",                              "Community center",                         None,   0, 3100),
+    ("53",    "CO-OPERATIVE SHOP",                             "Co-operative shop",                        None,   0, 3200),
+    ("54",    "WONJI-SHOA TRAINING CENTER",                    "Wonji-Shoa training center",               None,   0, 3300),
+    ("55",    "AUDIT SERVICE",                                 "Audit service",                            None,   0, 3400),
+    ("56",    "PROJECT AND PRODUCTIVITY IMPROVEMENT OFFICE",   "Project and productivity improvement",     None,   0, 3500),
 ]
 
 PROPERTIES = [
@@ -79,62 +152,62 @@ VENDORS = [
 ASSETS = [
     # (asset_code, name, serial_number, property_name, department, quantity, purchase_cost,
     #  purchase_date, status, condition, vendor_name, category_code, item_type_name)
-    ("MSF-001", "Sugarcane Cane Truck (Isuzu FTR 33)",       "MSF-CNT-001", "Metehara Sugar Factory Plant",             "Procurement & Logistics",   1, Decimal("145000.00"), date(2023, 3, 12),  "active", "excellent", "National Motors Corporation",    "VEH",   "truck"),
-    ("MSF-002", "Cane Truck DAF CF 290",                     "MSF-CNT-002", "Metehara Sugar Factory Plant",             "Procurement & Logistics",   1, Decimal("175000.00"), date(2022, 8, 20),  "active", "fair",      "National Motors Corporation",    "VEH",   "truck"),
-    ("MSF-003", "Toyota Land Cruiser Utility",               "MSF-LC-001",  "Metehara Sugar Factory Administration HQ", "General Management",        1, Decimal("68000.00"),  date(2023, 6, 15),  "active", "excellent", "National Motors Corporation",    "VEH",   "light vehicle"),
-    ("MSF-004", "Mitsubishi Pajero Field Vehicle",           "MSF-PJ-001",  "Metehara Cane Plantation Fields",          "Agriculture & Plantation",  1, Decimal("54000.00"),  date(2022, 11, 3),  "active", "good",      "National Motors Corporation",    "VEH",   "light vehicle"),
-    ("MSF-005", "John Deere Tractor 6110M",                  "MSF-TR-001",  "Metehara Cane Plantation Fields",          "Agriculture & Plantation",  1, Decimal("88000.00"),  date(2023, 1, 25),  "active", "excellent", "Oromia Machinery Engineering", "AGR",   "tractor"),
-    ("MSF-006", "Massey Ferguson Tractor 5455",              "MSF-TR-002",  "Metehara Cane Plantation Fields",          "Agriculture & Plantation",  1, Decimal("52000.00"),  date(2021, 9, 18),  "active", "fair",      "Oromia Machinery Engineering", "AGR",   "tractor"),
-    ("MSF-007", "Cane Loader (Case IH)",                     "MSF-CL-001",  "Metehara Cane Plantation Fields",          "Agriculture & Plantation",  1, Decimal("125000.00"), date(2022, 4, 11),  "active", "good",      "Oromia Machinery Engineering", "AGR",   "cane loader"),
-    ("MSF-008", "Cane Loader (Bell 225E)",                   "MSF-CL-002",  "Metehara Cane Plantation Fields",          "Agriculture & Plantation",  1, Decimal("98000.00"),  date(2020, 10, 30), "active", "poor",      "Oromia Machinery Engineering", "AGR",   "cane loader"),
-    ("MSF-009", "Center Pivot Irrigation System",            "MSF-IR-001",  "Metehara Cane Plantation Fields",          "Agriculture & Plantation",  1, Decimal("64000.00"),  date(2023, 2, 14),  "active", "excellent", "Awash Trading House",          "AGR",   "irrigation equipment"),
-    ("MSF-010", "Drip Irrigation Line Set",                  "MSF-IR-002",  "Metehara Cane Plantation Fields",          "Agriculture & Plantation",  1, Decimal("18000.00"),  date(2023, 4, 5),   "active", "good",      "Awash Trading House",          "AGR",   "irrigation equipment"),
-    ("MSF-011", "Sugarcane Crusher Mill 3-Roller",           "MSF-CR-001",  "Metehara Sugar Factory Plant",             "Sugar Production",          1, Decimal("420000.00"), date(2019, 12, 20), "active", "fair",      "Metal & Engineering Corporation", "IND", "factory equipment"),
-    ("MSF-012", "High Pressure Boiler 45 T/hr",              "MSF-BL-001",  "Metehara Sugar Factory Plant",             "Sugar Production",          1, Decimal("560000.00"), date(2018, 6, 14),  "active", "fair",      "Metal & Engineering Corporation", "IND", "boiler"),
-    ("MSF-013", "Evaporator Set (5-Unit)",                   "MSF-EV-001",  "Metehara Sugar Factory Plant",             "Sugar Production",          1, Decimal("240000.00"), date(2019, 3, 8),   "active", "good",      "Metal & Engineering Corporation", "IND", "factory equipment"),
-    ("MSF-014", "Centrifugal Machine B-Series",              "MSF-CF-001",  "Metehara Sugar Factory Plant",             "Sugar Production",          1, Decimal("96000.00"),  date(2020, 1, 17),  "active", "good",      "Metal & Engineering Corporation", "IND", "factory equipment"),
-    ("MSF-015", "Continuous Centrifugal C-Series",           "MSF-CF-002",  "Metehara Sugar Factory Plant",             "Sugar Production",          1, Decimal("110000.00"), date(2021, 5, 22),  "active", "fair",      "Metal & Engineering Corporation", "IND", "factory equipment"),
-    ("MSF-016", "Sugar Dryer & Cooler Unit",                 "MSF-DR-001",  "Metehara Sugar Factory Plant",             "Sugar Production",          1, Decimal("78000.00"),  date(2020, 9, 9),   "active", "good",      "Metal & Engineering Corporation", "IND", "factory equipment"),
-    ("MSF-017", "Rotary Vacuum Filter",                      "MSF-RV-001",  "Metehara Sugar Factory Plant",             "Sugar Production",          1, Decimal("67000.00"),  date(2019, 11, 30), "active", "fair",      "Metal & Engineering Corporation", "IND", "factory equipment"),
-    ("MSF-018", "Cane Mill Drive Turbine",                   "MSF-TB-001",  "Metehara Sugar Factory Plant",             "Sugar Production",          1, Decimal("210000.00"), date(2018, 2, 25),  "active", "fair",      "Metal & Engineering Corporation", "IND", "factory equipment"),
-    ("MSF-019", "Diesel Generator Cummins 500kVA",           "MSF-GN-001",  "Metehara Sugar Factory Plant",             "Engineering & Maintenance", 1, Decimal("89000.00"),  date(2022, 7, 19),  "active", "excellent", "Awash Trading House",          "OFF-EQ", "generator"),
-    ("MSF-020", "Backup Generator Caterpillar 200kVA",       "MSF-GN-002",  "Metehara Sugar Factory Administration HQ", "General Management",        1, Decimal("42000.00"),  date(2021, 12, 1),  "active", "good",      "Awash Trading House",          "OFF-EQ", "generator"),
-    ("MSF-021", "Submersible Water Pump 20HP",               "MSF-PP-001",  "Metehara Sugar Factory Plant",             "Engineering & Maintenance", 1, Decimal("6500.00"),   date(2023, 5, 10),  "active", "excellent", "Awash Trading House",          "IND",   "factory equipment"),
-    ("MSF-022", "Fire Fighting Truck",                       "MSF-FF-001",  "Metehara Sugar Factory Plant",             "Engineering & Maintenance", 1, Decimal("118000.00"), date(2020, 8, 27),  "active", "good",      "National Motors Corporation",    "VEH",   "truck"),
-    ("MSF-023", "Ambulance (Land Cruiser)",                  "MSF-AMB-001", "Metehara Sugar Factory Staff Housing",     "Medical Services",          1, Decimal("72000.00"),  date(2022, 3, 16),  "active", "excellent", "National Motors Corporation",    "VEH",   "light vehicle"),
-    ("MSF-024", "Polarimeter (Digital)",                     "MSF-LB-001",  "Metehara Sugar Factory Plant",             "Quality Control & Laboratory", 1, Decimal("14500.00"), date(2023, 1, 12), "active", "excellent", "Global IT Solutions",          "LAB",   "laboratory instrument"),
-    ("MSF-025", "Refractometer",                             "MSF-LB-002",  "Metehara Sugar Factory Plant",             "Quality Control & Laboratory", 1, Decimal("3200.00"),  date(2022, 6, 21),  "active", "good",      "Global IT Solutions",          "LAB",   "laboratory instrument"),
-    ("MSF-026", "PH Meter & Conductivity Tester",            "MSF-LB-003",  "Metehara Sugar Factory Plant",             "Quality Control & Laboratory", 1, Decimal("1800.00"),  date(2023, 3, 2),   "active", "good",      "Global IT Solutions",          "LAB",   "laboratory instrument"),
-    ("MSF-027", "Analytical Balance 0.1mg",                  "MSF-LB-004",  "Metehara Sugar Factory Plant",             "Quality Control & Laboratory", 1, Decimal("5800.00"),  date(2021, 10, 13), "active", "fair",      "Global IT Solutions",          "LAB",   "laboratory instrument"),
-    ("MSF-028", "Dell PowerEdge Server",                     "MSF-SV-001",  "Metehara Sugar Factory Administration HQ", "Information Technology",    1, Decimal("9200.00"),   date(2023, 4, 18),  "active", "excellent", "Global IT Solutions",          "IT-HW", "server"),
-    ("MSF-029", "Dell Latitude 5440 Laptop",                 "MSF-LT-001",  "Metehara Sugar Factory Administration HQ", "Information Technology",    1, Decimal("1150.00"),   date(2023, 7, 1),   "active", "excellent", "Global IT Solutions",          "IT-HW", "laptop"),
-    ("MSF-030", "HP LaserJet Pro Printer",                   "MSF-PR-001",  "Metehara Sugar Factory Administration HQ", "General Management",        1, Decimal("480.00"),    date(2022, 11, 9),  "active", "good",      "Global IT Solutions",          "IT-HW", "printer"),
-    ("MSF-031", "Executive Desk Set",                        "MSF-FR-001",  "Metehara Sugar Factory Administration HQ", "General Management",        1, Decimal("950.00"),    date(2022, 5, 30),  "active", "good",      "Bole Furniture Factory",        "FUR",   "office furniture"),
-    ("MSF-032", "Steel Filing Cabinet Set",                  "MSF-FR-002",  "Metehara Sugar Factory Administration HQ", "Finance & Accounts",        1, Decimal("520.00"),    date(2021, 8, 24),  "active", "fair",      "Bole Furniture Factory",        "FUR",   "office furniture"),
+    ("MSF-001", "Sugarcane Cane Truck (Isuzu FTR 33)",       "MSF-CNT-001", "Metehara Sugar Factory Plant",             "LOGISTICS",              1, Decimal("145000.00"), date(2023, 3, 12),  "active", "excellent", "National Motors Corporation",    "VEH",   "truck"),
+    ("MSF-002", "Cane Truck DAF CF 290",                     "MSF-CNT-002", "Metehara Sugar Factory Plant",             "LOGISTICS",              1, Decimal("175000.00"), date(2022, 8, 20),  "active", "fair",      "National Motors Corporation",    "VEH",   "truck"),
+    ("MSF-003", "Toyota Land Cruiser Utility",               "MSF-LC-001",  "Metehara Sugar Factory Administration HQ", "MANAGER OFFICE",         1, Decimal("68000.00"),  date(2023, 6, 15),  "active", "excellent", "National Motors Corporation",    "VEH",   "light vehicle"),
+    ("MSF-004", "Mitsubishi Pajero Field Vehicle",           "MSF-PJ-001",  "Metehara Cane Plantation Fields",          "PLANTATION",             1, Decimal("54000.00"),  date(2022, 11, 3),  "active", "good",      "National Motors Corporation",    "VEH",   "light vehicle"),
+    ("MSF-005", "John Deere Tractor 6110M",                  "MSF-TR-001",  "Metehara Cane Plantation Fields",          "PLANTATION",             1, Decimal("88000.00"),  date(2023, 1, 25),  "active", "excellent", "Oromia Machinery Engineering", "AGR",   "tractor"),
+    ("MSF-006", "Massey Ferguson Tractor 5455",              "MSF-TR-002",  "Metehara Cane Plantation Fields",          "PLANTATION",             1, Decimal("52000.00"),  date(2021, 9, 18),  "active", "fair",      "Oromia Machinery Engineering", "AGR",   "tractor"),
+    ("MSF-007", "Cane Loader (Case IH)",                     "MSF-CL-001",  "Metehara Cane Plantation Fields",          "PLANTATION",             1, Decimal("125000.00"), date(2022, 4, 11),  "active", "good",      "Oromia Machinery Engineering", "AGR",   "cane loader"),
+    ("MSF-008", "Cane Loader (Bell 225E)",                   "MSF-CL-002",  "Metehara Cane Plantation Fields",          "PLANTATION",             1, Decimal("98000.00"),  date(2020, 10, 30), "active", "poor",      "Oromia Machinery Engineering", "AGR",   "cane loader"),
+    ("MSF-009", "Center Pivot Irrigation System",            "MSF-IR-001",  "Metehara Cane Plantation Fields",          "PLANTATION",             1, Decimal("64000.00"),  date(2023, 2, 14),  "active", "excellent", "Awash Trading House",          "AGR",   "irrigation equipment"),
+    ("MSF-010", "Drip Irrigation Line Set",                  "MSF-IR-002",  "Metehara Cane Plantation Fields",          "PLANTATION",             1, Decimal("18000.00"),  date(2023, 4, 5),   "active", "good",      "Awash Trading House",          "AGR",   "irrigation equipment"),
+    ("MSF-011", "Sugarcane Crusher Mill 3-Roller",           "MSF-CR-001",  "Metehara Sugar Factory Plant",             "PRODUCTION",             1, Decimal("420000.00"), date(2019, 12, 20), "active", "fair",      "Metal & Engineering Corporation", "IND", "factory equipment"),
+    ("MSF-012", "High Pressure Boiler 45 T/hr",              "MSF-BL-001",  "Metehara Sugar Factory Plant",             "PRODUCTION",             1, Decimal("560000.00"), date(2018, 6, 14),  "active", "fair",      "Metal & Engineering Corporation", "IND", "boiler"),
+    ("MSF-013", "Evaporator Set (5-Unit)",                   "MSF-EV-001",  "Metehara Sugar Factory Plant",             "PRODUCTION",             1, Decimal("240000.00"), date(2019, 3, 8),   "active", "good",      "Metal & Engineering Corporation", "IND", "factory equipment"),
+    ("MSF-014", "Centrifugal Machine B-Series",              "MSF-CF-001",  "Metehara Sugar Factory Plant",             "PRODUCTION",             1, Decimal("96000.00"),  date(2020, 1, 17),  "active", "good",      "Metal & Engineering Corporation", "IND", "factory equipment"),
+    ("MSF-015", "Continuous Centrifugal C-Series",           "MSF-CF-002",  "Metehara Sugar Factory Plant",             "PRODUCTION",             1, Decimal("110000.00"), date(2021, 5, 22),  "active", "fair",      "Metal & Engineering Corporation", "IND", "factory equipment"),
+    ("MSF-016", "Sugar Dryer & Cooler Unit",                 "MSF-DR-001",  "Metehara Sugar Factory Plant",             "PRODUCTION",             1, Decimal("78000.00"),  date(2020, 9, 9),   "active", "good",      "Metal & Engineering Corporation", "IND", "factory equipment"),
+    ("MSF-017", "Rotary Vacuum Filter",                      "MSF-RV-001",  "Metehara Sugar Factory Plant",             "PRODUCTION",             1, Decimal("67000.00"),  date(2019, 11, 30), "active", "fair",      "Metal & Engineering Corporation", "IND", "factory equipment"),
+    ("MSF-018", "Cane Mill Drive Turbine",                   "MSF-TB-001",  "Metehara Sugar Factory Plant",             "PRODUCTION",             1, Decimal("210000.00"), date(2018, 2, 25),  "active", "fair",      "Metal & Engineering Corporation", "IND", "factory equipment"),
+    ("MSF-019", "Diesel Generator Cummins 500kVA",           "MSF-GN-001",  "Metehara Sugar Factory Plant",             "TECHNICAL",              1, Decimal("89000.00"),  date(2022, 7, 19),  "active", "excellent", "Awash Trading House",          "OFF-EQ", "generator"),
+    ("MSF-020", "Backup Generator Caterpillar 200kVA",       "MSF-GN-002",  "Metehara Sugar Factory Administration HQ", "MANAGER OFFICE",         1, Decimal("42000.00"),  date(2021, 12, 1),  "active", "good",      "Awash Trading House",          "OFF-EQ", "generator"),
+    ("MSF-021", "Submersible Water Pump 20HP",               "MSF-PP-001",  "Metehara Sugar Factory Plant",             "TECHNICAL",              1, Decimal("6500.00"),   date(2023, 5, 10),  "active", "excellent", "Awash Trading House",          "IND",   "factory equipment"),
+    ("MSF-022", "Fire Fighting Truck",                       "MSF-FF-001",  "Metehara Sugar Factory Plant",             "TECHNICAL",              1, Decimal("118000.00"), date(2020, 8, 27),  "active", "good",      "National Motors Corporation",    "VEH",   "truck"),
+    ("MSF-023", "Ambulance (Land Cruiser)",                  "MSF-AMB-001", "Metehara Sugar Factory Staff Housing",     "MEDICAL SERVICE",        1, Decimal("72000.00"),  date(2022, 3, 16),  "active", "excellent", "National Motors Corporation",    "VEH",   "light vehicle"),
+    ("MSF-024", "Polarimeter (Digital)",                     "MSF-LB-001",  "Metehara Sugar Factory Plant",             "AGRICULTURE RESEARCH",   1, Decimal("14500.00"), date(2023, 1, 12), "active", "excellent", "Global IT Solutions",          "LAB",   "laboratory instrument"),
+    ("MSF-025", "Refractometer",                             "MSF-LB-002",  "Metehara Sugar Factory Plant",             "AGRICULTURE RESEARCH",   1, Decimal("3200.00"),  date(2022, 6, 21),  "active", "good",      "Global IT Solutions",          "LAB",   "laboratory instrument"),
+    ("MSF-026", "PH Meter & Conductivity Tester",            "MSF-LB-003",  "Metehara Sugar Factory Plant",             "AGRICULTURE RESEARCH",   1, Decimal("1800.00"),  date(2023, 3, 2),   "active", "good",      "Global IT Solutions",          "LAB",   "laboratory instrument"),
+    ("MSF-027", "Analytical Balance 0.1mg",                  "MSF-LB-004",  "Metehara Sugar Factory Plant",             "AGRICULTURE RESEARCH",   1, Decimal("5800.00"),  date(2021, 10, 13), "active", "fair",      "Global IT Solutions",          "LAB",   "laboratory instrument"),
+    ("MSF-028", "Dell PowerEdge Server",                     "MSF-SV-001",  "Metehara Sugar Factory Administration HQ", "MANAGEMENT INFORMATION SYSTEM", 1, Decimal("9200.00"),   date(2023, 4, 18),  "active", "excellent", "Global IT Solutions",          "IT-HW", "server"),
+    ("MSF-029", "Dell Latitude 5440 Laptop",                 "MSF-LT-001",  "Metehara Sugar Factory Administration HQ", "MANAGEMENT INFORMATION SYSTEM", 1, Decimal("1150.00"),   date(2023, 7, 1),   "active", "excellent", "Global IT Solutions",          "IT-HW", "laptop"),
+    ("MSF-030", "HP LaserJet Pro Printer",                   "MSF-PR-001",  "Metehara Sugar Factory Administration HQ", "MANAGER OFFICE",         1, Decimal("480.00"),    date(2022, 11, 9),  "active", "good",      "Global IT Solutions",          "IT-HW", "printer"),
+    ("MSF-031", "Executive Desk Set",                        "MSF-FR-001",  "Metehara Sugar Factory Administration HQ", "MANAGER OFFICE",         1, Decimal("950.00"),    date(2022, 5, 30),  "active", "good",      "Bole Furniture Factory",        "FUR",   "office furniture"),
+    ("MSF-032", "Steel Filing Cabinet Set",                  "MSF-FR-002",  "Metehara Sugar Factory Administration HQ", "FINANCE DEPARTMENT",     1, Decimal("520.00"),    date(2021, 8, 24),  "active", "fair",      "Bole Furniture Factory",        "FUR",   "office furniture"),
 ]
 
 EMPLOYEES = [
     # (employee_id, national_id, full_name, job_position, job_grade, dept_name, hire_date, family_size, marital_status, has_disability, status)
-    ("EMP-00001", "NID-MSF-0001", "Ayele Tadesse",         "General Manager",          "Grade-6", "General Management",           date(2008, 6, 15),  6, "Married", False, "Active"),
-    ("EMP-00002", "NID-MSF-0002", "Bekele Alemayehu",      "Deputy General Manager",   "Grade-6", "General Management",           date(2010, 2, 1),   5, "Married", False, "Active"),
-    ("EMP-00003", "NID-MSF-0003", "Tigist Worku",          "Sugar Process Engineer",   "Grade-5", "Sugar Production",             date(2015, 8, 20),  4, "Married", False, "Active"),
-    ("EMP-00004", "NID-MSF-0004", "Getachew Lemma",        "Chief Mechanic",           "Grade-4", "Engineering & Maintenance",    date(2012, 4, 11),  5, "Married", False, "Active"),
-    ("EMP-00005", "NID-MSF-0005", "Selamawit Hailu",       "Laboratory Chemist",       "Grade-4", "Quality Control & Laboratory", date(2017, 1, 9),   3, "Single",  False, "Active"),
-    ("EMP-00006", "NID-MSF-0006", "Tesfaye Mekonnen",      "Boiler Operator",          "Grade-3", "Sugar Production",             date(2014, 7, 25),  6, "Married", False, "Active"),
-    ("EMP-00007", "NID-MSF-0007", "Muluken Girma",         "Electrician",              "Grade-3", "Engineering & Maintenance",    date(2016, 3, 14),  4, "Married", False, "Active"),
-    ("EMP-00008", "NID-MSF-0008", "Azeb Assefa",           "Senior Accountant",        "Grade-4", "Finance & Accounts",           date(2013, 9, 30),  3, "Married", False, "Active"),
-    ("EMP-00009", "NID-MSF-0009", "Worku Dibaba",          "Tractor Operator",         "Grade-2", "Agriculture & Plantation",     date(2018, 5, 22),  5, "Married", False, "Active"),
-    ("EMP-00010", "NID-MSF-0010", "Etsegenet Bekele",      "HR Officer",               "Grade-3", "Human Resources",              date(2019, 2, 18),  2, "Single",  False, "Active"),
-    ("EMP-00011", "NID-MSF-0011", "Dawit Kebede",          "Procurement Officer",      "Grade-4", "Procurement & Logistics",      date(2015, 11, 5),  4, "Married", False, "Active"),
-    ("EMP-00012", "NID-MSF-0012", "Meseret Alemu",         "Factory Nurse",            "Grade-3", "Medical Services",             date(2018, 6, 11),  2, "Single",  False, "Active"),
-    ("EMP-00013", "NID-MSF-0013", "Solomon Demissie",      "Security Supervisor",      "Grade-2", "General Management",           date(2016, 12, 1),  5, "Married", False, "Active"),
-    ("EMP-00014", "NID-MSF-0014", "Hiwot Getahun",         "IT Specialist",            "Grade-4", "Information Technology",       date(2019, 4, 8),   3, "Single",  False, "Active"),
-    ("EMP-00015", "NID-MSF-0015", "Alemu Shiferaw",        "Cane Development Officer", "Grade-4", "Agriculture & Plantation",     date(2013, 10, 16), 6, "Married", False, "Active"),
-    ("EMP-00016", "NID-MSF-0016", "Rahel Teshome",         "Receptionist",             "Grade-1", "General Management",           date(2021, 8, 2),   1, "Single",  False, "Active"),
-    ("EMP-00017", "NID-MSF-0017", "Girma Belachew",        "Store Keeper",             "Grade-2", "Procurement & Logistics",      date(2017, 2, 27),  4, "Married", False, "Active"),
-    ("EMP-00018", "NID-MSF-0018", "Frehiwot Girma",        "Data Entry Clerk",         "Grade-1", "Information Technology",       date(2022, 1, 17),  1, "Single",  False, "Active"),
-    ("EMP-00019", "NID-MSF-0019", "Kebede Woldemichael",   "Field Supervisor",         "Grade-3", "Agriculture & Plantation",     date(2014, 5, 28),  5, "Married", True,  "Active"),
-    ("EMP-00020", "NID-MSF-0020", "Aster Fikre",           "Quality Control Officer",  "Grade-3", "Quality Control & Laboratory", date(2020, 7, 13),  2, "Married", False, "Active"),
+    ("EMP-00001", "NID-MSF-0001", "Ayele Tadesse",         "General Manager",          "Grade-6", "MANAGER OFFICE",                     date(2008, 6, 15),  6, "Married", False, "Active"),
+    ("EMP-00002", "NID-MSF-0002", "Bekele Alemayehu",      "Deputy General Manager",   "Grade-6", "MANAGER OFFICE",                     date(2010, 2, 1),   5, "Married", False, "Active"),
+    ("EMP-00003", "NID-MSF-0003", "Tigist Worku",          "Sugar Process Engineer",   "Grade-5", "PRODUCTION",                         date(2015, 8, 20),  4, "Married", False, "Active"),
+    ("EMP-00004", "NID-MSF-0004", "Getachew Lemma",        "Chief Mechanic",           "Grade-4", "TECHNICAL",                          date(2012, 4, 11),  5, "Married", False, "Active"),
+    ("EMP-00005", "NID-MSF-0005", "Selamawit Hailu",       "Laboratory Chemist",       "Grade-4", "AGRICULTURE RESEARCH",               date(2017, 1, 9),   3, "Single",  False, "Active"),
+    ("EMP-00006", "NID-MSF-0006", "Tesfaye Mekonnen",      "Boiler Operator",          "Grade-3", "PRODUCTION",                         date(2014, 7, 25),  6, "Married", False, "Active"),
+    ("EMP-00007", "NID-MSF-0007", "Muluken Girma",         "Electrician",              "Grade-3", "TECHNICAL",                          date(2016, 3, 14),  4, "Married", False, "Active"),
+    ("EMP-00008", "NID-MSF-0008", "Azeb Assefa",           "Senior Accountant",        "Grade-4", "FINANCE DEPARTMENT",                 date(2013, 9, 30),  3, "Married", False, "Active"),
+    ("EMP-00009", "NID-MSF-0009", "Worku Dibaba",          "Tractor Operator",         "Grade-2", "PLANTATION",                         date(2018, 5, 22),  5, "Married", False, "Active"),
+    ("EMP-00010", "NID-MSF-0010", "Etsegenet Bekele",      "HR Officer",               "Grade-3", "HUMAN RESOURCE DEPARTMENT",          date(2019, 2, 18),  2, "Single",  False, "Active"),
+    ("EMP-00011", "NID-MSF-0011", "Dawit Kebede",          "Procurement Officer",      "Grade-4", "LOGISTICS",                          date(2015, 11, 5),  4, "Married", False, "Active"),
+    ("EMP-00012", "NID-MSF-0012", "Meseret Alemu",         "Factory Nurse",            "Grade-3", "MEDICAL SERVICE",                    date(2018, 6, 11),  2, "Single",  False, "Active"),
+    ("EMP-00013", "NID-MSF-0013", "Solomon Demissie",      "Security Supervisor",      "Grade-2", "SECURITY",                          date(2016, 12, 1),  5, "Married", False, "Active"),
+    ("EMP-00014", "NID-MSF-0014", "Hiwot Getahun",         "IT Specialist",            "Grade-4", "MANAGEMENT INFORMATION SYSTEM",     date(2019, 4, 8),   3, "Single",  False, "Active"),
+    ("EMP-00015", "NID-MSF-0015", "Alemu Shiferaw",        "Cane Development Officer", "Grade-4", "CULTIVATION",                        date(2013, 10, 16), 6, "Married", False, "Active"),
+    ("EMP-00016", "NID-MSF-0016", "Rahel Teshome",         "Receptionist",             "Grade-1", "MANAGER OFFICE",                     date(2021, 8, 2),   1, "Single",  False, "Active"),
+    ("EMP-00017", "NID-MSF-0017", "Girma Belachew",        "Store Keeper",             "Grade-2", "LOGISTICS",                          date(2017, 2, 27),  4, "Married", False, "Active"),
+    ("EMP-00018", "NID-MSF-0018", "Frehiwot Girma",        "Data Entry Clerk",         "Grade-1", "MANAGEMENT INFORMATION SYSTEM",     date(2022, 1, 17),  1, "Single",  False, "Active"),
+    ("EMP-00019", "NID-MSF-0019", "Kebede Woldemichael",   "Field Supervisor",         "Grade-3", "PLANTATION",                         date(2014, 5, 28),  5, "Married", True,  "Active"),
+    ("EMP-00020", "NID-MSF-0020", "Aster Fikre",           "Quality Control Officer",  "Grade-3", "AGRICULTURE RESEARCH",               date(2020, 7, 13),  2, "Married", False, "Active"),
 ]
 
 HOUSES = [
@@ -225,15 +298,43 @@ def seed_metehara_factory():
         admin_user.save()
     print(f"  [{'Created' if sa_created or admin_created else 'Exists '}] Users ensured (superadmin, admin).")
 
-    # --- Departments ---
+    # --- Departments (official Metahara Sugar Factory hierarchy) ---
     departments = {}
-    for code, name, desc in DEPARTMENTS:
-        dept, created = Department.objects.get_or_create(
-            code=code,
-            defaults={"name": name, "description": desc, "head": admin_user},
-        )
-        departments[name] = dept
-        _log("departments", dept, created)
+    dept_by_code = {}
+    # Pass 1: create top-level departments
+    for code, name, desc, parent_code, level, sort_order in DEPARTMENTS:
+        if parent_code is None:
+            dept, created = Department.objects.get_or_create(
+                code=code,
+                defaults={
+                    "name": name,
+                    "description": desc,
+                    "level": level,
+                    "sort_order": sort_order,
+                    "head": admin_user,
+                },
+            )
+            departments[name] = dept
+            dept_by_code[code] = dept
+            _log("departments", dept, created)
+    # Pass 2: create sub-departments
+    for code, name, desc, parent_code, level, sort_order in DEPARTMENTS:
+        if parent_code is not None:
+            parent = dept_by_code.get(parent_code)
+            dept, created = Department.objects.get_or_create(
+                code=code,
+                defaults={
+                    "name": name,
+                    "description": desc,
+                    "parent": parent,
+                    "level": level,
+                    "sort_order": sort_order,
+                    "head": admin_user,
+                },
+            )
+            departments[name] = dept
+            dept_by_code[code] = dept
+            _log("departments", dept, created)
 
     # --- Properties ---
     properties = {}

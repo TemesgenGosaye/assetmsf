@@ -41,46 +41,46 @@ def seed_real_assets():
     # Each tuple: (item_type_name, asset_name, serial, property_obj, department, purchase_cost, vendor)
     assets_data = [
         # 1. irrigation item (Starts at 100 -> prefix 10-0-00-100)
-        ("irrigation item", "Center Pivot Unit", "CP-901-IRR", prop2, "Production", Decimal("12000.00"), "Global IT Solutions"),
-        ("irrigation item", "Drip Irrigation Kit", "DK-402-IRR", prop3, "Logistics", Decimal("4500.00"), "Global IT Solutions"),
-        ("irrigation item", "Sprinkler Head Assembly", "SH-103-IRR", prop3, "Production", Decimal("1200.00"), "Global IT Solutions"),
+        ("irrigation item", "Center Pivot Unit", "CP-901-IRR", prop2, "PRODUCTION", Decimal("12000.00"), "Global IT Solutions"),
+        ("irrigation item", "Drip Irrigation Kit", "DK-402-IRR", prop3, "LOGISTICS", Decimal("4500.00"), "Global IT Solutions"),
+        ("irrigation item", "Sprinkler Head Assembly", "SH-103-IRR", prop3, "PRODUCTION", Decimal("1200.00"), "Global IT Solutions"),
         
         # 2. bridge item (Starts at 200 -> prefix 20-0-00-200)
-        ("bridge item", "Steel Beam Support", "SB-301-BRG", prop2, "Logistics", Decimal("25000.00"), "Ethiopian Motor Corporation"),
-        ("bridge item", "Concrete Deck Panel", "CD-302-BRG", prop2, "Logistics", Decimal("15000.00"), "Ethiopian Motor Corporation"),
+        ("bridge item", "Steel Beam Support", "SB-301-BRG", prop2, "LOGISTICS", Decimal("25000.00"), "Ethiopian Motor Corporation"),
+        ("bridge item", "Concrete Deck Panel", "CD-302-BRG", prop2, "LOGISTICS", Decimal("15000.00"), "Ethiopian Motor Corporation"),
         
         # 3. factory equipment (Starts at 300 -> prefix 30-0-00-300)
-        ("factory equipment", "CNC Milling Machine", "CNC-701-FAC", prop3, "Production", Decimal("85000.00"), "Global IT Solutions"),
-        ("factory equipment", "Industrial Boiler", "IB-702-FAC", prop3, "Production", Decimal("45000.00"), "Global IT Solutions"),
-        ("factory equipment", "Hydraulic Press 50T", "HP-703-FAC", prop3, "Production", Decimal("32000.00"), "Global IT Solutions"),
+        ("factory equipment", "CNC Milling Machine", "CNC-701-FAC", prop3, "PRODUCTION", Decimal("85000.00"), "Global IT Solutions"),
+        ("factory equipment", "Industrial Boiler", "IB-702-FAC", prop3, "PRODUCTION", Decimal("45000.00"), "Global IT Solutions"),
+        ("factory equipment", "Hydraulic Press 50T", "HP-703-FAC", prop3, "PRODUCTION", Decimal("32000.00"), "Global IT Solutions"),
         
         # 4. heavy machinery (Starts at 400 -> prefix 40-0-00-400)
-        ("heavy machinery", "Excavator 320", "EXC-501-HVY", prop2, "Logistics", Decimal("125000.00"), "Ethiopian Motor Corporation"),
-        ("heavy machinery", "Bulldozer D6", "BD-502-HVY", prop2, "Logistics", Decimal("98000.00"), "Ethiopian Motor Corporation"),
-        ("heavy machinery", "Forklift 3T", "FL-503-HVY", prop2, "Logistics", Decimal("18000.00"), "Ethiopian Motor Corporation"),
+        ("heavy machinery", "Excavator 320", "EXC-501-HVY", prop2, "LOGISTICS", Decimal("125000.00"), "Ethiopian Motor Corporation"),
+        ("heavy machinery", "Bulldozer D6", "BD-502-HVY", prop2, "LOGISTICS", Decimal("98000.00"), "Ethiopian Motor Corporation"),
+        ("heavy machinery", "Forklift 3T", "FL-503-HVY", prop2, "LOGISTICS", Decimal("18000.00"), "Ethiopian Motor Corporation"),
         
         # 5. light vehicle (Starts at 500 -> prefix 50-0-00-500)
-        ("light vehicle", "Toyota Hilux Double Cab", "TOY-HILUX-501", prop1, "Logistics", Decimal("38000.00"), "Ethiopian Motor Corporation"),
-        ("light vehicle", "Suzuki Swift Sedan", "SUZ-SWIFT-502", prop1, "Administration", Decimal("15000.00"), "Ethiopian Motor Corporation"),
-        ("light vehicle", "Motorcycle Yamaha 125", "YAM-125-503", prop2, "Logistics", Decimal("3500.00"), "Ethiopian Motor Corporation"),
+        ("light vehicle", "Toyota Hilux Double Cab", "TOY-HILUX-501", prop1, "LOGISTICS", Decimal("38000.00"), "Ethiopian Motor Corporation"),
+        ("light vehicle", "Suzuki Swift Sedan", "SUZ-SWIFT-502", prop1, "MANAGER OFFICE", Decimal("15000.00"), "Ethiopian Motor Corporation"),
+        ("light vehicle", "Motorcycle Yamaha 125", "YAM-125-503", prop2, "LOGISTICS", Decimal("3500.00"), "Ethiopian Motor Corporation"),
         
         # 6. office furniture (Starts at 600 -> prefix 60-0-00-600)
-        ("office furniture", "Executive mahogany Desk", "DESK-EX-601", prop1, "Administration", Decimal("850.00"), "Office Furniture Depot"),
-        ("office furniture", "Office Chair Ergonomic", "CHR-ER-602", prop1, "Information Technology", Decimal("250.00"), "Office Furniture Depot"),
-        ("office furniture", "Meeting Table 8-Seat", "TBL-MT-603", prop1, "Administration", Decimal("1200.00"), "Office Furniture Depot"),
+        ("office furniture", "Executive mahogany Desk", "DESK-EX-601", prop1, "MANAGER OFFICE", Decimal("850.00"), "Office Furniture Depot"),
+        ("office furniture", "Office Chair Ergonomic", "CHR-ER-602", prop1, "MANAGEMENT INFORMATION SYSTEM", Decimal("250.00"), "Office Furniture Depot"),
+        ("office furniture", "Meeting Table 8-Seat", "TBL-MT-603", prop1, "MANAGER OFFICE", Decimal("1200.00"), "Office Furniture Depot"),
         
         # 7. household furniture (Starts at 700 -> prefix 70-0-00-700)
-        ("household furniture", "Double Bed Frame", "BED-DB-701", prop1, "Administration", Decimal("650.00"), "Office Furniture Depot"),
-        ("household furniture", "Wardrobe 3-Door", "WD-3D-702", prop1, "Administration", Decimal("450.00"), "Office Furniture Depot"),
+        ("household furniture", "Double Bed Frame", "BED-DB-701", prop1, "MANAGER OFFICE", Decimal("650.00"), "Office Furniture Depot"),
+        ("household furniture", "Wardrobe 3-Door", "WD-3D-702", prop1, "MANAGER OFFICE", Decimal("450.00"), "Office Furniture Depot"),
         
         # 8. agricultural equipment (Starts at 800 -> prefix 80-0-00-800)
-        ("agricultural equipment", "Tractor MF 285", "TRAC-MF-801", prop2, "Production", Decimal("45000.00"), "Ethiopian Motor Corporation"),
-        ("agricultural equipment", "Plough Disc Harrow", "PL-DH-802", prop2, "Production", Decimal("6500.00"), "Ethiopian Motor Corporation"),
+        ("agricultural equipment", "Tractor MF 285", "TRAC-MF-801", prop2, "PRODUCTION", Decimal("45000.00"), "Ethiopian Motor Corporation"),
+        ("agricultural equipment", "Plough Disc Harrow", "PL-DH-802", prop2, "PRODUCTION", Decimal("6500.00"), "Ethiopian Motor Corporation"),
         
         # 9. miscellaneous (Starts at 900 -> prefix 100-0-00-900)
-        ("miscellaneous", "Safety Helmet Box", "HELM-BX-901", prop1, "Logistics", Decimal("150.00"), "Office Furniture Depot"),
-        ("miscellaneous", "Fire Extinguisher 5kg", "FE-5KG-902", prop1, "Administration", Decimal("80.00"), "Office Furniture Depot"),
-        ("miscellaneous", "First Aid Kit Wall-Mount", "FA-WM-903", prop3, "Production", Decimal("50.00"), "Office Furniture Depot"),
+        ("miscellaneous", "Safety Helmet Box", "HELM-BX-901", prop1, "LOGISTICS", Decimal("150.00"), "Office Furniture Depot"),
+        ("miscellaneous", "Fire Extinguisher 5kg", "FE-5KG-902", prop1, "MANAGER OFFICE", Decimal("80.00"), "Office Furniture Depot"),
+        ("miscellaneous", "First Aid Kit Wall-Mount", "FA-WM-903", prop3, "PRODUCTION", Decimal("50.00"), "Office Furniture Depot"),
     ]
 
     # Pre-cache or create Categories to match ItemTypes

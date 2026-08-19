@@ -1,7 +1,7 @@
 import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, FilePlus, Files, ClipboardList,
-  User, ChevronLeft, ArrowLeftFromLine, Home,
+  User, ChevronLeft, ArrowLeftFromLine, Home, Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ const navItems = [
   { name: "New Application", href: "/applicant/new", icon: FilePlus },
   { name: "My Applications", href: "/applicant/my", icon: Files },
   { name: "Application Status", href: "/applicant/status", icon: ClipboardList },
+  { name: "Maintenance Request", href: "/applicant/maintenance", icon: Wrench },
   { name: "Profile", href: "/applicant/profile", icon: User },
 ];
 

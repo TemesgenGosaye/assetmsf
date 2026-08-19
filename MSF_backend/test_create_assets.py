@@ -34,31 +34,31 @@ print(f'Logged in. Token: {token[:20]}...')
 tests = [
     ("string quantity", {
         'asset_code': '60-0-00-001', 'name': 'Test 1', 'property': 'PROP-001',
-        'department': 'Admin', 'quantity': '1', 'status': 'active', 'condition': 'good',
+        'department': 'MANAGER OFFICE', 'quantity': '1', 'status': 'active', 'condition': 'good',
         'item_type_name': 'office furniture',
     }),
     ("empty expiry_date", {
         'asset_code': '60-0-00-002', 'name': 'Test 2', 'property': 'PROP-001',
-        'department': 'Admin', 'quantity': 1, 'status': 'active', 'condition': 'good',
+        'department': 'MANAGER OFFICE', 'quantity': 1, 'status': 'active', 'condition': 'good',
         'expiry_date': '', 'item_type_name': 'office furniture',
     }),
     ("no item_type_name", {
         'asset_code': '60-0-00-003', 'name': 'Test 3', 'property': 'PROP-001',
-        'department': 'Admin', 'quantity': 1, 'status': 'active', 'condition': 'good',
+        'department': 'MANAGER OFFICE', 'quantity': 1, 'status': 'active', 'condition': 'good',
     }),
     ("inactive property PROP-002", {
         'asset_code': '60-0-00-004', 'name': 'Test 4', 'property': 'PROP-002',
-        'department': 'Admin', 'quantity': 1, 'status': 'active', 'condition': 'good',
+        'department': 'MANAGER OFFICE', 'quantity': 1, 'status': 'active', 'condition': 'good',
         'item_type_name': 'office furniture',
     }),
     ("inactive property PROP-003", {
         'asset_code': '60-0-00-005', 'name': 'Test 5', 'property': 'PROP-003',
-        'department': 'Admin', 'quantity': 1, 'status': 'active', 'condition': 'good',
+        'department': 'MANAGER OFFICE', 'quantity': 1, 'status': 'active', 'condition': 'good',
         'item_type_name': 'office furniture',
     }),
     ("full payload like frontend", {
         'asset_code': '60-0-00-006', 'name': 'Test 6', 'property': 'PROP-001',
-        'department': 'Logistics', 'quantity': 1, 'status': 'active', 'condition': 'good',
+        'department': 'LOGISTICS', 'quantity': 1, 'status': 'active', 'condition': 'good',
         'location': None, 'description': None, 'serial_number': None,
         'amc_enabled': False, 'amc_start_date': None, 'amc_end_date': None,
         'purchase_date': None, 'expiry_date': None, 'po_number': None,

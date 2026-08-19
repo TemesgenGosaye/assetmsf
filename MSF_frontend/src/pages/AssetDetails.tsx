@@ -432,11 +432,7 @@ export default function AssetDetails() {
               value: asset.condition || "Not specified",
             },
             {
-              icon: Package,
-              label: "Quantity",
-              value: asset.quantity != null ? asset.quantity.toString() : "—",
-            },
-            { icon: ClipboardList, label: "PO Number", value: asset.poNumber },
+              icon: ClipboardList, label: "PO Number", value: asset.poNumber },
           ],
         },
       ]}

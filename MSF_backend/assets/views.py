@@ -533,7 +533,6 @@ class AssetAnalyticsView(generics.GenericAPIView):
 
         totals = assets.aggregate(
             total_assets=Count('id'),
-            total_quantity=Sum('quantity'),
             total_purchase_cost=Sum('purchase_cost'),
             total_current_value=Sum('current_value'),
             total_accumulated_depreciation=Sum('accumulated_depreciation'),
@@ -702,7 +701,6 @@ class AssetAnalyticsView(generics.GenericAPIView):
         data = {
             'totals': {
                 'total_assets': totals['total_assets'] or 0,
-                'total_quantity': totals['total_quantity'] or 0,
                 'total_purchase_cost': round(total_purchase_cost, 2),
                 'total_current_value': round(total_current_value, 2),
                 'total_accumulated_depreciation': round(total_depreciation, 2),

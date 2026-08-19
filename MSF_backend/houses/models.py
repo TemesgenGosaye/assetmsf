@@ -962,6 +962,10 @@ class PostInspection(BaseModel):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class MaintenanceRequest(BaseModel):
+    """
+    House maintenance request submitted by applicants/occupants for their
+    allocated houses. Routed to Civil Work Department for processing.
+    """
 
     class Priority(models.TextChoices):
         LOW      = "Low",      _("Low")
@@ -970,27 +974,106 @@ class MaintenanceRequest(BaseModel):
         EMERGENCY = "Emergency", _("Emergency")
 
     class Status(models.TextChoices):
-        PENDING     = "Pending",     _("Pending")
+        SUBMITTED   = "Submitted",   _("Submitted")
+        RECEIVED    = "Received",    _("Received")
         IN_PROGRESS = "In Progress", _("In Progress")
+        ON_HOLD     = "On Hold",     _("On Hold")
         COMPLETED   = "Completed",   _("Completed")
+        REJECTED    = "Rejected",    _("Rejected")
         CANCELLED   = "Cancelled",   _("Cancelled")
+
+    class Category(models.TextChoices):
+        PLUMBING      = "Plumbing",      _("Plumbing")
+        ELECTRICAL    = "Electrical",    _("Electrical")
+        STRUCTURAL    = "Structural",    _("Structural")
+        ROOFING       = "Roofing",       _("Roofing")
+        PAINTING      = "Painting",      _("Painting")
+        FLOORING      = "Flooring",      _("Flooring")
+        DOOR_WINDOW   = "Door & Window", _("Door & Window")
+        WATER_SUPPLY  = "Water Supply",  _("Water Supply")
+        DRAINAGE      = "Drainage",      _("Drainage")
+        GENERAL       = "General",       _("General Repair")
+        OTHER         = "Other",         _("Other")
 
     house        = models.ForeignKey(House, on_delete=models.CASCADE, related_name="maintenance_requests")
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="maintenance_requests")
     title        = models.CharField(_("title"), max_length=255)
     description  = models.TextField(_("description"))
+    category     = models.CharField(_("category"), max_length=30, choices=Category.choices, default=Category.GENERAL)
     priority     = models.CharField(_("priority"), max_length=20, choices=Priority.choices, default=Priority.MEDIUM)
-    status       = models.CharField(_("status"), max_length=20, choices=Status.choices, default=Status.PENDING)
-    cost         = models.DecimalField(_("cost"), max_digits=10, decimal_places=2, default=0.00)
-    assigned_to  = models.CharField(_("assigned to"), max_length=255, blank=True)
-    resolved_at  = models.DateTimeField(_("resolved at"), null=True, blank=True)
+    status       = models.CharField(_("status"), max_length=20, choices=Status.choices, default=Status.SUBMITTED)
+
+    # Civil Work Department workflow
+    received_by     = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="received_maintenance_requests", verbose_name=_("received by"))
+    received_at     = models.DateTimeField(_("received at"), null=True, blank=True)
+    civil_work_assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="cw_assigned_maintenance_requests", verbose_name=_("civil work assigned to"))
+    civil_work_notes = models.TextField(_("civil work notes"), blank=True, default="")
+    rejection_reason = models.TextField(_("rejection reason"), blank=True, default="")
+    resolution_notes = models.TextField(_("resolution notes"), blank=True, default="")
+
+    # Cost tracking
+    estimated_cost = models.DecimalField(_("estimated cost"), max_digits=10, decimal_places=2, default=0.00)
+    actual_cost    = models.DecimalField(_("actual cost"), max_digits=10, decimal_places=2, default=0.00)
+
+    # Dates
+    resolved_at     = models.DateTimeField(_("resolved at"), null=True, blank=True)
+    completion_date = models.DateField(_("completion date"), null=True, blank=True)
 
     class Meta:
         db_table = "maintenance_requests"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["priority"]),
+            models.Index(fields=["category"]),
+            models.Index(fields=["requested_by"]),
+            models.Index(fields=["house"]),
+        ]
 
     def __str__(self):
         return f"{self.title} ({self.house.house_id})"
+
+    @property
+    def request_number(self):
+        """Generate a readable request number from the UUID."""
+        short_id = str(self.id)[:8].upper()
+        return f"MNT-{short_id}"
+
+
+class MaintenanceRequestLog(BaseModel):
+    """
+    Immutable audit trail for maintenance request lifecycle events.
+    """
+
+    class EventType(models.TextChoices):
+        SUBMITTED    = "Submitted",    _("Submitted")
+        RECEIVED     = "Received",     _("Received")
+        ASSIGNED     = "Assigned",     _("Assigned")
+        STATUS_CHANGE = "Status Change", _("Status Change")
+        NOTE_ADDED   = "Note Added",   _("Note Added")
+        REJECTED     = "Rejected",     _("Rejected")
+        COMPLETED    = "Completed",    _("Completed")
+        CANCELLED    = "Cancelled",    _("Cancelled")
+        COST_UPDATED = "Cost Updated", _("Cost Updated")
+
+    request       = models.ForeignKey(MaintenanceRequest, on_delete=models.CASCADE, related_name="logs")
+    event_type    = models.CharField(_("event type"), max_length=20, choices=EventType.choices)
+    actor         = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="maintenance_logs")
+    actor_name    = models.CharField(_("actor name"), max_length=255, blank=True, default="")
+    old_value     = models.TextField(_("old value"), blank=True, default="")
+    new_value     = models.TextField(_("new value"), blank=True, default="")
+    note          = models.TextField(_("note"), blank=True, default="")
+
+    class Meta:
+        db_table = "maintenance_request_logs"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["request"]),
+            models.Index(fields=["event_type"]),
+        ]
+
+    def __str__(self):
+        return f"{self.event_type}: {self.request.title}"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

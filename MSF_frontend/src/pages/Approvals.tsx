@@ -676,7 +676,7 @@ export default function Approvals() {
                     <SelectContent>
                       <SelectItem value="ALL">All departments</SelectItem>
                       {departments.filter(d => d.name).map(d => (
-                        <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                        <SelectItem key={d.id} value={d.name}>{d.name}{d.code ? ` (${d.code})` : ''}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

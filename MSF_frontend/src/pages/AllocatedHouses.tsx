@@ -46,12 +46,12 @@ import {
   type HandoverReceipt,
 } from "@/services/houseHandoverReceipt";
 import HandoverReceiptModal from "@/components/houses/HandoverReceiptModal";
+import ClearanceSlipModal from "@/components/houses/ClearanceSlipModal";
 import {
   terminateWithCode,
   listTerminations,
   type TerminationTransaction,
 } from "@/services/houseApplication";
-import { downloadClearanceSlipPdf } from "@/lib/clearanceSlipPdf";
 import {
   validatePreInspection,
 } from "@/services/houseOperations";
@@ -98,6 +98,8 @@ export default function AllocatedHouses() {
   const [receiptTarget, setReceiptTarget] = useState<HouseAllocation | null>(null);
   const [receipt, setReceipt] = useState<HandoverReceipt | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
+
+  const [slipTarget, setSlipTarget] = useState<TerminationTransaction | null>(null);
 
   // ── termination authorization code ────────────────────────────────────
   const [termAuthCode, setTermAuthCode] = useState("");
@@ -317,7 +319,7 @@ export default function AllocatedHouses() {
         onClick: () => handleOpenReceipt(row),
       },
       {
-        label: "Download Clearance Slip",
+        label: "Clearance Slip",
         icon: FileText,
         hidden: row.status !== "Terminated",
         onClick: async () => {
@@ -330,7 +332,7 @@ export default function AllocatedHouses() {
             } catch {}
           }
           if (match) {
-            downloadClearanceSlipPdf(match);
+            setSlipTarget(match);
           } else {
             toast.error("No completed termination transaction found for this allocation");
           }
@@ -593,13 +595,13 @@ export default function AllocatedHouses() {
                     } catch {}
                   }
                   if (match) {
-                    downloadClearanceSlipPdf(match);
+                    setSlipTarget(match);
                   } else {
                     toast.error("No completed termination transaction found for this allocation");
                   }
                 }}
               >
-                <FileText className="mr-2 h-4 w-4" /> Download Clearance Slip
+                <FileText className="mr-2 h-4 w-4" /> Clearance Slip
               </Button>
             )}
             {detail?.status === "Active" && canAdmin && (
@@ -820,6 +822,15 @@ export default function AllocatedHouses() {
             onReceiptUpdated={setReceipt}
           />
         ) : null
+      )}
+
+      {/* ── Clearance Slip modal ────────────────────────────────────── */}
+      {slipTarget && (
+        <ClearanceSlipModal
+          open
+          onOpenChange={(o) => { if (!o) setSlipTarget(null); }}
+          slip={slipTarget}
+        />
       )}
     </div>
   );

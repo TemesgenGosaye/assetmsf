@@ -189,9 +189,6 @@ class Asset(BaseModel):
         validators=[MinValueValidator(0)]
     )
     
-    # Quantity (for bulk items)
-    quantity = models.IntegerField(_('quantity'), default=1, validators=[MinValueValidator(1)])
-    
     # Additional Information
     expiry_date = models.DateField(_('expiry date'), null=True, blank=True)
     notes = models.TextField(_('notes'), null=True, blank=True)
@@ -220,12 +217,6 @@ class Asset(BaseModel):
             models.Index(fields=['item_type']),
             models.Index(fields=['owner']),
             models.Index(fields=['is_active']),
-        ]
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(quantity__gte=1),
-                name='check_quantity_positive'
-            ),
         ]
 
     def __str__(self):

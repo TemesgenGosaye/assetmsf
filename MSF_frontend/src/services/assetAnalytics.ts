@@ -23,7 +23,6 @@ export type ComplianceCounts = {
 export type AssetAnalytics = {
   totals: {
     total_assets: number;
-    total_quantity: number;
     total_purchase_cost: number;
     total_current_value: number;
     total_accumulated_depreciation: number;

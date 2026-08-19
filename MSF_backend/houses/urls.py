@@ -30,6 +30,9 @@ from .operations_views import (
     PostInspectionListCreateView, PostInspectionDetailView, PostInspectionCompleteView,
     PreInspectionValidationView,
     MaintenanceListCreateView, MaintenanceDetailView, MaintenanceStatusView,
+    ApplicantMaintenanceSubmitView, ApplicantMaintenanceListView,
+    CivilWorkPanelView, CivilWorkReceiveView, CivilWorkAssignView,
+    CivilWorkUpdateView, CivilWorkStatsView,
     TransferListCreateView, TransferDetailView, TransferDecideView, TransferCompleteView,
     ContractListCreateView, ContractDetailView, ContractTerminateView,
     InvoiceListCreateView, InvoiceDetailView,
@@ -113,6 +116,15 @@ urlpatterns = [
     path("maintenance-requests/",      MaintenanceListCreateView.as_view(),          name="maintenance_list_create"),
     path("maintenance-requests/<uuid:id>/", MaintenanceDetailView.as_view(),         name="maintenance_detail"),
     path("maintenance-requests/<uuid:id>/status/", MaintenanceStatusView.as_view(),  name="maintenance_status"),
+    # ── Maintenance Request Form (Applicant) ──────────────────────────
+    path("maintenance-requests/submit/", ApplicantMaintenanceSubmitView.as_view(),   name="maintenance_submit"),
+    path("maintenance-requests/my/",     ApplicantMaintenanceListView.as_view(),     name="maintenance_my"),
+    # ── Civil Work Department Panel ───────────────────────────────────
+    path("civil-work/panel/",            CivilWorkPanelView.as_view(),              name="civil_work_panel"),
+    path("civil-work/stats/",            CivilWorkStatsView.as_view(),              name="civil_work_stats"),
+    path("civil-work/<uuid:id>/receive/", CivilWorkReceiveView.as_view(),           name="civil_work_receive"),
+    path("civil-work/<uuid:id>/assign/", CivilWorkAssignView.as_view(),             name="civil_work_assign"),
+    path("civil-work/<uuid:id>/update/", CivilWorkUpdateView.as_view(),             name="civil_work_update"),
 
     # ── House operations: transfers ────────────────────────────────────
     path("transfers/",                 TransferListCreateView.as_view(),             name="transfer_list_create"),

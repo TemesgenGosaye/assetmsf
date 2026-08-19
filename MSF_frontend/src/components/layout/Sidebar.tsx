@@ -106,6 +106,7 @@ const baseNav: NavItem[] = [
   { name: "Reports", href: "/reports", icon: FileBarChart },
   { name: "Audit", href: "/audit", icon: ClipboardCheck },
   { name: "Tickets", href: "/tickets", icon: Ticket },
+  { name: "Civil Work Panel", href: "/civil-work", icon: Building2 },
   { name: "Help Center", href: "/help", icon: LifeBuoy },
   { name: "Users", href: "/users", icon: Users },
   { name: "Settings", href: "/settings", icon: Settings },
@@ -130,7 +131,7 @@ const badgeToneClasses: Record<BadgeTone, string> = {
 
 const navGroupBlueprint: Array<{ key: string; title: string; items: string[] }> = [
   { key: "workspace", title: "Workspace", items: ["Dashboard", "Assets", "Properties", "Employees", "Residential Hub", "Scan QR"] },
-  { key: "operations", title: "Operations", items: ["House Opp", "Command Center", "Allocated Houses", "Allocation Console", "Allocation History", "Operations", "Approvals", "Tickets", "Help Center", "QR Codes", "Newsletter"] },
+  { key: "operations", title: "Operations", items: ["House Opp", "Command Center", "Allocated Houses", "Allocation Console", "Allocation History", "Operations", "Approvals", "Tickets", "Civil Work Panel", "Help Center", "QR Codes", "Newsletter"] },
   { key: "house_application", title: "House Application", items: ["New Application", "My Applications", "Application Status"] },
   { key: "insights", title: "Insights", items: ["Reports", "Audit"] },
   { key: "administration", title: "Administration", items: ["Users", "Settings", "System Status"] },
@@ -159,6 +160,7 @@ const pageNameToKey: Record<string, PageKey | null> = {
   Settings: "settings",
   Newsletter: null,
   "Help Center": null,
+  "Civil Work Panel": null,
   Employees: "employees",
   "New Application": null,
   "My Applications": null,

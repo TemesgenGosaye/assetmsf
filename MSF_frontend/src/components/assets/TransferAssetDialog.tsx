@@ -256,7 +256,7 @@ export default function TransferAssetDialog({
                     <SelectContent>
                       {departments.map((d) => (
                         <SelectItem key={d.id} value={d.name}>
-                          {d.name}
+                          {d.name}{d.code ? ` (${d.code})` : ''}
                         </SelectItem>
                       ))}
                       {!departments.length && (
