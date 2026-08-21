@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { listProperties, type Property } from "@/services/properties";
-import { ITEM_TYPE_PREFIXES } from "@/services/itemTypes";
+import { listItemTypes } from "@/services/itemTypes";
 import { listDepartments, type Department } from "@/services/departments";
 import { listUserDepartmentAccess } from "@/services/userDeptAccess";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
@@ -42,7 +42,8 @@ export default function RequestEditModal({ open, asset, onClose, onSubmitted }: 
         const ps = await listProperties();
         setPropsList(ps);
       } catch {}
-      const list = Object.keys(ITEM_TYPE_PREFIXES);
+      const typesResult = await listItemTypes().catch(() => []);
+      const list = typesResult.map((t: any) => t.name).filter(Boolean);
       const cur = (asset?.type || '').toString();
       setItemTypes(cur && !list.includes(cur) ? [...list, cur] : list);
       try {

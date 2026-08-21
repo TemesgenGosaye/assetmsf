@@ -345,8 +345,8 @@ export default function AssetDetails() {
 
   const handleCopyId = async () => {
     try {
-      await navigator.clipboard.writeText(asset!.id!);
-      crudToast.info("Asset ID copied");
+      await navigator.clipboard.writeText(asset!.asset_code || asset!.id!);
+      crudToast.info("PID copied");
     } catch {
       crudToast.error("Copy failed");
     }
@@ -389,7 +389,7 @@ export default function AssetDetails() {
         badges: (
           <>
             <Badge variant="outline" className="text-[10px] font-mono">
-              {asset.id}
+              {asset.asset_code || asset.id}
             </Badge>
             {!isDemoMode() ? (
               <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-800">
@@ -488,7 +488,7 @@ export default function AssetDetails() {
                   onClick={() => {
                     const link = document.createElement("a");
                     link.href = qrUrl;
-                    link.download = `QR_${asset.id}.png`;
+                    link.download = `QR_${asset.asset_code || asset.id}.png`;
                     link.click();
                   }}
                   className="w-full text-xs py-2 px-3 border border-border/60 rounded-xl hover:bg-muted font-medium transition-colors"
@@ -522,22 +522,22 @@ export default function AssetDetails() {
               </div>
               <Separator />
               <div className="text-xs text-muted-foreground text-center">
-                Asset Record {asset.id}
+                Asset Record {asset.asset_code || asset.id}
               </div>
             </CardContent>
           </Card>
         </div>
       }
     >
-      {/* Asset ID copy box */}
+      {/* PID copy box */}
       <Card className="border border-primary/10 bg-primary/5 rounded-2xl shadow-sm">
         <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <p className="text-xs font-medium uppercase tracking-wider text-primary/80">
-              Asset ID
+              PID
             </p>
             <p className="font-mono text-lg font-bold text-foreground tracking-tight">
-              {asset.id}
+              {asset.asset_code || asset.id}
             </p>
           </div>
           <button
@@ -546,6 +546,102 @@ export default function AssetDetails() {
           >
             <Copy className="h-3.5 w-3.5" /> Copy ID
           </button>
+        </CardContent>
+      </Card>
+
+      {/* Complete Asset Information Table */}
+      <Card className="border border-border/60 shadow-sm rounded-2xl bg-card">
+        <CardHeader className="py-4 border-b border-border/60">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Package className="h-4 w-4 text-primary" /> Complete Asset Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <tbody>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground w-[200px]">PID</td>
+                <td className="px-4 py-2.5 font-mono font-semibold">{asset.asset_code || "—"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Asset Name</td>
+                <td className="px-4 py-2.5">{asset.name || "—"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Item Type</td>
+                <td className="px-4 py-2.5">{asset.type || "—"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Status</td>
+                <td className="px-4 py-2.5">{asset.status || "—"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Condition</td>
+                <td className="px-4 py-2.5">{asset.condition || "Not specified"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Property</td>
+                <td className="px-4 py-2.5">
+                  {asset.property_id
+                    ? propertyLabel(asset.property_id)
+                    : propertyLabel(asset.property || "")}
+                </td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Department</td>
+                <td className="px-4 py-2.5">{asset.department || "—"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Location</td>
+                <td className="px-4 py-2.5">{asset.location || "—"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">PO Number</td>
+                <td className="px-4 py-2.5">{asset.poNumber || "—"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Purchase Date</td>
+                <td className="px-4 py-2.5">
+                  {asset.purchaseDate
+                    ? new Date(asset.purchaseDate).toLocaleDateString()
+                    : "—"}
+                </td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Purchase Cost</td>
+                <td className="px-4 py-2.5">{formatMoney(asset.purchaseCost)}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Current Value</td>
+                <td className="px-4 py-2.5 font-semibold text-primary">{formatMoney(asset.currentValue)}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Vendor</td>
+                <td className="px-4 py-2.5">{asset.vendor || "—"}</td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Depreciation Method</td>
+                <td className="px-4 py-2.5">
+                  {asset.depreciationMethod
+                    ? DEP_METHOD_LABELS[asset.depreciationMethod] ||
+                      asset.depreciationMethod.replace(/_/g, " ")
+                    : "—"}
+                </td>
+              </tr>
+              <tr className="border-b border-border/40">
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Warranty Period</td>
+                <td className="px-4 py-2.5">
+                  {toDateString(asset.warrantyStartDate)}
+                  {asset.warrantyStartDate && asset.warrantyExpiry ? " → " : ""}
+                  {toDateString(asset.warrantyExpiry)}
+                </td>
+              </tr>
+              <tr>
+                <td className="px-4 py-2.5 font-medium text-muted-foreground">Invoice Number</td>
+                <td className="px-4 py-2.5">{asset.invoiceNumber || "—"}</td>
+              </tr>
+            </tbody>
+          </table>
         </CardContent>
       </Card>
 

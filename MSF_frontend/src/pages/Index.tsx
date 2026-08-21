@@ -462,10 +462,9 @@ const Index = () => {
         key: "assets",
         title: "Assets Online",
         value: counts.assets,
-        caption: `${metrics.totalQuantity.toLocaleString()} items tracked`,
+        caption: `${counts.assets.toLocaleString()} items tracked`,
         icon: Package,
-        iconClass: "h-5 w-5",
-        variant: "blue" as const,
+        color: "bg-blue-600",
         href: isDemoMode() ? "/demo/assets" : "/assets",
       },
       {
@@ -474,8 +473,7 @@ const Index = () => {
         value: counts.properties,
         caption: `${counts.expiring.toLocaleString()} expiring assets soon`,
         icon: Building2,
-        iconClass: "h-5 w-5",
-        variant: "green" as const,
+        color: "bg-emerald-600",
         href: isDemoMode() ? "/demo/properties" : "/properties",
       },
       {
@@ -484,8 +482,7 @@ const Index = () => {
         value: counts.houses,
         caption: "Total registered housing units",
         icon: Home,
-        iconClass: "h-5 w-5",
-        variant: "purple" as const,
+        color: "bg-purple-600",
         href: isDemoMode() ? "/demo/house-opp" : "/house-opp",
       },
       {
@@ -494,8 +491,7 @@ const Index = () => {
         value: metrics.monthlyPurchases,
         caption: monthlyChange.label,
         icon: TrendingUp,
-        iconClass: "h-5 w-5",
-        variant: "orange" as const,
+        color: "bg-orange-500",
         href: isDemoMode() ? "/demo/reports" : "/reports",
       },
       {
@@ -504,8 +500,7 @@ const Index = () => {
         value: metrics.codesReady,
         caption: `${metrics.codesTotal.toLocaleString()} generated • ${readyDelta.toLocaleString()} in circulation`,
         icon: QrCode,
-        iconClass: "h-5 w-5",
-        variant: "pink" as const,
+        color: "bg-pink-500",
         href: isDemoMode() ? "/demo/qr-codes" : "/qr-codes",
       },
     ];
@@ -514,7 +509,6 @@ const Index = () => {
     counts.properties,
     counts.expiring,
     counts.houses,
-    metrics.totalQuantity,
     metrics.monthlyPurchases,
     metrics.codesReady,
     metrics.codesTotal,
@@ -1355,20 +1349,44 @@ const Index = () => {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {heroHighlights.map((item) => (
-            <HeroMetricCard
-              key={item.key}
-              icon={item.icon}
-              title={item.title}
-              value={Number(item.value ?? 0)}
-              caption={item.caption}
-              iconClassName={item.iconClass}
-              variant={item.variant}
-              onClick={() => navigate(item.href)}
-            />
-          ))}
-        </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {heroHighlights.map((item) => (
+          <Card
+            key={item.key}
+            className="relative overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/40"
+            onClick={() => navigate(item.href)}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 pr-2">
+                  <p className="text-xs text-muted-foreground truncate">{item.title}</p>
+                  <p className="text-2xl font-bold tracking-tight mt-0.5">
+                    {Number(item.value ?? 0).toLocaleString()}
+                  </p>
+                  {item.caption && (
+                    <p className="text-[11px] text-muted-foreground truncate mt-1">
+                      {item.caption}
+                    </p>
+                  )}
+                </div>
+                <item.icon
+                  className={`h-9 w-9 shrink-0 ${
+                    item.key === "assets"
+                      ? "text-blue-600"
+                      : item.key === "properties"
+                      ? "text-emerald-600"
+                      : item.key === "houses"
+                      ? "text-purple-600"
+                      : item.key === "purchases"
+                      ? "text-amber-600"
+                      : "text-rose-600"
+                  } opacity-25`}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
       </section>
 
       <section>

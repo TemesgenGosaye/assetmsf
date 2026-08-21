@@ -352,7 +352,7 @@ function buildReceiptHTML(r: HandoverReceipt): string {
   <!-- TITLE TABLE -->
   <table class="title-table">
     <tr>
-      <td>የቤ.ት ርክክብ ማረጋገጫ ፎርም (House Handover &amp; Receipt Form)</td>
+      <td>የቤት ርክክብ ማረጋገጫ ፎርም (House Handover &amp; Receipt Form)</td>
     </tr>
   </table>
 
@@ -420,10 +420,8 @@ function buildReceiptHTML(r: HandoverReceipt): string {
         <div class="date-field">Date: ${esc(handoverDate)}</div>
       </div>
     </div>
-    <div class="signature-box">
-      <div class="title">Verified by — Inspector</div>
-      <div class="sign-line">
-        <div class="name">${esc(inspector)}</div>
+ 
+      
         <div class="date-field">Date: ______________</div>
       </div>
     </div>

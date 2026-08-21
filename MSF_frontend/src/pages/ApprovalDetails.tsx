@@ -104,7 +104,7 @@ export default function ApprovalDetails() {
           title: "Asset & Notes",
           titleIcon: FileText,
           fields: [
-            { icon: FileText, label: "Asset ID", value: <span className="font-mono text-xs">{approval.assetId}</span> },
+            { icon: FileText, label: "PID", value: <span className="font-mono text-xs">{approval.assetId}</span> },
             { icon: MessageSquare, label: "Notes", value: approval.notes || "No notes" },
             { icon: ArrowRight, label: "Department", value: approval.department || "—" },
           ],

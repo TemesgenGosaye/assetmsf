@@ -1,6 +1,5 @@
 import { useState } from "react";
-import QRCode from "qrcode";
-import { composeQrWithLabel, downloadDataUrl, printImagesOnA4Grid } from "@/lib/qr";
+import { generateQrPng, downloadDataUrl, printImagesOnA4Grid } from "@/lib/qr";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -29,23 +28,7 @@ export function QRCodeGenerator({ asset, onGenerated }: QRCodeGeneratorProps) {
 
       setIsGenerating(true);
       try {
-        // Encode a URL to the asset detail page instead of JSON
-        const qrData = `${window.location.origin}/assets/${asset.id}`;
-
-        const baseQr = await QRCode.toDataURL(qrData, {
-          width: 512,
-          margin: 2,
-          color: { dark: '#000000', light: '#FFFFFF' },
-          errorCorrectionLevel: 'H',
-        });
-
-        const composed = await composeQrWithLabel(baseQr, {
-          assetId: asset.id,
-          topText: 'Asset Information',
-          logoUrl: '/qrcodeimage.jpg',
-          hideBottomText: true,
-        });
-
+        const composed = await generateQrPng({ assetData: asset });
         setQrCodeUrl(composed);
         onGenerated?.(composed);
         toast.success("QR code generated successfully!");
@@ -59,7 +42,7 @@ export function QRCodeGenerator({ asset, onGenerated }: QRCodeGeneratorProps) {
 
   const downloadQRCode = () => {
     if (!qrCodeUrl || !asset) return;
-    downloadDataUrl(qrCodeUrl, `qr-code-${asset.id}.png`);
+    downloadDataUrl(qrCodeUrl, `qr-code-${asset.asset_code || asset.id}.png`);
     toast.success("QR code downloaded!");
   };
 
@@ -102,9 +85,9 @@ export function QRCodeGenerator({ asset, onGenerated }: QRCodeGeneratorProps) {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-1">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Asset ID
+                  PID
                 </Label>
-                <p className="font-mono text-sm font-medium text-foreground">{asset.id}</p>
+                <p className="font-mono text-sm font-medium text-foreground">{asset.asset_code || asset.id}</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">

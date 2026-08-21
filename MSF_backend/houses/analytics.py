@@ -391,7 +391,8 @@ def available_house_insights():
         eligible = []
         for c in candidates:
             ec, _ = determine_eligible_category(c)
-            if CATEGORY_ORDER.get(house.house_type, 0) <= CATEGORY_ORDER.get(ec, 0):
+            # STRICT CATEGORY MATCH — candidates only recommended for their exact eligible category
+            if ec == house.house_type:
                 eligible.append(c)
         ranked = topsis_rank(eligible, config) if eligible else []
         best = None
@@ -766,7 +767,8 @@ def recommend_allocations(limit=None):
         candidates = []
         for app in waiting:
             cat, total, breakdown, reasons = scored[app.id]
-            if CATEGORY_ORDER.get(house.house_type, 0) <= CATEGORY_ORDER.get(cat, 0):
+            # STRICT CATEGORY MATCH
+            if house.house_type == cat:
                 mode, _ = determine_allocation_mode(app)
                 room = house.available_rooms[0] if (
                     mode == ALLOCATION_MODE_ROOM and house.available_rooms

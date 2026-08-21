@@ -308,7 +308,7 @@ export default function Maintenance() {
             title="Preventive Maintenance Schedules Report"
             fileName="maintenance_schedules"
             columns={[
-              { header: "Asset Code", key: "asset_code" },
+              { header: "PID", key: "asset_code" },
               { header: "Asset Name", key: "asset_name" },
               { header: "Title", key: "title" },
               { header: "Frequency", key: "frequency" },

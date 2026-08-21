@@ -28,7 +28,7 @@ import { ReportExportMenu } from "@/components/table/ReportExportMenu";
 import { toast } from "sonner";
 import { isDemoMode } from "@/lib/demo";
 import { listProperties, type Property } from "@/services/properties";
-import { ITEM_TYPE_PREFIXES } from "@/services/itemTypes";
+import { listItemTypes } from "@/services/itemTypes";
 import { listReports, createReport, clearReports, type Report } from "@/services/reports";
 import { logActivity } from "@/services/activity";
 import { addNotification } from "@/services/notifications";
@@ -255,14 +255,15 @@ export default function Reports() {
       setAllowedProps(allowed);
       try {
 
-          const [props] = await Promise.all([
+          const [props, typesResult] = await Promise.all([
             listProperties().catch(() => []),
+            listItemTypes().catch(() => []),
           ]);
           const propsScoped = isAdmin
             ? (props as Property[])
             : (allowed.size ? (props as Property[]).filter((p) => allowed.has(String(p.id))) : []);
           setProperties(propsScoped);
-          setItemTypes(Object.keys(ITEM_TYPE_PREFIXES));
+          setItemTypes((typesResult || []).map((t: any) => t.name).filter(Boolean));
           // Preload assets for downloads/export
           try {
             const assets = await listAssets();
@@ -1706,7 +1707,7 @@ export default function Reports() {
                   fileName="approvals_log"
                   columns={[
                     { header: "Request ID", key: "id" },
-                    { header: "Asset ID", key: "assetId" },
+                    { header: "PID", key: "assetId" },
                     { header: "Action", key: "action" },
                     { header: "Requested By", key: "requestedBy" },
                     { header: "Department", key: "department" },

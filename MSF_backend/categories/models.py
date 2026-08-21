@@ -44,6 +44,11 @@ class ItemType(BaseModel):
     Item type model for asset types.
     """
     name = models.CharField(_('name'), max_length=255, unique=True, db_index=True)
+    code = models.CharField(
+        _('code'), max_length=50, unique=True, db_index=True,
+        blank=True, default='',
+        help_text=_('Official item type code from the Fixed Asset Registration Master Book, e.g. "3.39", "6.24"')
+    )
     category = models.ForeignKey(
         Category,
         on_delete=models.SET_NULL,

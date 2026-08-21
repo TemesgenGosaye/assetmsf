@@ -1290,7 +1290,7 @@ export default function Audit() {
                     <TableHeader>
                       <TableRow className="hover:bg-transparent bg-muted/20">
                         <TableHead className="h-9 text-xs">Time</TableHead>
-                        <TableHead className="h-9 text-xs">Asset ID</TableHead>
+                        <TableHead className="h-9 text-xs">PID</TableHead>
                         <TableHead className="h-9 text-xs">Status</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1359,7 +1359,7 @@ export default function Audit() {
                     title="Audit Reconciliation Report"
                     fileName="audit_reconciliation"
                     columns={[
-                      { header: "Asset ID", key: "id" },
+                      { header: "PID", key: "id" },
                       { header: "Name", key: "name" },
                       { header: "Status", key: "status" },
                       { header: "Comments", key: "comment" },
@@ -1400,7 +1400,7 @@ export default function Audit() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/20 hover:bg-muted/20">
-                        <TableHead className="w-32 text-xs font-semibold uppercase tracking-wider">Asset ID</TableHead>
+                        <TableHead className="w-32 text-xs font-semibold uppercase tracking-wider">PID</TableHead>
                         <TableHead className="text-xs font-semibold uppercase tracking-wider">Name</TableHead>
                         <TableHead className="w-40 text-xs font-semibold uppercase tracking-wider">Status</TableHead>
                         <TableHead className="min-w-[240px] text-xs font-semibold uppercase tracking-wider">Comments</TableHead>
@@ -1669,7 +1669,7 @@ export default function Audit() {
                               <Table>
                                 <TableHeader>
                                   <TableRow className="hover:bg-transparent">
-                                    <TableHead className="h-9 text-xs">Asset ID</TableHead>
+                                    <TableHead className="h-9 text-xs">PID</TableHead>
                                     <TableHead className="h-9 text-xs">Status</TableHead>
                                     <TableHead className="h-9 text-xs">Comment</TableHead>
                                   </TableRow>

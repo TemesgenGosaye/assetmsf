@@ -96,7 +96,7 @@ const HouseQueuePage = () => {
         houseApplicationService.getRankedQueue(category),
         houseService.listHouses()
       ]);
-      setApplications(apps);
+      setApplications(apps.filter(app => app.status === "Waiting for Allocation"));
       setHouses(housesData);
     } catch (error) {
       toast({
@@ -233,7 +233,6 @@ const HouseQueuePage = () => {
       <div className="flex gap-1 flex-wrap">
         <Button variant="ghost" size="sm" onClick={() => handleReview(row.id)} className="h-7 text-xs px-2">Review</Button>
         <Button variant="outline" size="sm" onClick={() => handleRecalculate(row.id)} className="h-7 text-xs px-2">Recalc</Button>
-        <Button variant="secondary" size="sm" onClick={() => handleManualAllocate(row.id)} className="h-7 text-xs px-2">Allocate</Button>
       </div>
     ),
   },

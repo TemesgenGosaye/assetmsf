@@ -239,7 +239,7 @@ export default function Transfers() {
 
   const columnDefs = useMemo<ColumnDef[]>(() => [
     { key: "transfer_code", label: "Transfer Code", always: true },
-    { key: "asset_code", label: "Asset Code", always: true },
+    { key: "asset_code", label: "PID", always: true },
     { key: "asset_name", label: "Asset Name" },
     { key: "from_department", label: "From Dept" },
     { key: "to_department", label: "To Dept" },
@@ -332,7 +332,7 @@ export default function Transfers() {
               fileName="asset_transfers"
               columns={[
                 { header: "Transfer ID", key: "id" },
-                { header: "Asset ID", key: "asset_id" },
+                { header: "PID", key: "asset_code" },
                 { header: "Type", key: "transfer_type" },
                 { header: "Source", key: "from_location" },
                 { header: "Destination", key: "to_location" },
@@ -341,7 +341,7 @@ export default function Transfers() {
               ]}
               getRows={() => (filteredTransfers || []).map((t: any) => [
                 t.id,
-                t.asset_id || "",
+                t.asset_code || t.asset_id || "",
                 t.transfer_type || "location",
                 t.from_location || t.from_department || "",
                 t.to_location || t.to_department || "",

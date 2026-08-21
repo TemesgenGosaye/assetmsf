@@ -55,6 +55,68 @@ def _resolve_house(house_id):
         except House.DoesNotExist:
             return None
 
+def _pre_validate_allocation(application, house):
+    """
+    Mandatory backend API gate to block any manual or automated cross-category allocation.
+    Returns (is_valid: bool, error_response: Response|None).
+    """
+    from .allocation_engine import validate_applicant_grade
+    valid, eligible_cat, reason = validate_applicant_grade(application)
+    
+    if not valid:
+        return False, StandardResponse.bad_request(
+            f"ELIGIBILITY_FAILED: {reason}",
+            {
+                "status": "NOT ELIGIBLE", 
+                "recommendation": "NONE", 
+                "assignment": "BLOCKED"
+            }
+        )
+        
+    if house and house.house_type != eligible_cat:
+        return False, StandardResponse.bad_request(
+            "HOUSE_CATEGORY_NOT_ELIGIBLE",
+            {
+                "status": "REJECTED", 
+                "recommendation": "NONE", 
+                "reason": "HOUSE_CATEGORY_NOT_ELIGIBLE",
+                "eligible_category": eligible_cat, 
+                "house_category": house.house_type,
+                "detail": f"Grade {application.job_grade} → category '{eligible_cat}' only. House '{house.house_id}' is '{house.house_type}'."
+            }
+        )
+        
+    return True, None
+
+
+def _require_waiting_for_allocation(application):
+    """
+    Hard gate: allocation is ONLY permitted when the application status is
+    exactly "Waiting for Allocation".  This is the single enforcement point
+    that ensures:
+      - Only APPROVED (Verified → Waiting for Allocation) applications can be allocated.
+      - Applications that are Submitted, Under Review, Verified, Rejected,
+        Returned, or already Allocated are completely blocked.
+    Returns (is_valid: bool, error_response: Response|None).
+    """
+    if application.status != "Waiting for Allocation":
+        return False, StandardResponse.bad_request(
+            "ALLOCATION_BLOCKED",
+            {
+                "status": "BLOCKED",
+                "reason": (
+                    f"Application '{application.application_no}' has status "
+                    f"'{application.status}'. "
+                    "Allocation is only permitted for applications with status "
+                    "'Waiting for Allocation'. "
+                    "Use the Smart Allocation Console to allocate queued applications."
+                ),
+                "current_status": application.status,
+                "required_status": "Waiting for Allocation",
+            },
+        )
+    return True, None
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  HOUSE CRUD
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -330,8 +392,8 @@ class HouseApplicationRecalcScoreView(APIView):
             return StandardResponse.not_found("Application not found")
 
         config = ScoringConfig.objects.filter(is_active=True).first()
-        results, best = analyze_eligibility(instance)
-        cat = best
+        results, _ = analyze_eligibility(instance)
+        cat, _ = determine_eligible_category(instance)
         total, breakdown, reasons = compute_mcda_score(instance, config)
         instance.eligible_house_category = cat
         instance.eligibility_analysis = results
@@ -381,6 +443,15 @@ class AutoAllocateView(APIView):
             except HouseApplication.DoesNotExist:
                 return StandardResponse.not_found("Application not found")
 
+            # Gate 1: must be "Waiting for Allocation"
+            ok, err = _require_waiting_for_allocation(target_app)
+            if not ok:
+                return err
+
+            valid, err_response = _pre_validate_allocation(target_app, None)
+            if not valid:
+                return err_response
+
             allocated, result = auto_allocate_cascade(
                 target_app, request.user, dry_run=dry_run,
             )
@@ -419,6 +490,15 @@ class AutoAllocateView(APIView):
                 target_app = HouseApplication.objects.get(id=app_id, is_active=True)
             except HouseApplication.DoesNotExist:
                 return StandardResponse.not_found("Application not found")
+
+            # Gate 1: must be "Waiting for Allocation"
+            ok, err = _require_waiting_for_allocation(target_app)
+            if not ok:
+                return err
+
+            valid, err_response = _pre_validate_allocation(target_app, house)
+            if not valid:
+                return err_response
 
         try:
             app, breakdown, reasons = auto_allocate_single(
@@ -471,6 +551,15 @@ class ManualAllocateView(APIView):
             app = HouseApplication.objects.get(id=app_id, is_active=True)
         except HouseApplication.DoesNotExist:
             return StandardResponse.not_found("Application not found")
+
+        # Gate: allocation only allowed when status is 'Waiting for Allocation'
+        ok, err = _require_waiting_for_allocation(app)
+        if not ok:
+            return err
+
+        valid, err_response = _pre_validate_allocation(app, house)
+        if not valid:
+            return err_response
 
         try:
             app = manual_allocate(
@@ -783,6 +872,15 @@ class AllocateView(APIView):
             app = HouseApplication.objects.get(id=app_id, is_active=True)
         except HouseApplication.DoesNotExist:
             return StandardResponse.not_found("Application not found")
+
+        # Gate: allocation only allowed when status is 'Waiting for Allocation'
+        ok, err = _require_waiting_for_allocation(app)
+        if not ok:
+            return err
+
+        valid, err_response = _pre_validate_allocation(app, house)
+        if not valid:
+            return err_response
 
         try:
             if allocation_type == "Auto":
@@ -1141,16 +1239,26 @@ class TerminationTransactionListCreateView(generics.ListCreateAPIView):
         )
 
     def list(self, request, *args, **kwargs):
-        qs = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(qs)
-        if page is not None:
-            return self.get_paginated_response(
-                TerminationTransactionSerializer(page, many=True).data
+        try:
+            qs = self.filter_queryset(self.get_queryset())
+            page = self.paginate_queryset(qs)
+            if page is not None:
+                return self.get_paginated_response(
+                    TerminationTransactionSerializer(page, many=True).data
+                )
+            return StandardResponse.success(
+                TerminationTransactionSerializer(qs, many=True).data,
+                "Termination transactions retrieved",
             )
-        return StandardResponse.success(
-            TerminationTransactionSerializer(qs, many=True).data,
-            "Termination transactions retrieved",
-        )
+        except Exception as e:
+            import logging
+            logging.getLogger('django.request').error(
+                "Error in TerminationTransactionListCreateView.list", exc_info=True
+            )
+            return StandardResponse.error(
+                "Failed to retrieve termination transactions",
+                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     def create(self, request, *args, **kwargs):
         ser = TerminationCreateSerializer(data=request.data)

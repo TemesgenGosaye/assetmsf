@@ -28,8 +28,6 @@ import { listDepartments } from "@/services/departments";
 import { getAccessiblePropertyIdsForCurrentUser } from "@/services/userAccess";
 import {
   listItemTypes,
-  getItemTypePrefix,
-  ITEM_TYPE_PREFIXES,
 } from "@/services/itemTypes";
 import {
   listQRCodes,
@@ -173,7 +171,7 @@ export default function Assets() {
   const prefs = useTablePreferences("assets");
   const columnDefs: ColumnDef[] = [
     { key: "select", label: "Select", always: true },
-    { key: "id", label: "Asset ID", always: true },
+    { key: "id", label: "PID", always: true },
     { key: "name", label: "Name", always: true },
     { key: "type", label: "Item Type" },
     { key: "category", label: "Category" },
@@ -408,7 +406,9 @@ export default function Assets() {
         setPropsById(Object.fromEntries(props.map((p: any) => [p.id, p])));
         setPropsByName(Object.fromEntries(props.map((p: any) => [p.name, p])));
       }
-      setTypeOptions(Object.keys(ITEM_TYPE_PREFIXES));
+      if (Array.isArray(types) && types.length) {
+        setTypeOptions(types.map((t: any) => t.name).filter(Boolean));
+      }
       if (depts?.length) {
         const names = Array.from(
           new Set(
@@ -497,7 +497,10 @@ export default function Assets() {
       if (filtered.length) setPropertyOptions(filtered);
     }
     if (!typeOptions.length) {
-      setTypeOptions(Object.keys(ITEM_TYPE_PREFIXES));
+      const derived = Array.from(
+        new Set(assets.map((a) => (a.type || "").toString()).filter(Boolean)),
+      ).sort();
+      if (derived.length) setTypeOptions(derived);
     }
     // derive department options from assets when not set
     if (!deptOptions.length) {
@@ -629,6 +632,7 @@ export default function Assets() {
           return false;
         const matchesSearch =
           asset.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          (asset.asset_code || "").toLowerCase().includes(debouncedSearch.toLowerCase()) ||
           asset.id.toLowerCase().includes(debouncedSearch.toLowerCase());
         const matchesType =
           filterType === "all" ||
@@ -787,7 +791,7 @@ export default function Assets() {
   const getAssetRowValues = useCallback((asset: any) => {
     return assetExportColumns.map((col) => {
       switch (col.key) {
-        case "id": return asset.id || "";
+        case "id": return asset.asset_code || asset.id || "";
         case "name": return asset.name || "";
         case "type": return asset.type || "";
         case "category": return asset.category_name || asset.category || "";
@@ -799,7 +803,7 @@ export default function Assets() {
         case "department": return asset.department || "";
         case "location": return asset.location || "";
         case "owner": return asset.owner_name || asset.owner || "";
-        case "qty": return 0;
+        case "qty": return 1;
         case "purchaseDate": return asset.purchaseDate || "";
         case "expiryDate": return asset.expiryDate || "";
         case "purchaseCost": return asset.purchaseCost ?? "";
@@ -856,20 +860,7 @@ export default function Assets() {
     setCurrentPage(1);
   }, [sortedAssets.length]);
 
-  // Helpers for ID generation and display
-  const typePrefix = (t: string) => {
-    return getItemTypePrefix(t);
-  };
-
-  const nextSequence = (existing: any[], prefix: string) => {
-    const seqs = existing
-      .map((a) => a.id)
-      .filter((id: string) => typeof id === "string" && id.startsWith(prefix))
-      .map((id: string) => Number(id.slice(prefix.length)) || 0);
-    const max = seqs.length ? Math.max(...seqs) : 0;
-    return max + 1;
-  };
-
+  // Helpers for date conversion
   const toISODate = (value: any): string | null => {
     if (!value) return null;
     const date = value instanceof Date ? value : new Date(value);
@@ -925,12 +916,6 @@ export default function Assets() {
 
       if (!isDemoMode()) {
         const propertyCodeRaw = assetData.property;
-        const seqPrefix = `${typePrefix(assetData.itemType)}0-0-00-`;
-        const quantity = 1;
-        const baseSeq = nextSequence(
-          cachedAssets && cachedAssets.length ? cachedAssets : assets,
-          seqPrefix,
-        );
 
         if (selectedAsset) {
           await updateAsset(selectedAsset.id, {
@@ -986,7 +971,6 @@ export default function Assets() {
           // as fast as the slowest single request, not quantity x round-trips.
           const makeAsset = (seq: number) =>
             ({
-              asset_code: `${seqPrefix}${String(seq).padStart(3, "0")}`,
               name: assetData.itemName || assetData.description || "Asset",
               type: assetData.itemType,
               item_type_name: assetData.itemTypeName || assetData.itemType,
@@ -997,7 +981,6 @@ export default function Assets() {
               rfid: assetData.rfid || null,
               property_id: propertyCodeRaw,
               department: assetData.department,
-              quantity: 1,
               purchaseDate: toISODate(assetData.purchaseDate),
               expiryDate: toISODate(assetData.expiryDate),
               poNumber: assetData.poNumber || null,
@@ -1028,7 +1011,7 @@ export default function Assets() {
               amcEndDate,
               amcCost: assetData.amcCost || null,
             } as any);
-          const created = await createAsset(makeAsset(baseSeq));
+          const created = await createAsset(makeAsset(0));
           const newAssetId = created?.id ?? null;
           logActivity("asset_created", `Asset ${newAssetId} created`).catch(() => {});
           trackActivity("asset", "create", { entityName: assetData.itemName }).catch(() => {});
@@ -1298,7 +1281,7 @@ export default function Assets() {
       .filter((a) => ids.has(a.id))
       .map((a) => {
         const base = {
-          id: a.id,
+          asset_code: a.asset_code || a.id,
           name: a.name,
           type: a.type,
           property: propsById[a.property]?.name || a.property,

@@ -149,7 +149,7 @@ breadcrumbs={[{ label: "SAMS", to: "/dashboard" }, { label: "Properties", to: "/
             <table className="w-full text-sm text-left">
               <thead className="bg-muted text-xs font-bold uppercase tracking-wider text-muted-foreground border-b-2 border-border">
                 <tr>
-                  <th className="px-6 py-2.5 border-r border-border">Asset Code</th>
+                  <th className="px-6 py-2.5 border-r border-border">PID</th>
                   <th className="px-6 py-2.5 border-r border-border">Name</th>
                   <th className="px-6 py-2.5 border-r border-border">Category</th>
                   <th className="px-6 py-2.5 border-r border-border">Condition</th>

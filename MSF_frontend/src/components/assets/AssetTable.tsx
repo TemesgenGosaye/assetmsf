@@ -325,7 +325,6 @@ export default function AssetTable({
       "department",
       "location",
       "owner",
-      "qty",
       "purchaseDate",
       "expiryDate",
       "purchaseCost",
@@ -427,10 +426,10 @@ export default function AssetTable({
                         )
                       }
                       className="inline-flex items-center gap-1 rounded-sm border border-transparent px-1 py-0 text-slate-700 transition hover:border-slate-300 hover:bg-slate-200 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-800"
-                      aria-label="Sort by Asset ID"
-                      title="Sort by Asset ID"
-                    >
-                      Asset ID
+                       aria-label="Sort by PID"
+                       title="Sort by PID"
+                     >
+                       PID
                       {sortBy === "id-asc" ? (
                         <ArrowUp className="h-3.5 w-3.5" />
                       ) : sortBy === "id-desc" ? (
@@ -456,9 +455,7 @@ export default function AssetTable({
                 )}
                 {isVisible("location") && <TableHead>Location</TableHead>}
                 {isVisible("owner") && <TableHead>Owner</TableHead>}
-                {isVisible("qty") && (
-                  <TableHead className="text-center">Qty</TableHead>
-                )}
+
                 {isVisible("purchaseDate") && (
                   <TableHead>Purchase Date</TableHead>
                 )}
@@ -518,7 +515,7 @@ export default function AssetTable({
                   <TableHead className="text-right">AMC Cost</TableHead>
                 )}
                  {isVisible("condition") && <TableHead>Condition</TableHead>}
-                 {isVisible("status") && <TableHead>Condition</TableHead>}
+                 {isVisible("status") && <TableHead>Status</TableHead>}
                 {isVisible("approval") && <TableHead>Approval</TableHead>}
                 {isVisible("createdBy") && <TableHead>Created By</TableHead>}
                 {isVisible("notes") && <TableHead>Notes</TableHead>}
@@ -596,13 +593,13 @@ export default function AssetTable({
                       )}
                       {isVisible("id") && (
                         <TableCell className="font-medium">
-                          <MonoTag value={asset.id} />
+                          <MonoTag value={asset.asset_code || asset.id} />
                         </TableCell>
                       )}
                       {isVisible("name") && (
                         <TableCell>
                           <span className="max-w-[220px] truncate font-semibold leading-5 text-foreground">
-                            {asset.description || asset.name || asset.id}
+                            {asset.name || asset.asset_code}
                           </span>
                         </TableCell>
                       )}
@@ -663,11 +660,7 @@ export default function AssetTable({
                           {asset.owner_name || asset.owner || "-"}
                         </TableCell>
                       )}
-                      {isVisible("qty") && (
-                        <TableCell className="text-center text-xs font-semibold">
-                          —
-                        </TableCell>
-                      )}
+
                       {isVisible("purchaseDate") && (
                         <TableCell className="text-xs">
                           {formatDateShort(asset.purchaseDate)}
@@ -785,7 +778,7 @@ export default function AssetTable({
                        )}
                        {isVisible("status") && (
                          <TableCell>
-                           <ConditionChip value={asset.condition} />
+                           <StatusChip status={asset.status} />
                          </TableCell>
                        )}
                       {isVisible("approval") && (

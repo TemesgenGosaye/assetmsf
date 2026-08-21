@@ -17,6 +17,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
+import MetricCard from "../components/ui/metric-card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../components/ui/dialog";
@@ -62,23 +63,7 @@ function StatusChip({ status, colors }: { status: string; colors: Record<string,
   );
 }
 
-function StatCard({ label, value, icon: Icon, color }: { label: string; value: number; icon: any; color: string }) {
-  return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={`rounded-lg p-2 ${color}`}>
-            <Icon className="h-4 w-4 text-white" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{value}</p>
-            <p className="text-xs text-muted-foreground">{label}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+// StatCard replaced by shared MetricCard
 
 // ─── main component ────────────────────────────────────────────────────
 
@@ -364,12 +349,12 @@ export default function TerminationManagement() {
 
       {/* ── STATS ROW ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <StatCard label="Total" value={stats?.total || 0} icon={FileText} color="bg-slate-600" />
-        <StatCard label="Pending" value={stats?.pending || 0} icon={Clock3} color="bg-yellow-500" />
-        <StatCard label="Approved" value={stats?.approved || 0} icon={CheckCircle2} color="bg-blue-500" />
-        <StatCard label="In Progress" value={stats?.in_progress || 0} icon={ArrowRight} color="bg-purple-500" />
-        <StatCard label="Completed" value={stats?.completed || 0} icon={BadgeCheck} color="bg-emerald-500" />
-        <StatCard label="Rejected" value={stats?.rejected || 0} icon={XCircle} color="bg-red-500" />
+        <MetricCard icon={FileText} title="Total" countValue={stats?.total || 0} variant="default" caption="All requests" />
+        <MetricCard icon={Clock3} title="Pending" countValue={stats?.pending || 0} variant="amber" caption="Awaiting review" />
+        <MetricCard icon={CheckCircle2} title="Approved" countValue={stats?.approved || 0} variant="blue" caption="Approved cases" />
+        <MetricCard icon={ArrowRight} title="In Progress" countValue={stats?.in_progress || 0} variant="violet" caption="Being processed" />
+        <MetricCard icon={BadgeCheck} title="Completed" countValue={stats?.completed || 0} variant="emerald" caption="Done" />
+        <MetricCard icon={XCircle} title="Rejected" countValue={stats?.rejected || 0} variant="rose" caption="Declined requests" />
       </div>
 
       {/* ── CASE BREAKDOWN ─────────────────────────────────────────── */}

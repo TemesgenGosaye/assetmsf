@@ -1,4 +1,40 @@
 import QRCode from 'qrcode';
+
+/**
+ * Single source of truth for asset QR payload data.
+ * Every asset QR code in the system must derive from this function.
+ */
+export function buildAssetQrPayload(asset: any) {
+  const pid = asset.asset_code || asset.id || '';
+  return {
+    pid,
+    type: asset.type || '',
+    condition: asset.condition || '',
+    department: asset.department || '',
+    description: asset.description || '',
+  };
+}
+
+/**
+ * Single source of truth for the local asset URL encoded in QR codes.
+ * Uses window.location.origin to always produce a local URL — never a cloud URL.
+ * Encodes PID, Asset Type, Condition, Department, and Description as query params
+ * so scanning the QR contains the full asset identity.
+ */
+export function buildAssetQrUrl(asset: any): string {
+  const payload = buildAssetQrPayload(asset);
+  const origin = window.location.origin;
+  const basePath = `/assets/${payload.pid}`;
+  const params = new URLSearchParams();
+  if (payload.pid) params.set('pid', payload.pid);
+  if (payload.type) params.set('type', payload.type);
+  if (payload.condition) params.set('condition', payload.condition);
+  if (payload.department) params.set('department', payload.department);
+  if (payload.description) params.set('description', payload.description);
+  const qs = params.toString();
+  return `${origin}${basePath}${qs ? '?' + qs : ''}`;
+}
+
 export async function composeQrWithLabel(qrDataUrl: string, opts: {
   assetId: string;
   topText?: string;
@@ -124,8 +160,8 @@ export async function generateQrPng(opts: {
   assetData: any;
   topText?: string;
 }): Promise<string> {
-  // Encode a URL to the asset detail page instead of JSON
-  const qrData = `${window.location.origin}/assets/${opts.assetData.id}`;
+  const assetId = opts.assetData.asset_code || opts.assetData.id;
+  const qrData = buildAssetQrUrl(opts.assetData);
 
   const rawQrDataUrl = await QRCode.toDataURL(qrData, {
     width: 512,
@@ -138,16 +174,15 @@ export async function generateQrPng(opts: {
 
   try {
     return await composeQrWithLabel(rawQrDataUrl, {
-      assetId: opts.assetData.id,
+      assetId,
       topText,
       logoUrl: '/qrcodeimage.jpg',
       hideBottomText: true,
     });
   } catch (error) {
     console.warn("Failed to generate QR with logo, falling back to no-logo:", error);
-    // Fallback: generate without logo
     return await composeQrWithLabel(rawQrDataUrl, {
-      assetId: opts.assetData.id,
+      assetId,
       topText,
       hideBottomText: true,
     });

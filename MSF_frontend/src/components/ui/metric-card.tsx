@@ -1,9 +1,18 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CountUp } from "@/components/ui/count-up";
 
-export type MetricCardVariant = "blue" | "violet" | "emerald" | "amber" | "rose" | "cyan" | "orange" | "default";
+export type MetricCardVariant =
+  | "blue"
+  | "violet"
+  | "emerald"
+  | "amber"
+  | "rose"
+  | "cyan"
+  | "orange"
+  | "default";
 
 type MetricCardProps = {
   icon: LucideIcon;
@@ -21,77 +30,51 @@ type MetricCardProps = {
   countFormat?: (value: number) => string;
 };
 
-const variantStyles: Record<MetricCardVariant, {
-  card: string;
-  iconBg: string;
-  icon: string;
-  title: string;
-  value: string;
-  caption: string;
-}> = {
+const variantStyles: Record<
+  MetricCardVariant,
+  {
+    icon: string;
+    accent: string;
+  }
+> = {
   blue: {
-    card: "bg-[hsl(221,83%,53%)] hover:bg-[hsl(221,83%,48%)]",
-    iconBg: "bg-white/20",
-    icon: "text-white",
-    title: "text-white/80",
-    value: "text-white",
-    caption: "text-white/70",
+    icon: "text-blue-600 dark:text-blue-400",
+    accent: "text-blue-600 dark:text-blue-400",
   },
+
   violet: {
-    card: "bg-[hsl(262,83%,58%)] hover:bg-[hsl(262,83%,53%)]",
-    iconBg: "bg-white/20",
-    icon: "text-white",
-    title: "text-white/80",
-    value: "text-white",
-    caption: "text-white/70",
+    icon: "text-violet-600 dark:text-violet-400",
+    accent: "text-violet-600 dark:text-violet-400",
   },
+
   emerald: {
-    card: "bg-[hsl(142,71%,45%)] hover:bg-[hsl(142,71%,40%)]",
-    iconBg: "bg-white/20",
-    icon: "text-white",
-    title: "text-white/80",
-    value: "text-white",
-    caption: "text-white/70",
+    icon: "text-emerald-600 dark:text-emerald-400",
+    accent: "text-emerald-600 dark:text-emerald-400",
   },
+
   amber: {
-    card: "bg-[hsl(47,95%,57%)] hover:bg-[hsl(47,95%,52%)]",
-    iconBg: "bg-white/20",
-    icon: "text-white",
-    title: "text-white/80",
-    value: "text-white",
-    caption: "text-white/70",
+    icon: "text-amber-600 dark:text-amber-400",
+    accent: "text-amber-600 dark:text-amber-400",
   },
+
   rose: {
-    card: "bg-[hsl(339,90%,51%)] hover:bg-[hsl(339,90%,46%)]",
-    iconBg: "bg-white/20",
-    icon: "text-white",
-    title: "text-white/80",
-    value: "text-white",
-    caption: "text-white/70",
+    icon: "text-rose-600 dark:text-rose-400",
+    accent: "text-rose-600 dark:text-rose-400",
   },
+
   cyan: {
-    card: "bg-[hsl(191,91%,46%)] hover:bg-[hsl(191,91%,41%)]",
-    iconBg: "bg-white/20",
-    icon: "text-white",
-    title: "text-white/80",
-    value: "text-white",
-    caption: "text-white/70",
+    icon: "text-cyan-600 dark:text-cyan-400",
+    accent: "text-cyan-600 dark:text-cyan-400",
   },
+
   orange: {
-    card: "bg-[hsl(31,97%,55%)] hover:bg-[hsl(31,97%,50%)]",
-    iconBg: "bg-white/20",
-    icon: "text-white",
-    title: "text-white/80",
-    value: "text-white",
-    caption: "text-white/70",
+    icon: "text-orange-600 dark:text-orange-400",
+    accent: "text-orange-600 dark:text-orange-400",
   },
+
   default: {
-    card: "bg-[hsl(221,83%,53%)] hover:bg-[hsl(221,83%,48%)]",
-    iconBg: "bg-white/20",
-    icon: "text-white",
-    title: "text-white/80",
-    value: "text-white",
-    caption: "text-white/70",
+    icon: "text-slate-700 dark:text-slate-200",
+    accent: "text-slate-700 dark:text-white",
   },
 };
 
@@ -116,36 +99,108 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        "group flex items-center gap-3 rounded-xl px-4 py-3 text-white shadow-sm transition-all duration-200",
-        styles.card,
+        "group relative flex items-center gap-3",
+        "py-1",
+        "transition-all duration-200",
         isClickable &&
-          "cursor-pointer hover:shadow-md active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
         className,
       )}
       onClick={onClick}
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
-      onKeyDown={isClickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } } : undefined}
+      onKeyDown={
+        isClickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
     >
-      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", styles.iconBg)}>
-        <Icon className={cn("h-4 w-4", styles.icon, iconClassName)} />
-      </div>
+      {/* Large standalone icon */}
+      <Icon
+        className={cn(
+          "h-7 w-7 shrink-0",
+          "stroke-[2.5]",
+          "transition-transform duration-200",
+          "group-hover:scale-110",
+          styles.icon,
+          iconClassName,
+        )}
+      />
 
-      <div className={cn("min-w-0 flex-1", contentClassName)}>
-        <p className={cn("truncate text-[10px] font-medium uppercase tracking-wider", styles.title)}>{title}</p>
-        <div className={cn("text-xl font-bold tracking-tight tabular-nums", styles.value, valueClassName)}>
+      {/* Metric information */}
+      <div className={cn("min-w-0", contentClassName)}>
+        <div className="flex items-center gap-1.5">
+          <p
+            className={cn(
+              "truncate",
+              "text-[9px]",
+              "font-bold",
+              "uppercase",
+              "tracking-[0.14em]",
+              "text-slate-500 dark:text-slate-400",
+            )}
+          >
+            {title}
+          </p>
+
+          {isClickable && (
+            <ArrowUpRight
+              className={cn(
+                "h-3 w-3 shrink-0",
+                "opacity-0",
+                "transition-all duration-200",
+                "group-hover:translate-x-0.5",
+                "group-hover:opacity-60",
+                styles.accent,
+              )}
+              strokeWidth={2.5}
+            />
+          )}
+        </div>
+
+        <div
+          className={cn(
+            "mt-0.5",
+            "text-[22px]",
+            "font-extrabold",
+            "leading-none",
+            "tracking-[-0.035em]",
+            "tabular-nums",
+            "text-slate-950 dark:text-white",
+            valueClassName,
+          )}
+        >
           {typeof countValue === "number" ? (
             <CountUp
               value={countValue}
               duration={countDuration ?? 1000}
-              format={countFormat ?? ((n) => Math.round(n).toLocaleString())}
+              format={
+                countFormat ??
+                ((n) => Math.round(n).toLocaleString())
+              }
             />
           ) : (
             value
           )}
         </div>
+
         {caption && (
-          <p className={cn("mt-0.5 truncate text-[10px] leading-tight", styles.caption)}>{caption}</p>
+          <p
+            className={cn(
+              "mt-1 truncate",
+              "text-[9px]",
+              "font-medium",
+              "leading-none",
+              "text-slate-400 dark:text-slate-500",
+            )}
+          >
+            {caption}
+          </p>
         )}
       </div>
     </div>

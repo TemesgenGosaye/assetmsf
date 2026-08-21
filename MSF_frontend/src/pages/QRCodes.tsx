@@ -2,7 +2,7 @@ import { useConfirm, crudToast } from "@/lib/enterprise-feedback";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
-import { composeQrWithLabel, generateQrPng, downloadDataUrl, printImagesAsLabels, printImagesOnA4Grid } from "@/lib/qr";
+import { composeQrWithLabel, generateQrPng, downloadDataUrl, printImagesAsLabels, printImagesOnA4Grid, buildAssetQrUrl } from "@/lib/qr";
 import JSZip from "jszip";
 import { PageSkeleton } from "@/components/ui/page-skeletons";
 import { Button } from "@/components/ui/button";
@@ -188,9 +188,13 @@ export default function QRCodes() {
           // Scope QR codes to allowed properties for non-admins
           const mappedAll = data.map(d => ({
             id: d.id,
+            asset: d.asset,
+            assetCode: d.assetCode,
+            assetIdentifier: d.assetIdentifier,
             assetId: d.assetId,
             assetName: d.assetName || d.assetId,
             property: d.property || "",
+            department: d.department || "",
             imageUrl: d.imageUrl || null,
             generatedDate: d.generatedDate,
             status: d.status,
@@ -265,9 +269,13 @@ export default function QRCodes() {
       }
 
       const images = await Promise.all(targets.map(async (code) => {
-        const base = (import.meta as any)?.env?.VITE_PUBLIC_BASE_URL || 'https://samsproject.in';
-        const normalizedBase = (base || '').replace(/\/$/, '');
-        const qrLink = `${normalizedBase}/assets/${code.asset_id}`;
+        const qrLink = buildAssetQrUrl({
+          asset_code: code.assetCode,
+          type: code.assetDetail?.type || '',
+          condition: code.assetDetail?.condition || '',
+          department: code.department || code.assetDetail?.department || '',
+          description: code.assetDetail?.description || '',
+        });
         
         const rawQrDataUrl = await QRCode.toDataURL(qrLink, {
             width: 512,
@@ -279,10 +287,10 @@ export default function QRCodes() {
         if (bulkPrintOptions.showName || bulkPrintOptions.showCode) {
              let text = "";
              if (bulkPrintOptions.showName) text += code.asset_name;
-             if (bulkPrintOptions.showCode) text += (text ? " - " : "") + code.asset_id;
+             if (bulkPrintOptions.showCode) text += (text ? " - " : "") + code.assetCode;
              
              return await composeQrWithLabel(rawQrDataUrl, {
-                 assetId: code.asset_id,
+                 assetId: code.assetCode,
                  topText: text,
                  hideBottomText: !bulkPrintOptions.showCode
              });
@@ -447,7 +455,7 @@ export default function QRCodes() {
     // Basic search by name or id
     if (assetSearch.trim()) {
       const q = assetSearch.toLowerCase();
-      list = list.filter(a => a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q));
+      list = list.filter(a => a.name.toLowerCase().includes(q) || (a.asset_code || "").toLowerCase().includes(q) || a.id.toLowerCase().includes(q));
     }
     return list;
   }, [assets, assetIdsWithQR, activePropertyIds, assetSearch]);
@@ -459,12 +467,16 @@ export default function QRCodes() {
         return;
       }
   const today = new Date().toISOString().slice(0,10);
-  const png = await generateQrPng({ assetId: asset.id, assetName: asset.name, property: asset.property });
+  const png = await generateQrPng({ assetData: asset });
       const id = `QR-${Math.floor(Math.random()*900+100)}`;
       const payload: SbQRCode = {
         id,
-        assetId: asset.id,
+        asset: asset.id,
+        assetId: asset.asset_code || asset.id,
+        assetCode: asset.asset_code || '',
+        assetIdentifier: asset.asset_code || '',
         property: asset.property,
+        department: asset.department || null,
         generatedDate: today,
         status: "Generated",
         printed: false,
@@ -474,9 +486,13 @@ export default function QRCodes() {
       const data = await listQRCodes();
       const mapped = data.map(d => ({
         id: d.id,
+        asset: d.asset,
+        assetCode: d.assetCode,
+        assetIdentifier: d.assetIdentifier,
         assetId: d.assetId,
         assetName: d.assetName || d.assetId,
         property: d.property || "",
+        department: d.department || "",
         generatedDate: d.generatedDate,
         status: d.status,
         printed: d.printed,
@@ -489,10 +505,10 @@ export default function QRCodes() {
         const raw = (isDemoMode() ? (sessionStorage.getItem('demo_auth_user') || localStorage.getItem('demo_auth_user')) : null) || localStorage.getItem('auth_user');
         if (raw) { const u = JSON.parse(raw); actor = u?.name || u?.email || u?.id || null; }
       } catch {}
-      await logActivity("qr_generated", `QR generated for ${asset.name} (${asset.id})`, actor);
-      await addNotification({ title: "QR generated", message: `${asset.name} (${asset.id}) QR is ready`, type: "qr" });
+      await logActivity("qr_generated", `QR generated for ${asset.name} (${asset.asset_code || asset.id})`, actor);
+      await addNotification({ title: "QR generated", message: `${asset.name} (${asset.asset_code || asset.id}) QR is ready`, type: "qr" });
       setAssetPickerOpen(false);
-      setSearchTerm(asset.id);
+      setSearchTerm(asset.asset_code || asset.id);
       const created = (id);
       setHighlightId(created);
       setTimeout(() => setHighlightId(null), 3500);
@@ -531,8 +547,11 @@ export default function QRCodes() {
   }, [codes]);
 
   const filteredQRCodes = uniqueCodes.filter(qr => {
-    const matchesSearch = qr.assetName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         qr.assetId.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = qr.assetName.toLowerCase().includes(term) ||
+                         qr.assetId.toLowerCase().includes(term) ||
+                         (qr.assetCode || '').toLowerCase().includes(term) ||
+                         (qr.department || '').toLowerCase().includes(term);
     const qrPropCode = propertyCodeOf(qr.property);
     // Exclude disabled properties if we know properties
     // Only exclude when we definitively know the property is disabled.
@@ -693,7 +712,7 @@ export default function QRCodes() {
       const entries: Array<[string, string]> = [];
       for (const q of missing) {
         try {
-          const url = await generateQrPng(q);
+          const url = await generateQrPng({ assetData: q });
           entries.push([q.id, url]);
           // Persist to DB for consistency
           try { await updateQRCode(q.id, { imageUrl: url } as any); } catch {}
@@ -750,7 +769,7 @@ export default function QRCodes() {
                   checked={bulkPrintOptions.showCode}
                   onCheckedChange={(checked) => setBulkPrintOptions(prev => ({ ...prev, showCode: !!checked }))}
                 />
-                <Label htmlFor="showCode">Show Asset Code</Label>
+                <Label htmlFor="showCode">Show PID</Label>
               </div>
             </div>
             <div className="flex justify-end gap-2">
@@ -962,7 +981,7 @@ export default function QRCodes() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search by asset name or ID..."
+                  placeholder="Search by asset name, code, or department..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -1014,7 +1033,7 @@ export default function QRCodes() {
                   fileName="qr_codes_registry"
                   columns={[
                     { header: "QR ID", key: "id" },
-                    { header: "Asset ID", key: "assetId" },
+                    { header: "PID", key: "assetId" },
                     { header: "Asset Name", key: "assetName" },
                     { header: "Property", key: "property" },
                     { header: "Generated Date", key: "generatedDate" },
@@ -1173,7 +1192,7 @@ export default function QRCodes() {
               <TableHeader>
                 <TableRow>
       <TableHead className="min-w-[160px]">Asset</TableHead>
-                  <TableHead>Asset ID</TableHead>
+                  <TableHead>PID</TableHead>
                   <TableHead>Property</TableHead>
                   <TableHead>Generated</TableHead>
                   <TableHead>Status</TableHead>

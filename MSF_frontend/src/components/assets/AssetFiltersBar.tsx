@@ -193,7 +193,7 @@ export default function AssetFiltersBar({
             </SelectContent>
           </Select>
 
-          {/* Quick toggle for sorting by Asset ID */}
+          {/* Quick toggle for sorting by PID */}
           <Button
             type="button"
             variant="outline"
@@ -202,10 +202,10 @@ export default function AssetFiltersBar({
               onSortChange(sortBy === "id-asc" ? "id-desc" : "id-asc")
             }
             className="shrink-0"
-            aria-label="Toggle sort by Asset ID"
-            title="Sort by Asset ID"
+            aria-label="Toggle sort by PID"
+            title="Sort by PID"
           >
-            <span className="mr-2">Asset ID</span>
+            <span className="mr-2">PID</span>
             {sortBy === "id-asc" ? (
               <ArrowUp className="h-4 w-4" />
             ) : sortBy === "id-desc" ? (

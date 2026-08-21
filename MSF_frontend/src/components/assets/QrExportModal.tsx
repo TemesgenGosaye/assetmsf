@@ -14,6 +14,7 @@ import {
   composeQrA4Sheet,
   LABEL_PRESETS,
   printImagesAsLabels,
+  buildAssetQrUrl,
 } from "@/lib/qr";
 import QRCode from "qrcode";
 import { createQRCode, updateQRCode, type QRCode as SbQRCode } from "@/services/qrcodes";
@@ -225,10 +226,6 @@ export default function QrExportModal({ open, onOpenChange, assets, selectedIds 
             <Button
               onClick={async () => {
                 try {
-                  const base =
-                    (import.meta as any)?.env?.VITE_PUBLIC_BASE_URL ||
-                    "https://samsproject.in";
-                  const normalizedBase = (base || "").replace(/\/$/, "");
                   // Only export explicitly selected asset IDs (no implicit group expansion)
                   const targets = assets.filter((a) =>
                     selectedIds.has(a.id),
@@ -242,7 +239,13 @@ export default function QrExportModal({ open, onOpenChange, assets, selectedIds 
                   const createdIds: string[] = [];
                   for (let i = 0; i < targets.length; i++) {
                     const a = targets[i];
-                    const url = `${normalizedBase}/assets/${a.id}`;
+                    const url = buildAssetQrUrl({
+                      asset_code: a.asset_code || a.id,
+                      type: a.type || '',
+                      condition: a.condition || '',
+                      department: a.department || '',
+                      description: a.description || '',
+                    });
                     const raw = await QRCode.toDataURL(url, {
                       width: 512,
                       margin: 2,
@@ -250,7 +253,7 @@ export default function QrExportModal({ open, onOpenChange, assets, selectedIds 
                       errorCorrectionLevel: "M",
                     });
                     const labeled = await composeQrWithLabel(raw, {
-                      assetId: a.id,
+                      assetId: a.asset_code || a.id,
                       topText: a.name || "Scan to view asset",
                     });
                     images.push(labeled);
@@ -258,9 +261,12 @@ export default function QrExportModal({ open, onOpenChange, assets, selectedIds 
                     try {
                       if (!isDemoMode()) {
                         const payload: SbQRCode = {
-                          id: `QR-${a.id}-${Date.now()}`,
+                          id: `QR-${a.asset_code || a.id}-${Date.now()}`,
+                          asset: a.id,
                           assetId: a.id,
+                          assetCode: a.asset_code || '',
                           property: a.property ?? null,
+                          department: a.department || null,
                           generatedDate: new Date()
                             .toISOString()
                             .slice(0, 10),

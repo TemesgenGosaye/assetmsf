@@ -4,8 +4,10 @@ Serializers for asset management.
 from rest_framework import serializers
 from django.db import models
 from .models import Asset, AssetAttachment, AssetTransfer, AssetLifecycleEvent
+from .asset_id_generator import generate_asset_id_atomic
 from properties.models import Property
 from categories.models import Category, ItemType
+from departments.models import Department
 from authentication.models import User
 
 
@@ -103,75 +105,60 @@ class AssetCreateSerializer(serializers.ModelSerializer):
                     data[field] = None
         return super().to_internal_value(data)
 
-    def generate_asset_code(self, item_type=None):
-        """Generate a unique asset code based on item type and sequence start rules."""
-        import re
-        
-        # Default rules
-        prefix_base = "AST-"
-        start_num = 1
-        is_formatted = False
-        
+    def generate_asset_code(self, item_type=None, department=None):
+        """Generate a unique asset code using the authoritative generator service."""
+        item_type_code = None
+        department_code = None
+
         if item_type:
-            # Normalize name
-            name = item_type.name.lower().strip()
-            
-            rules = {
-                "irrigation item": {"prefix": "1", "start": 100},
-                "bridge item": {"prefix": "2", "start": 200},
-                "factory equipment": {"prefix": "3", "start": 300},
-                "heavy machinery": {"prefix": "4", "start": 400},
-                "light vehicle": {"prefix": "5", "start": 500},
-                "office furniture": {"prefix": "6", "start": 600},
-                "household furniture": {"prefix": "7", "start": 700},
-                "agricultural equipment": {"prefix": "8", "start": 800},
-                "miscellaneous": {"prefix": "10", "start": 900},
-            }
-            
-            if name in rules:
-                rule = rules[name]
-                prefix_base = f"{rule['prefix']}0-0-00-"
-                start_num = rule['start']
-                is_formatted = True
-        
-        # If the item type matches one of our formatted patterns, generate accordingly
-        if is_formatted:
-            # Find the max sequence number currently used for this prefix (including soft-deleted)
-            existing_codes = Asset.objects.all().filter(
-                asset_code__startswith=prefix_base
-            ).values_list('asset_code', flat=True)
-            
-            max_num = start_num - 1
-            for code in existing_codes:
-                # Extract sequence number at the end
-                match = re.search(r'(\d+)$', code)
-                if match:
-                    val = int(match.group(1))
-                    if val > max_num:
-                        max_num = val
-            
-            next_num = max_num + 1
-            while True:
-                candidate = f"{prefix_base}{str(next_num).zfill(3)}"
-                if not Asset.objects.filter(asset_code=candidate).exists():
-                    return candidate
-                next_num += 1
-        else:
-            # Fallback to general AST-XXXXXX pattern
-            max_code = Asset.objects.all().order_by().aggregate(
-                max_code=models.Max('asset_code')
-            )['max_code']
-            next_num = 1
-            if max_code:
-                match = re.search(r'(\d+)$', max_code)
-                if match:
-                    next_num = int(match.group(1)) + 1
-            
-            while True:
-                candidate = f"AST-{str(next_num).zfill(6)}"
-                if not Asset.objects.filter(asset_code=candidate).exists():
-                    return candidate
-                next_num += 1
+            item_type_code = getattr(item_type, 'code', None)
+            if not item_type_code and hasattr(item_type, 'name'):
+                # Fallback: extract code from name prefix like "3.39: Trade Machine"
+                name = item_type.name
+                if ': ' in name:
+                    item_type_code = name.split(': ', 1)[0].strip()
+
+        if department:
+            if isinstance(department, str):
+                # department is a string name — resolve to code
+                dept_obj = Department.objects.filter(
+                    name__iexact=department, is_active=True
+                ).first()
+                if not dept_obj:
+                    # Try legacy name mapping
+                    from departments.constants import LEGACY_DEPARTMENT_NAME_MAP
+                    official_name = LEGACY_DEPARTMENT_NAME_MAP.get(department)
+                    if official_name:
+                        dept_obj = Department.objects.filter(
+                            name__iexact=official_name, is_active=True
+                        ).first()
+                if dept_obj:
+                    department_code = dept_obj.code
+            elif hasattr(department, 'code'):
+                department_code = department.code
+
+        if not item_type_code or not department_code:
+            # Fallback to old AST-XXXXXX pattern for incomplete data
+            return self._generate_fallback_code()
+
+        return generate_asset_id_atomic(item_type_code, department_code)
+
+    def _generate_fallback_code(self):
+        """Fallback code generation when required fields are missing."""
+        import re
+        max_code = Asset.objects.all().order_by().aggregate(
+            max_code=models.Max('asset_code')
+        )['max_code']
+        next_num = 1
+        if max_code:
+            match = re.search(r'(\d+)$', max_code)
+            if match:
+                next_num = int(match.group(1)) + 1
+        while True:
+            candidate = f"AST-{str(next_num).zfill(6)}"
+            if not Asset.objects.filter(asset_code=candidate).exists():
+                return candidate
+            next_num += 1
     
     def validate(self, attrs):
         """Validate and prepare data."""
@@ -212,7 +199,10 @@ class AssetCreateSerializer(serializers.ModelSerializer):
                 attrs['item_type'] = item_type
 
         if not attrs.get('asset_code'):
-            attrs['asset_code'] = self.generate_asset_code(attrs.get('item_type'))
+            attrs['asset_code'] = self.generate_asset_code(
+                item_type=attrs.get('item_type'),
+                department=attrs.get('department'),
+            )
         
         if 'status' in attrs and attrs['status']:
             attrs['status'] = attrs['status'].lower()

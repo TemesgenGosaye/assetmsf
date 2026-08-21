@@ -26,6 +26,7 @@ import {
   type ScoreBreakdown, type CriterionContribution,
 } from "@/services/houseApplication";
 import { listHouses, type House } from "@/services/houses";
+import { getAvailableHouses, type AvailableHouse } from "@/services/houseAnalytics";
 import {
   Activity, AlertTriangle, ArrowLeft, Award, BadgeCheck, Building2,
   CalendarDays, CheckCircle2, Clock3, Cpu, CircleDot,
@@ -301,6 +302,7 @@ export default function HouseQueueReview() {
   const [confirmOpen, setConfirmOpen]     = useState(false);
   const [invoiceOpen, setInvoiceOpen]     = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<House | null>(null);
+  const [recommendedHouseId, setRecommendedHouseId] = useState<string | null>(null);
   const [allocationLogs, setAllocationLogs] = useState<AllocationLog[]>([]);
   const [availableHouses, setAvailableHouses] = useState<House[]>([]);
   const [batchAllocating, setBatchAllocating] = useState(false);
@@ -313,11 +315,19 @@ export default function HouseQueueReview() {
     if (!id) return;
     try {
       setLoading(true);
-      const [app, logs, houses] = await Promise.all([
-        getApplication(id), listAllocationLogs(), listHouses(),
+      const [app, logs, houses, availHouses] = await Promise.all([
+        getApplication(id), listAllocationLogs(), listHouses(), getAvailableHouses(),
       ]);
       setDetail(app);
       setAllocationLogs(logs.filter((l) => l.application === id));
+      
+      const recommended = availHouses.find((h) => h.recommended_candidate?.application_id === id);
+      if (recommended) {
+        setRecommendedHouseId(recommended.house_id);
+      } else {
+        setRecommendedHouseId(null);
+      }
+
       if (app.eligible_house_category) {
         const active = houses.filter(
           (h) => h.house_type === app.eligible_house_category && h.status === "Active" && h.is_available,
@@ -397,11 +407,17 @@ export default function HouseQueueReview() {
   };
 
   // ── Derived ─────────────────────────────────────────────────────────
-  const sortedHouses = useMemo(
-    () => [...availableHouses].sort((a, b) => (scoringHouses.get(b.id) ?? 0) - (scoringHouses.get(a.id) ?? 0)),
-    [availableHouses, scoringHouses],
-  );
-  const topHouse = sortedHouses[0];
+  const topHouse = useMemo(() => {
+    if (!recommendedHouseId) return null;
+    return availableHouses.find(h => h.id === recommendedHouseId) || null;
+  }, [availableHouses, recommendedHouseId]);
+  const sortedHouses = useMemo(() => {
+    return [...availableHouses].sort((a, b) => {
+      const scoreA = scoringHouses.get(a.id) ?? 0;
+      const scoreB = scoringHouses.get(b.id) ?? 0;
+      return scoreB - scoreA;
+    });
+  }, [availableHouses, scoringHouses]);
   const topMatch = topHouse ? (scoringHouses.get(topHouse.id) ?? 0) : 0;
   const breakdownRows = useMemo(() => parseBreakdownRows(detail?.score_breakdown), [detail]);
   const engineReasons = useMemo(() => detail?.score_breakdown?.recommendation_reasons ?? [], [detail]);
@@ -422,8 +438,6 @@ export default function HouseQueueReview() {
         return { label: "Verify & Approve", icon: ShieldCheck, run: () => void setStatus("Verified"), disabled: submitting };
       case "Verified":
         return { label: "Move to Queue", icon: Target, run: () => void setStatus("Waiting for Allocation"), disabled: submitting };
-      case "Waiting for Allocation":
-        return { label: "Allocate Best Match", icon: Target, run: () => { setSelectedHouse(topHouse); setConfirmOpen(true); }, disabled: !topHouse || allocating };
       default: return null;
     }
   }, [detail, topHouse, submitting, allocating, setStatus]);
@@ -592,9 +606,9 @@ export default function HouseQueueReview() {
 
           {/* ═══ BIG TABLE ═══ */}
           <table className="w-full text-sm border-collapse">
-
-            {/* ─── SECTION 1: SYSTEM INFORMATION ─── */}
-            <TableSection theme={THEMES.system} title="System Information" subtitle="Engine configuration and metadata" icon={<Settings className="h-3 w-3" />} cols={6}>
+            <tbody>
+              {/* ─── SECTION 1: SYSTEM INFORMATION ─── */}
+              <TableSection theme={THEMES.system} title="System Information" subtitle="Engine configuration and metadata" icon={<Settings className="h-3 w-3" />} cols={6}>
               <tr className="border-b border-border/40">
                 <td className="p-0" colSpan={6}>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border/40">
@@ -612,9 +626,9 @@ export default function HouseQueueReview() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 divide-x divide-border/40">
                     <FieldCell label="Queue Position">{detail.queue_position ? <span className="font-bold text-primary">#{detail.queue_position}</span> : "\u2014"}</FieldCell>
                     <FieldCell label="Score Config"><span className="text-emerald-600 dark:text-emerald-400 font-semibold">Active</span></FieldCell>
-                    <FieldCell label="House Types">Staff, A, B, C, D, E</FieldCell>
+                     <FieldCell label="House Types">{detail.eligible_house_category ? detail.eligible_house_category : "Not Eligible"}</FieldCell>
                     <FieldCell label="Room Capacity">R1\u2192R2\u2192R3</FieldCell>
-                    <FieldCell label="Available Houses">{sortedHouses.length} vacant</FieldCell>
+                     <FieldCell label="Available Houses">{sortedHouses.length} {detail.eligible_house_category ? `of type ${detail.eligible_house_category}` : ""} vacant</FieldCell>
                     <FieldCell label="Scoring Weights">Grade 30% | Service 25% | Family 20%</FieldCell>
                   </div>
                 </td>
@@ -821,7 +835,7 @@ export default function HouseQueueReview() {
             </TableSection>
 
             {/* ─── SECTION 7: HOUSING OPTIONS ─── */}
-            <TableSection theme={THEMES.housing} title="Housing Options" subtitle="Available houses ranked by match score" icon={<Building2 className="h-3 w-3" />} cols={6}>
+            <TableSection theme={THEMES.housing} title="Housing Options" subtitle={detail.eligible_house_category ? `Available ${detail.eligible_house_category} houses ranked by match score` : "Not eligible for any house category"} icon={<Building2 className="h-3 w-3" />} cols={6}>
               <tr className="border-b border-border/40">
                 <td className="p-0" colSpan={6}>
                   <div className="p-4">
@@ -846,11 +860,6 @@ export default function HouseQueueReview() {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="text-lg font-black tabular-nums text-primary">{topMatch.toFixed(0)}%</span>
-                              <Button size="sm" className="h-8 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-                                onClick={() => { setSelectedHouse(topHouse); setConfirmOpen(true); }} disabled={allocating}>
-                                {allocating ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
-                                Allocate
-                              </Button>
                             </div>
                           </div>
                           <div className="mt-2.5 grid gap-1.5 border-t border-border/50 pt-2.5 sm:grid-cols-2">
@@ -866,10 +875,6 @@ export default function HouseQueueReview() {
                         {/* All houses mini-table */}
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{sortedHouses.length} houses available</span>
-                          <Button variant="outline" size="sm" className="h-7 rounded-md px-2.5 text-[10px] font-semibold"
-                            onClick={() => void handleBatchAllocate()} disabled={batchAllocating}>
-                            {batchAllocating ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Zap className="mr-1 h-3 w-3" />} Batch
-                          </Button>
                         </div>
                         <div className="overflow-x-auto rounded-lg border border-border/60">
                           <table className="w-full text-[11px]">
@@ -916,10 +921,6 @@ export default function HouseQueueReview() {
                                       {match.toFixed(0)}%
                                     </td>
                                     <td className="px-2.5 py-2 text-right">
-                                      <Button size="sm" className="h-6 rounded px-2 text-[9px] font-semibold"
-                                        onClick={(e) => { e.stopPropagation(); setSelectedHouse(house); setConfirmOpen(true); }} disabled={allocating}>
-                                        Assign
-                                      </Button>
                                     </td>
                                   </tr>
                                 );
@@ -954,11 +955,15 @@ export default function HouseQueueReview() {
                         )}
                       </div>
                     ) : canAllocate ? (
-                      <div className="flex flex-col items-center gap-2 py-8 text-center">
-                        <Building2 className="h-8 w-8 text-muted-foreground/40" />
-                        <p className="text-xs font-bold text-foreground">No Vacant Houses</p>
-                        <p className="text-[11px] text-muted-foreground max-w-[240px]">No houses of type <strong>{detail.eligible_house_category || "\u2014"}</strong> available.</p>
-                      </div>
+                         <div className="flex flex-col items-center gap-2 py-8 text-center">
+                          <Building2 className="h-8 w-8 text-muted-foreground/40" />
+                          <p className="text-xs font-bold text-foreground">No Eligible Houses Available</p>
+                          <p className="text-[11px] text-muted-foreground max-w-[240px]">
+                            No houses of type <strong>{detail.eligible_house_category || "\u2014"}</strong> are currently available.
+                            <br />
+                            <span className="text-[10px]">(Strict eligibility: Grade {detail.job_grade || "\u2014"} → {detail.eligible_house_category || "\u2014"} only)</span>
+                          </p>
+                        </div>
                     ) : (
                       <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
                         <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1104,11 +1109,6 @@ export default function HouseQueueReview() {
                           <p className="text-xs font-bold text-amber-700 dark:text-amber-300">In Allocation Queue</p>
                           {detail.queue_position && <p className="mt-1 text-[11px] text-muted-foreground">Position <span className="font-bold text-primary">#{detail.queue_position}</span></p>}
                         </div>
-                        <Button className="h-9 rounded-lg bg-primary font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 text-xs"
-                          onClick={() => { setSelectedHouse(topHouse); setConfirmOpen(true); }} disabled={!topHouse || allocating}>
-                          {allocating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Target className="mr-2 h-3.5 w-3.5" />}
-                          Allocate Best Match
-                        </Button>
                       </div>
                     )}
                     {detail.status === "Rejected" && (
@@ -1140,6 +1140,7 @@ export default function HouseQueueReview() {
               </tr>
             </TableSection>
 
+            </tbody>
           </table>
         </div>
       </div>

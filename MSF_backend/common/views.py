@@ -114,21 +114,34 @@ class QRCodeListView(generics.ListCreateAPIView):
         return QRCodeSerializer
     
     def get_queryset(self):
-        """Filter QR codes by property access."""
+        """Filter QR codes by property access and query params."""
         user = self.request.user
         queryset = QRCode.objects.filter(is_active=True)
-        
+
         if user.is_super_admin() or user.is_admin():
-            return queryset
-        
-        from authentication.models import UserPropertyAccess
-        accessible_property_ids = UserPropertyAccess.objects.filter(
-            user=user
-        ).values_list('property_id', flat=True)
-        
-        if accessible_property_ids:
-            queryset = queryset.filter(property__in=accessible_property_ids)
-        
+            pass
+        else:
+            from authentication.models import UserPropertyAccess
+            accessible_property_ids = UserPropertyAccess.objects.filter(
+                user=user
+            ).values_list('property_id', flat=True)
+            if accessible_property_ids:
+                queryset = queryset.filter(property__in=accessible_property_ids)
+
+        asset_code = self.request.query_params.get('asset_code')
+        if asset_code:
+            queryset = queryset.filter(asset_code__icontains=asset_code)
+
+        search = self.request.query_params.get('search')
+        if search:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(asset_code__icontains=search) |
+                Q(asset_identifier__icontains=search) |
+                Q(asset_name__icontains=search) |
+                Q(department__icontains=search)
+            )
+
         return queryset
     
     def list(self, request, *args, **kwargs):

@@ -63,12 +63,12 @@ export default function SmartAllocationConsole() {
   const load = useCallback(async (force = false) => {
     setLoading(true);
     try {
-      const [h, c] = await Promise.all([
+      const [h, rawC] = await Promise.all([
         getAvailableHouses({ force }),
         getRankedQueue(),
       ]);
       setHouses(h);
-      setCandidates(c);
+      setCandidates(rawC.filter(c => c.status === "Waiting for Allocation"));
     } catch (e: any) {
       toast.error(e?.message || "Failed to load allocation console");
     } finally {

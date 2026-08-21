@@ -17,27 +17,6 @@ const DEFAULTS = [
   "Agricultural Equipment", "Miscellaneous",
 ];
 
-export const ITEM_TYPE_PREFIXES: Record<string, string> = {
-  "irrigation item": "1",
-  "bridge item": "2",
-  "factory equipment": "3",
-  "heavy machinery": "4",
-  "light vehicle": "5",
-  "office furniture": "6",
-  "household furniture": "7",
-  "agricultural equipment": "8",
-  "miscellaneous": "10",
-};
-
-export function getItemTypePrefix(itemType: string): string {
-  return ITEM_TYPE_PREFIXES[itemType.toLowerCase()] || "0";
-}
-
-export function generateAssetId(itemType: string, sequence: number): string {
-  const prefix = getItemTypePrefix(itemType);
-  return `${prefix}0-0-00-${String(sequence).padStart(3, "0")}`;
-}
-
 function readLocal(): ItemType[] {
   try {
     const raw = localStorage.getItem(LS_FALLBACK);

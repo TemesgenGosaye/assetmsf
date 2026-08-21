@@ -8,14 +8,28 @@ import { djangoRequest } from "./djangoAuth";
 
 export type QRCode = {
   id: string;
+  asset: string | null;
+  assetCode: string;
+  assetIdentifier: string;
   assetId: string;
   assetName?: string | null;
   property: string | null;
+  department: string | null;
   generatedDate: string;
   status: string;
   printed: boolean;
   imageUrl: string | null;
   created_at?: string;
+  assetDetail?: {
+    id: string;
+    name: string;
+    asset_code: string;
+    department: string;
+    property: string;
+    type?: string;
+    condition?: string;
+    description?: string;
+  } | null;
 };
 
 const QR_CACHE_KEY = "qrcodes:list";
@@ -43,27 +57,33 @@ function saveLocal(list: QRCode[]) {
 function fromDjango(row: any): QRCode {
   return {
     id: row.id,
-    assetId: row.asset_id,
+    asset: row.asset ?? null,
+    assetCode: row.asset_code ?? '',
+    assetIdentifier: row.asset_identifier ?? '',
+    assetId: row.asset_code || row.asset_identifier || row.asset_id || row.id,
     assetName: row.asset_name ?? null,
     property: row.property ?? null,
+    department: row.department ?? null,
     generatedDate: row.generated_date,
     status: row.status,
     printed: !!row.printed,
     imageUrl: row.image_url ?? null,
     created_at: row.created_at,
+    assetDetail: row.asset_detail ?? null,
   };
 }
 
 function toDjango(qr: Partial<QRCode>): any {
-  return {
-    id: qr.id,
-    asset_id: qr.assetId,
-    property: qr.property ?? null,
-    generated_date: qr.generatedDate,
-    status: qr.status,
-    printed: qr.printed,
-    image_url: qr.imageUrl ?? null,
-  };
+  const out: any = {};
+  if (qr.asset !== undefined) out.asset = qr.asset;
+  if (qr.assetName !== undefined) out.asset_name = qr.assetName;
+  if (qr.property !== undefined) out.property = qr.property ?? null;
+  if (qr.department !== undefined) out.department = qr.department ?? null;
+  if (qr.generatedDate !== undefined) out.generated_date = qr.generatedDate;
+  if (qr.status !== undefined) out.status = qr.status;
+  if (qr.printed !== undefined) out.printed = qr.printed;
+  if (qr.imageUrl !== undefined) out.image_url = qr.imageUrl ?? null;
+  return out;
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────

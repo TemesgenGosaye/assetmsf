@@ -694,7 +694,7 @@ export default function Approvals() {
                   columns={[
                     { header: "Request ID", key: "id" },
                     { header: "Action", key: "action" },
-                    { header: "Asset ID", key: "assetId" },
+                    { header: "PID", key: "assetId" },
                     { header: "Requested By", key: "requestedBy" },
                     { header: "Requested Date", key: "requestedAt" },
                     { header: "Status", key: "status" },

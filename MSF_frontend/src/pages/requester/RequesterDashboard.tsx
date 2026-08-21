@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import MetricCard, { type MetricCardVariant } from "@/components/ui/metric-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageSkeleton } from "@/components/ui/page-skeletons";
@@ -26,12 +27,12 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const metrics = [
-  { key: "total", label: "Total Applications", icon: FileText, color: "text-primary" },
-  { key: "draft", label: "Drafts", icon: FileText, color: "text-muted-foreground" },
-  { key: "submitted", label: "Submitted", icon: Clock, color: "text-blue-600 dark:text-blue-400" },
-  { key: "under_review", label: "Under Review", icon: Clock, color: "text-amber-600 dark:text-amber-400" },
-  { key: "allocated", label: "Allocated", icon: CheckCircle, color: "text-green-600 dark:text-green-400" },
-  { key: "rejected", label: "Rejected", icon: XCircle, color: "text-red-600 dark:text-red-400" },
+  { key: "total", label: "Total Applications", icon: FileText, variant: "default" as MetricCardVariant },
+  { key: "draft", label: "Drafts", icon: FileText, variant: "orange" as MetricCardVariant },
+  { key: "submitted", label: "Submitted", icon: Clock, variant: "blue" as MetricCardVariant },
+  { key: "under_review", label: "Under Review", icon: Clock, variant: "amber" as MetricCardVariant },
+  { key: "allocated", label: "Allocated", icon: CheckCircle, variant: "emerald" as MetricCardVariant },
+  { key: "rejected", label: "Rejected", icon: XCircle, variant: "rose" as MetricCardVariant },
 ];
 
 export default function RequesterDashboard() {
@@ -94,21 +95,14 @@ export default function RequesterDashboard() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {metrics.map((m) => {
             const value = (dash as any)[m.key] ?? 0;
-            const Icon = m.icon;
             return (
-              <Card key={m.key} className="border-border/50 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground">{m.label}</p>
-                      <p className="text-2xl font-bold">{value}</p>
-                    </div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50">
-                      <Icon className={`h-5 w-5 ${m.color}`} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <MetricCard
+                key={m.key}
+                icon={m.icon}
+                title={m.label}
+                countValue={value}
+                variant={m.variant}
+              />
             );
           })}
         </div>

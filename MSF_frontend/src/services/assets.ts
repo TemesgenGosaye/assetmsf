@@ -396,12 +396,4 @@ export async function getAssetById(id: string): Promise<Asset | null> {
   return null;
 }
 
-import { generateAssetId } from "./itemTypes.ts";
 
-export function generateAssetCode(
-  type: string,
-  _propertyCode: string,
-  sequence: number,
-): string {
-  return generateAssetId(type, sequence);
-}

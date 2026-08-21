@@ -1,11 +1,10 @@
 export const assetPrintHTML = (asset: any) => {
   const rows = [
-    { label: 'Asset ID', value: asset.id },
+    { label: 'PID', value: asset.asset_code || asset.id },
     { label: 'Name', value: asset.name },
     { label: 'Type', value: asset.type },
     { label: 'Property', value: asset.property || asset.property_id || '-' },
     { label: 'Serial', value: asset.serialNumber || '-' },
-    { label: 'Quantity', value: asset.quantity ?? '-' },
     { label: 'Location', value: asset.location || '-' },
     { label: 'Status', value: asset.status || '-' },
   ];
@@ -15,7 +14,7 @@ export const assetPrintHTML = (asset: any) => {
   return `
     <html>
       <head>
-        <title>Print Asset ${asset.id}</title>
+        <title>Print Asset ${asset.asset_code || asset.id}</title>
         <style>
           @page { size: A4; margin: 20mm; }
           body { font-family: Arial, Helvetica, sans-serif; padding: 0; margin: 0; }

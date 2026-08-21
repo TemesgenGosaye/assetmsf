@@ -18,6 +18,7 @@ lifecycle, and appends to both AllocationLog (legacy) and HouseAuditTrail.
 """
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from decimal import Decimal
 from django.db import transaction
 from django.db.models import Q
@@ -27,6 +28,179 @@ from .models import (
     House, HouseApplication, EligibilityRule,
     ScoringConfig, AllocationLog, HouseOpportunity, Allocation, HouseAuditTrail,
 )
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  MANDATORY ELIGIBILITY GATE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  STRICT RULE: NO house is ever recommended, suggested, ranked, or assigned
+#  unless the applicant first passes this gate and receives a valid score.
+#
+#  Grade → Eligible Category boundaries (ABSOLUTE — no exceptions):
+#    > 17   → Staff
+#    15–17  → A
+#    12–14  → B
+#    10–11  → C
+#    7–9    → D
+#    0–6    → E
+#
+#  Cross-category assignment is NEVER permitted — not even to a lower category.
+#  The score ranks within the eligible category; it CANNOT override the grade boundary.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@dataclass
+class EligibilityResult:
+    """
+    Authoritative eligibility gate object. Every allocation pipeline step
+    MUST check ``passed`` before proceeding.
+
+    Fields:
+        passed           — True only when grade is valid AND score is computed.
+        eligible_category— Exact single category ("Staff"|"A"|"B"|"C"|"D"|"E")
+                           or "" when grade is invalid/missing.
+        job_grade        — Parsed integer grade, or None if unparseable.
+        score            — Decimal MCDA score; None if not yet computed or failed.
+        reason           — Human-readable explanation for audit/XAI.
+    """
+    passed: bool
+    eligible_category: str
+    job_grade: object          # int | None
+    score: object              # Decimal | None
+    reason: str
+
+
+# Ordered boundary table: (lower_bound_inclusive, upper_bound_inclusive_or_None, category)
+# None upper bound means "no ceiling" (grade > 17 → Staff).
+_GRADE_CATEGORY_BOUNDARIES = [
+    (18, None, "Staff"),   # > 17
+    (15, 17,   "A"),       # 15–17
+    (12, 14,   "B"),       # 12–14
+    (10, 11,   "C"),       # 10–11
+    (7,  9,    "D"),       # 7–9
+    (0,  6,    "E"),       # 0–6
+]
+
+
+def grade_to_category(grade: int) -> str:
+    """
+    Map a validated integer grade to the mandatory eligible house category.
+    Negative grades are treated as 0 → E.
+    """
+    grade = max(grade, 0)
+    for lower, upper, cat in _GRADE_CATEGORY_BOUNDARIES:
+        if upper is None:
+            if grade >= lower:
+                return cat
+        elif lower <= grade <= upper:
+            return cat
+    return "E"
+
+
+def check_strict_eligibility(application, config=None) -> EligibilityResult:
+    """
+    Mandatory eligibility gate — MUST be called first in every allocation pipeline.
+
+    Returns an EligibilityResult where:
+      · passed=True  → applicant may compete for houses of exactly ``eligible_category``.
+      · passed=False → NO house may be recommended, suggested, ranked, or assigned.
+
+    Rules enforced (in order):
+      1. job_grade must be present and a valid plain integer
+         (null, empty string, decimals like "14.5", and non-numeric values are ALL rejected).
+      2. Grade maps to exactly one eligible_category (no cascade, no fallback).
+      3. MCDA eligibility score must be computable and not None.
+
+    Score is used AFTER category eligibility to rank within the eligible category;
+    it CANNOT promote an applicant into a higher or lower category.
+    """
+    raw = str(application.job_grade or "").strip()
+
+    # Rule 1 — grade must be present
+    if not raw:
+        return EligibilityResult(
+            passed=False, eligible_category="", job_grade=None, score=None,
+            reason=(
+                "Job grade is missing or null. "
+                "Status: NOT ELIGIBLE | Recommendation: NONE | Assignment: BLOCKED"
+            ),
+        )
+
+    # Rule 1 — grade must be a plain integer (rejects "14.5", "14.0", "abc", etc.)
+    try:
+        grade = int(raw)
+        if str(grade) != raw:          # catches "14.0", "+14", "14.5", etc.
+            raise ValueError("Not a plain integer")
+    except (TypeError, ValueError):
+        return EligibilityResult(
+            passed=False, eligible_category="", job_grade=None, score=None,
+            reason=(
+                f"Job grade '{application.job_grade}' is not a valid integer. "
+                "Decimal, float, and non-numeric grades are rejected. "
+                "Status: NOT ELIGIBLE | Recommendation: NONE | Assignment: BLOCKED"
+            ),
+        )
+
+    # Rule 2 — determine mandatory category (grade → single category, no cascade)
+    eligible_cat = grade_to_category(grade)
+
+    # Rule 3 — score must be computable (cannot use 0, 50, or 100 as a default bypass)
+    try:
+        if config is None:
+            config = ScoringConfig.objects.filter(is_active=True).first()
+        score, _breakdown, _reasons = compute_mcda_score(application, config)
+        if score is None:
+            return EligibilityResult(
+                passed=False, eligible_category=eligible_cat,
+                job_grade=grade, score=None,
+                reason=(
+                    "Eligibility score could not be established. "
+                    "Status: NOT ELIGIBLE | Recommendation: NONE"
+                ),
+            )
+    except Exception as exc:
+        return EligibilityResult(
+            passed=False, eligible_category=eligible_cat,
+            job_grade=grade, score=None,
+            reason=(
+                f"Eligibility score calculation failed: {exc}. "
+                "Status: NOT ELIGIBLE | Recommendation: NONE"
+            ),
+        )
+
+    return EligibilityResult(
+        passed=True,
+        eligible_category=eligible_cat,
+        job_grade=grade,
+        score=score,
+        reason=(
+            f"Eligible for category '{eligible_cat}' based on job grade {grade}. "
+            f"MCDA score: {score}."
+        ),
+    )
+
+
+def validate_applicant_grade(application):
+    """
+    Lightweight grade-only validation for backend assignment endpoints.
+    Used by views.py to block frontend bypass BEFORE calling the engine.
+
+    Returns (valid: bool, eligible_category: str, reason: str).
+    Does NOT compute the score — that is done inside check_strict_eligibility().
+    """
+    raw = str(application.job_grade or "").strip()
+    if not raw:
+        return False, "", "Job grade is missing or null — assignment BLOCKED."
+    try:
+        grade = int(raw)
+        if str(grade) != raw:
+            raise ValueError("Not a plain integer")
+    except (TypeError, ValueError):
+        return False, "", (
+            f"Job grade '{application.job_grade}' is not a valid integer — assignment BLOCKED."
+        )
+    cat = grade_to_category(grade)
+    return True, cat, f"Grade {grade} → eligible category '{cat}'."
 
 
 # ── constants ─────────────────────────────────────────────────────────────
@@ -126,26 +300,26 @@ def find_vacant_room_in_order(house):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  HOUSE CASCADE  (evaluate eligible houses in order)
+#  STRICT CATEGORY FILTER  (exact match — NO cascade, NO downward drift)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _eligible_types_ordered(eligible_category):
+def _exact_eligible_category(eligible_category):
     """
-    Return the list of house types an applicant may be placed in,
-    ordered from best match to lowest fallback.  An applicant eligible
-    for category B can also occupy C, D, E (downward cascade) but *not*
-    A or Staff (upward).
+    Return a list containing EXACTLY the applicant's eligible category.
 
-    The cascade order ensures we try the applicant's exact category first,
-    then step down through lower categories — mirroring real factory
-    housing policy where higher-grade houses fill before lower ones.
+    HARD RULE: An applicant eligible for category B may ONLY be placed in a
+    B house.  They may NOT be placed in C, D, or E houses "because those are
+    available", and they may NOT be placed in A or Staff houses "because
+    their score is high".
+
+    This replaces the old ``_eligible_types_ordered`` cascade which incorrectly
+    allowed downward drift (B → C → D → E).  That cascade is removed entirely.
+
+    Returns [] when eligible_category is empty/None (invalid grade → not eligible).
     """
-    rank = CATEGORY_ORDER.get(eligible_category, 0)
-    types = []
-    for t, r in sorted(CATEGORY_ORDER.items(), key=lambda x: x[1], reverse=True):
-        if r <= rank:
-            types.append(t)
-    return types
+    if not eligible_category:
+        return []
+    return [eligible_category]
 
 
 def find_best_house_for_applicant(application, allocation_mode=None):
@@ -166,7 +340,21 @@ def find_best_house_for_applicant(application, allocation_mode=None):
         allocation_mode, _ = determine_allocation_mode(application)
 
     eligible_cat, cat_reason = determine_eligible_category(application)
-    types = _eligible_types_ordered(eligible_cat)
+
+    # HARD GATE — no house search without a valid eligible category
+    if not eligible_cat:
+        return None, None, -1, [
+            {
+                "step": "Eligibility FAILED",
+                "detail": cat_reason,
+                "eligible_category": "",
+                "status": "NOT ELIGIBLE",
+                "recommendation": "NONE",
+            }
+        ]
+
+    # Strict single-category filter — no cascade to lower categories
+    types = _exact_eligible_category(eligible_cat)
     reasoning = [
         {"step": "Eligibility", "detail": cat_reason, "eligible_category": eligible_cat},
     ]
@@ -177,13 +365,16 @@ def find_best_house_for_applicant(application, allocation_mode=None):
             is_active=True,
             house_type__in=types,
         ).exclude(allocation_category=House.AllocationCategory.GUEST)
-        .order_by("house_type", "house_number")
+        .order_by("house_number")
     )
 
     if not active_houses:
         reasoning.append({
             "step": "House Search",
-            "detail": f"No active non-guest houses found for categories {types}",
+            "detail": (
+                f"No active non-guest {eligible_cat}-category houses found. "
+                f"Houses of other categories are NOT considered."
+            ),
         })
         return None, None, -1, reasoning
 
@@ -438,41 +629,50 @@ def analyze_eligibility(application):
                 best_rank = grade_rank
 
     if best is None:
-        best = application.requested_house_category or "E"
+        best, _ = determine_eligible_category(application)
 
     return results, best
 
 
 def determine_eligible_category(application):
     """
-    Determine the house type an employee qualifies for based on job grade:
-      * > 17  → Staff
-      * 15–17 → A
-      * 12–14 → B
-      * 10–11 → C
-      * 7–9   → D
-      * < 7   → E
+    Determine the house category an employee qualifies for based on job grade.
+
+    STRICT BOUNDARIES (absolute, no exceptions):
+      grade > 17   → Staff
+      grade 15–17  → A
+      grade 12–14  → B
+      grade 10–11  → C
+      grade  7–9   → D
+      grade  0–6   → E
+
     Returns (category_str, reason_str).
+
+    CRITICAL — returns ("", reason) when job_grade is:
+      · missing / null
+      · not a valid plain integer (decimal, float, string)
+    Callers MUST check for empty string and treat it as NOT ELIGIBLE.
+    Never silently falls back to grade 0 or category "E" for invalid inputs.
     """
+    raw = str(application.job_grade or "").strip()
+
+    if not raw:
+        return "", (
+            "Job grade is missing or null — applicant is NOT ELIGIBLE for any house category."
+        )
+
     try:
-        grade = int(str(application.job_grade or "").strip())
+        grade = int(raw)
+        if str(grade) != raw:
+            raise ValueError("Non-integer grade")
     except (TypeError, ValueError):
-        grade = 0
+        return "", (
+            f"Job grade '{application.job_grade}' is not a valid integer — "
+            "applicant is NOT ELIGIBLE. Decimal and non-numeric grades are rejected."
+        )
 
-    if grade > 17:
-        cat = "Staff"
-    elif grade >= 15:
-        cat = "A"
-    elif grade >= 12:
-        cat = "B"
-    elif grade >= 10:
-        cat = "C"
-    elif grade >= 7:
-        cat = "D"
-    else:
-        cat = "E"
-
-    return cat, f"Eligible for {cat} based on job grade {grade}"
+    cat = grade_to_category(grade)
+    return cat, f"Eligible for '{cat}' based on job grade {grade}."
 
 
 def check_allocation_constraints(application, house, room=None, allocation_mode=None,
@@ -522,9 +722,22 @@ def check_allocation_constraints(application, house, room=None, allocation_mode=
                 f"House {house.house_id} is partially occupied and cannot be allocated as a whole house"
             )
 
-    eligible_cat, _ = determine_eligible_category(application)
-    if CATEGORY_ORDER.get(house.house_type, 0) > CATEGORY_ORDER.get(eligible_cat, 0):
-        reasons.append(f"House type {house.house_type} exceeds eligible category {eligible_cat}")
+    eligible_cat, cat_reason = determine_eligible_category(application)
+
+    # STRICT CATEGORY ENFORCEMENT — exact match required, no upward AND no downward drift.
+    # This is the last line of defence against cross-category allocation.
+    if not eligible_cat:
+        reasons.append(
+            f"Applicant has no eligible house category — job grade is missing or invalid. "
+            f"({cat_reason}) "
+            f"Assignment BLOCKED: ELIGIBILITY_FAILED"
+        )
+    elif house.house_type != eligible_cat:
+        reasons.append(
+            f"House category '{house.house_type}' does not match applicant's mandatory "
+            f"eligible category '{eligible_cat}' (job grade {application.job_grade}). "
+            f"Assignment REJECTED: HOUSE_CATEGORY_NOT_ELIGIBLE"
+        )
 
     already_allocated = (
         Allocation.objects.filter(
@@ -782,11 +995,8 @@ def compute_house_compatibility(application, house, config=None, eligible_catego
     if house.house_type == eligible_category:
         score += 40
         reasons.append(f"Exact category match ({house.house_type})")
-    elif cat_rank < elig_rank:
-        score += 40 * (cat_rank / max(elig_rank, 1))
-        reasons.append(f"Category {house.house_type} is below eligible {eligible_category}")
     else:
-        reasons.append(f"House type {house.house_type} exceeds eligible category {eligible_category}")
+        reasons.append(f"House type {house.house_type} does not match eligible category {eligible_category}")
         return 0.0, reasons
 
     # Preferred location (0–15)
@@ -859,20 +1069,35 @@ def compute_allocation_confidence(priority_score, compatibility_score):
 
 def generate_opportunities(application, user=None):
     """
-    Materialise HouseOpportunity rows for every active, non-guest house the
-    applicant could plausibly be matched to. Idempotent per (application, house).
+    Materialise HouseOpportunity rows for the applicant's eligible house category.
+    Idempotent per (application, house). Only houses of the EXACT eligible category
+    are ever materialised — cross-category opportunities are never created.
 
     Allocation mode decides the granularity:
       * HOUSE_ALLOCATION → one opportunity per house (room_label = "").
       * ROOM_ALLOCATION  → one opportunity per available room (room_label = label).
 
-    Returns number of new opportunities created.
+    Returns number of new opportunities created, or 0 if not eligible.
     """
-    eligible_cat, _ = determine_eligible_category(application)
+    eligible_cat, cat_reason = determine_eligible_category(application)
+
+    # HARD GATE — do not generate any opportunities for ineligible applicants
+    if not eligible_cat:
+        record_audit(
+            application, HouseAuditTrail.Action.OPPORTUNITIES_GENERATED, user,
+            new_status=application.status,
+            detail={"created": 0, "eligible_category": "", "reason": cat_reason},
+            note=f"No opportunities generated: {cat_reason}",
+        )
+        return 0
+
     mode, _ = determine_allocation_mode(application)
+
+    # STRICT: only houses of the exact eligible category — never all houses
     candidate_houses = House.objects.filter(
         is_active=True,
         status=House.Status.ACTIVE,
+        house_type=eligible_cat,
     ).exclude(allocation_category=House.AllocationCategory.GUEST)
 
     created = 0
@@ -1356,7 +1581,8 @@ def auto_allocate_single(house, target_application=None, user=None, room_label="
         eligible = []
         for c in candidates:
             ec, _ = determine_eligible_category(c)
-            if CATEGORY_ORDER.get(cat, 0) <= CATEGORY_ORDER.get(ec, 0):
+            # STRICT CATEGORY MATCH — candidates are only eligible for exact house category
+            if ec == cat:
                 eligible.append(c)
         candidates = eligible
 
@@ -1442,98 +1668,90 @@ def auto_allocate_cascade(application, user=None, dry_run=False):
             "reasoning": reasoning,
         }
 
-    # ── Walk eligible categories (best → lowest) ────────────────────────
-    cat_types = _eligible_types_ordered(eligible_cat)
+    # ── Search Exact Category ONLY ────────────────────────
     active_houses = list(
         House.objects.filter(
             status=House.Status.ACTIVE,
             is_active=True,
+            house_type=eligible_cat,
         ).exclude(allocation_category=House.AllocationCategory.GUEST)
-        .order_by("house_type", "house_number")
+        .order_by("house_number")
     )
-
-    house_by_type = {}
-    for h in active_houses:
-        house_by_type.setdefault(h.house_type, []).append(h)
 
     evaluation_log = []
 
-    for htype in cat_types:
-        houses_of_type = house_by_type.get(htype, [])
-        if not houses_of_type:
-            evaluation_log.append({
-                "type": htype, "houses_found": 0,
-                "detail": "No active houses of this type",
-            })
+    if not active_houses:
+        evaluation_log.append({
+            "type": eligible_cat, "houses_found": 0,
+            "detail": "No active houses of this exact type",
+        })
+
+    for house in active_houses:
+        if allocation_mode == ALLOCATION_MODE_ROOM:
+            room, idx = find_vacant_room_in_order(house)
+            available = room is not None
+            detail = (
+                f"{house.house_number}: Room {room['label']} vacant "
+                f"(R1→R2→R3)" if available else
+                f"{house.house_number}: all rooms occupied"
+            )
+        else:
+            available = house.is_fully_vacant
+            room = None
+            detail = (
+                f"{house.house_number}: fully vacant" if available else
+                f"{house.house_number}: partially/fully occupied"
+            )
+
+        evaluation_log.append({
+            "type": eligible_cat, "house_id": house.house_id,
+            "house_number": house.house_number, "available": available,
+            "detail": detail,
+        })
+
+        if not available:
             continue
 
-        for house in houses_of_type:
-            if allocation_mode == ALLOCATION_MODE_ROOM:
-                room, idx = find_vacant_room_in_order(house)
-                available = room is not None
-                detail = (
-                    f"{house.house_number}: Room {room['label']} vacant "
-                    f"(R1→R2→R3)" if available else
-                    f"{house.house_number}: all rooms occupied"
-                )
-            else:
-                available = house.is_fully_vacant
-                room = None
-                detail = (
-                    f"{house.house_number}: fully vacant" if available else
-                    f"{house.house_number}: partially/fully occupied"
-                )
+        # ── Candidate found — allocate (or preview) ─────────────────
+        reasoning = build_allocation_reasoning(
+            application, house, room=room,
+            allocation_mode=allocation_mode,
+            priority_score=total, score_breakdown=breakdown,
+            eligibility_results=application.eligibility_analysis or [],
+        )
+        reasoning["steps"].insert(0, {
+            "section": "Evaluation Trail",
+            "detail": (
+                f"Evaluated {len(evaluation_log)} house(s) in category '{eligible_cat}' "
+                f"before finding available resource"
+            ),
+            "evaluations": evaluation_log,
+        })
 
-            evaluation_log.append({
-                "type": htype, "house_id": house.house_id,
-                "house_number": house.house_number, "available": available,
-                "detail": detail,
-            })
+        result = {
+            "application_no": application.application_no,
+            "employee_name": application.employee_name,
+            "employee_id": application.employee_id,
+            "job_grade": application.job_grade,
+            "priority_score": str(total),
+            "allocation_mode": allocation_mode,
+            "house_id": house.house_id,
+            "house_number": house.house_number,
+            "house_type": house.house_type,
+            "room_label": room["label"] if room else "",
+            "resource": resource_label(house, room["label"] if room else ""),
+            "reasoning": reasoning,
+        }
 
-            if not available:
-                continue
-
-            # ── Candidate found — allocate (or preview) ─────────────────
-            reasoning = build_allocation_reasoning(
-                application, house, room=room,
-                allocation_mode=allocation_mode,
-                priority_score=total, score_breakdown=breakdown,
-                eligibility_results=application.eligibility_analysis or [],
-            )
-            reasoning["steps"].insert(0, {
-                "section": "Evaluation Trail",
-                "detail": (
-                    f"Walked categories {cat_types}, evaluated "
-                    f"{len(evaluation_log)} house(s) before finding "
-                    f"available resource"
-                ),
-                "evaluations": evaluation_log,
-            })
-
-            result = {
-                "application_no": application.application_no,
-                "employee_name": application.employee_name,
-                "employee_id": application.employee_id,
-                "job_grade": application.job_grade,
-                "priority_score": str(total),
-                "allocation_mode": allocation_mode,
-                "house_id": house.house_id,
-                "house_number": house.house_number,
-                "house_type": house.house_type,
-                "room_label": room["label"] if room else "",
-                "resource": resource_label(house, room["label"] if room else ""),
-                "reasoning": reasoning,
-            }
-
-            if dry_run:
-                return True, result
-
-            allocate_application(
-                application, house, user, "Auto",
-                notes=f"Cascade allocation score={total}",
-                room=room, room_label=room["label"] if room else "",
-            )
+        if dry_run:
             return True, result
+
+        allocate_application(
+            application, house, user, "Auto",
+            notes=f"Strict exact-category allocation score={total}",
+            room=room, room_label=room["label"] if room else "",
+        )
+        return True, result
 
     # ── No house found ──────────────────────────────────────────────────
     reasoning = build_allocation_reasoning(
@@ -1545,8 +1763,8 @@ def auto_allocate_cascade(application, user=None, dry_run=False):
     reasoning["steps"].insert(0, {
         "section": "Evaluation Trail",
         "detail": (
-            f"Walked categories {cat_types}, evaluated "
-            f"{len(evaluation_log)} house(s) — no available house found"
+            f"Evaluated {len(evaluation_log)} house(s) in exact category '{eligible_cat}' "
+            f"— no available house found"
         ),
         "evaluations": evaluation_log,
     })
@@ -1555,9 +1773,11 @@ def auto_allocate_cascade(application, user=None, dry_run=False):
         "application_no": application.application_no,
         "employee_name": application.employee_name,
         "skip_reason": (
-            f"No available house across categories {cat_types} "
+            f"No available house in mandatory category '{eligible_cat}' "
             f"({len(evaluation_log)} houses evaluated)"
         ),
+        "recommendation": "NONE",
+        "eligible_category": eligible_cat,
         "reasoning": reasoning,
     }
 
@@ -1938,7 +2158,7 @@ def hungarian_assign(applications, resources):
                 if res.house.house_type == cat:
                     cost[i][j] = -float(app.priority_score)
                 else:
-                    cost[i][j] = -float(app.priority_score) * 0.5
+                    cost[i][j] = INF  # STRICT CATEGORY MATCH — cross-category is impossible
 
     n = size
     u = [0.0] * (n + 1)
@@ -2024,8 +2244,8 @@ def get_ranked_queue(category=None, recalculate=False):
         apps_to_score = qs.filter(score_breakdown={})
 
     for app in apps_to_score:
-        results, best = analyze_eligibility(app)
-        cat = best
+        results, _ = analyze_eligibility(app)  # Keep results for XAI/display
+        cat, _ = determine_eligible_category(app)  # Grade-based, authoritative
         mode, _ = determine_allocation_mode(app)
         total, breakdown, reasons = compute_mcda_score(app, config)
         app.eligible_house_category = cat
@@ -2111,7 +2331,7 @@ def capture_inspection_baseline(house):
         .filter(
             house=house,
             status__in=[
-                MaintenanceRequest.Status.PENDING,
+                MaintenanceRequest.Status.OPEN,
                 MaintenanceRequest.Status.IN_PROGRESS,
             ],
         )
@@ -2210,7 +2430,7 @@ def compare_inspection_baseline(baseline, current_house):
         .filter(
             house=current_house,
             status__in=[
-                MaintenanceRequest.Status.PENDING,
+                MaintenanceRequest.Status.OPEN,
                 MaintenanceRequest.Status.IN_PROGRESS,
             ],
         )
@@ -2349,7 +2569,7 @@ def validate_termination(allocation, case, user, **kwargs):
         open_maint = MaintenanceRequest.objects.filter(
             house=house,
             status__in=[
-                MaintenanceRequest.Status.PENDING,
+                MaintenanceRequest.Status.OPEN,
                 MaintenanceRequest.Status.IN_PROGRESS,
             ],
         )

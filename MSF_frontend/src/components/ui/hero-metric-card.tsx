@@ -19,51 +19,74 @@ type HeroMetricCardProps = {
   onClick?: () => void;
 };
 
-const variantStyles: Record<HeroMetricVariant, { card: string; iconBg: string; icon: string; title: string; value: string; caption: string; border: string }> = {
+const variantStyles: Record<
+  HeroMetricVariant,
+  {
+    card: string;
+    iconBg: string;
+    icon: string;
+    title: string;
+    value: string;
+    caption: string;
+    border: string;
+    glow: string;
+    deco: string;
+  }
+> = {
   blue: {
-    card: "bg-blue-600 dark:bg-blue-700",
-    iconBg: "bg-blue-500/50 dark:bg-blue-600/50",
-    icon: "text-white",
-    title: "text-blue-100 dark:text-blue-200",
+    card: "bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700",
+    iconBg: "bg-white/20 backdrop-blur-sm ring-1 ring-white/25 shadow-lg shadow-blue-900/30",
+    icon: "text-white drop-shadow-sm",
+    title: "text-blue-100/80",
     value: "text-white",
-    caption: "text-blue-100/80 dark:text-blue-200/70",
-    border: "border-blue-500 dark:border-blue-600",
+    caption: "text-blue-100/60",
+    border: "border-blue-500/30",
+    glow: "group-hover:shadow-[0_8px_32px_-4px_rgba(59,130,246,0.5)]",
+    deco: "from-white/[0.07] to-transparent",
   },
   green: {
-    card: "bg-emerald-600 dark:bg-emerald-700",
-    iconBg: "bg-emerald-500/50 dark:bg-emerald-600/50",
-    icon: "text-white",
-    title: "text-emerald-100 dark:text-emerald-200",
+    card: "bg-gradient-to-br from-emerald-600 via-emerald-600 to-emerald-700",
+    iconBg: "bg-white/20 backdrop-blur-sm ring-1 ring-white/25 shadow-lg shadow-emerald-900/30",
+    icon: "text-white drop-shadow-sm",
+    title: "text-emerald-100/80",
     value: "text-white",
-    caption: "text-emerald-100/80 dark:text-emerald-200/70",
-    border: "border-emerald-500 dark:border-emerald-600",
+    caption: "text-emerald-100/60",
+    border: "border-emerald-500/30",
+    glow: "group-hover:shadow-[0_8px_32px_-4px_rgba(16,185,129,0.5)]",
+    deco: "from-white/[0.07] to-transparent",
   },
   purple: {
-    card: "bg-violet-600 dark:bg-violet-700",
-    iconBg: "bg-violet-500/50 dark:bg-violet-600/50",
-    icon: "text-white",
-    title: "text-violet-100 dark:text-violet-200",
+    card: "bg-gradient-to-br from-violet-600 via-violet-600 to-violet-700",
+    iconBg: "bg-white/20 backdrop-blur-sm ring-1 ring-white/25 shadow-lg shadow-violet-900/30",
+    icon: "text-white drop-shadow-sm",
+    title: "text-violet-100/80",
     value: "text-white",
-    caption: "text-violet-100/80 dark:text-violet-200/70",
-    border: "border-violet-500 dark:border-violet-600",
+    caption: "text-violet-100/60",
+    border: "border-violet-500/30",
+    glow: "group-hover:shadow-[0_8px_32px_-4px_rgba(139,92,246,0.5)]",
+    deco: "from-white/[0.07] to-transparent",
   },
   orange: {
-    card: "bg-orange-500 dark:bg-orange-600",
-    iconBg: "bg-orange-400/50 dark:bg-orange-500/50",
-    icon: "text-white",
-    title: "text-orange-100 dark:text-orange-200",
+    card: "bg-gradient-to-br from-orange-500 via-orange-500 to-orange-600",
+    iconBg: "bg-white/20 backdrop-blur-sm ring-1 ring-white/25 shadow-lg shadow-orange-900/30",
+    icon: "text-white drop-shadow-sm",
+    title: "text-orange-100/80",
     value: "text-white",
-    caption: "text-orange-100/80 dark:text-orange-200/70",
-    border: "border-orange-400 dark:border-orange-500",
+    caption: "text-orange-100/60",
+    border: "border-orange-400/30",
+    glow: "group-hover:shadow-[0_8px_32px_-4px_rgba(249,115,22,0.5)]",
+    deco: "from-white/[0.07] to-transparent",
   },
   pink: {
-    card: "bg-rose-500 dark:bg-rose-600",
-    iconBg: "bg-rose-400/50 dark:bg-rose-500/50",
-    icon: "text-white",
-    title: "text-rose-100 dark:text-rose-200",
+    card: "bg-gradient-to-br from-rose-500 via-rose-500 to-rose-600",
+    iconBg: "bg-white/20 backdrop-blur-sm ring-1 ring-white/25 shadow-lg shadow-rose-900/30",
+    icon: "text-white drop-shadow-sm",
+    title: "text-rose-100/80",
     value: "text-white",
-    caption: "text-rose-100/80 dark:text-rose-200/70",
-    border: "border-rose-400 dark:border-rose-500",
+    caption: "text-rose-100/60",
+    border: "border-rose-400/30",
+    glow: "group-hover:shadow-[0_8px_32px_-4px_rgba(244,63,94,0.5)]",
+    deco: "from-white/[0.07] to-transparent",
   },
 };
 
@@ -95,34 +118,69 @@ export function HeroMetricCard({
           : undefined
       }
       className={cn(
-        "group relative flex items-center gap-3 rounded-xl border px-4 py-3 shadow-sm transition-all duration-200",
+        "group relative overflow-hidden rounded-2xl border px-5 py-4 text-white",
+        "transition-all duration-300 ease-out",
+        "hover:-translate-y-0.5",
         styles.card,
         styles.border,
+        styles.glow,
         isClickable &&
-          "cursor-pointer hover:shadow-md active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "cursor-pointer active:scale-[0.985] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       )}
     >
+      {/* Decorative background accent */}
       <div
         className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-          styles.iconBg,
+          "pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-gradient-to-br opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100",
+          styles.deco,
         )}
-      >
-        <Icon className={cn("h-4 w-4", styles.icon, iconClassName)} />
-      </div>
+      />
+      <div
+        className={cn(
+          "pointer-events-none absolute -bottom-6 -left-6 h-20 w-20 rounded-full bg-gradient-to-tr opacity-[0.06] blur-xl",
+          styles.deco,
+        )}
+      />
 
-      <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-[10px] font-medium uppercase tracking-wider", styles.title)}>
-          {title}
-        </p>
-        <div className={cn("text-xl font-bold tracking-tight tabular-nums", styles.value)}>
-          <CountUp value={value} duration={1000} />
+      <div className="relative flex items-center gap-4">
+        <div
+          className={cn(
+            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+            "transition-transform duration-300 group-hover:scale-110",
+            styles.iconBg,
+          )}
+        >
+          <Icon className={cn("h-5 w-5", styles.icon, iconClassName)} />
         </div>
-        {caption && (
-          <p className={cn("mt-0.5 truncate text-[10px] leading-tight", styles.caption)}>
-            {caption}
+
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "truncate text-[11px] font-semibold uppercase tracking-widest",
+              styles.title,
+            )}
+          >
+            {title}
           </p>
-        )}
+          <div
+            className={cn(
+              "mt-0.5 text-2xl font-extrabold tracking-tight tabular-nums leading-none",
+              styles.value,
+            )}
+          >
+            <CountUp value={value} duration={1000} />
+          </div>
+          {caption && (
+            <p
+              className={cn(
+                "mt-1 truncate text-[10px] leading-tight font-medium",
+                styles.caption,
+              )}
+            >
+              {caption}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

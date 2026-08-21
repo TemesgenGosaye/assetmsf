@@ -151,3 +151,18 @@ def record_asset_lifecycle(sender, instance, created, **kwargs):
             new_value=new_value,
             message=message,
         )
+
+
+@receiver(post_save, sender=Asset)
+def sync_asset_qr_codes(sender, instance, created, **kwargs):
+    """When an Asset is updated, sync all linked QR codes so they reflect
+    the latest asset_name, property, department, and asset_code."""
+    from common.models import QRCode
+    if created:
+        return
+    QRCode.objects.filter(asset=instance).update(
+        asset_code=instance.asset_code,
+        asset_name=instance.name,
+        property=instance.property,
+        department=instance.department,
+    )

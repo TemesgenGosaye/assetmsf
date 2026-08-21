@@ -9,6 +9,12 @@ from core.models import BaseModel
 class QRCode(BaseModel):
     """
     QR code records for assets.
+
+    Each QR code encodes a URL to the asset details page using the asset's
+    production Asset ID (format: 1.06.{ITEM_TYPE}.{DEPT}.{SEQ}).  The
+    ``asset`` FK provides referential integrity while ``asset_code`` and the
+    denormalized ``asset_name`` / ``property`` / ``department`` fields allow
+    fast display without extra joins.
     """
     class Status(models.TextChoices):
         """QR code status."""
@@ -16,9 +22,32 @@ class QRCode(BaseModel):
         PRINTED = 'printed', _('Printed')
         EXPIRED = 'expired', _('Expired')
 
-    asset_id = models.CharField(_('asset ID'), max_length=50, db_index=True)
+    asset = models.ForeignKey(
+        'assets.Asset',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='qr_codes',
+        verbose_name=_('asset'),
+    )
+    asset_code = models.CharField(
+        _('asset code'),
+        max_length=50,
+        db_index=True,
+        blank=True,
+        default='',
+        help_text=_('Production Asset ID, e.g. 1.06.6.24.12.01'),
+    )
+    asset_identifier = models.CharField(
+        _('asset identifier (legacy)'),
+        max_length=50,
+        db_index=True,
+        blank=True,
+        default='',
+    )
     asset_name = models.CharField(_('asset name'), max_length=255, null=True, blank=True)
     property = models.CharField(_('property'), max_length=50, null=True, blank=True)
+    department = models.CharField(_('department'), max_length=255, null=True, blank=True)
     generated_date = models.DateField(_('generated date'), db_index=True)
     status = models.CharField(
         _('status'),
@@ -28,7 +57,7 @@ class QRCode(BaseModel):
         db_index=True
     )
     printed = models.BooleanField(_('printed'), default=False)
-    image_url = models.URLField(_('image URL'), null=True, blank=True)
+    image_url = models.TextField(_('image data URL'), null=True, blank=True)
 
     class Meta:
         db_table = 'qr_codes'
@@ -36,13 +65,14 @@ class QRCode(BaseModel):
         verbose_name_plural = _('QR codes')
         ordering = ['-generated_date']
         indexes = [
-            models.Index(fields=['asset_id']),
+            models.Index(fields=['asset']),
+            models.Index(fields=['asset_code']),
             models.Index(fields=['property']),
             models.Index(fields=['generated_date']),
         ]
 
     def __str__(self):
-        return f"{self.asset_id} - {self.generated_date}"
+        return f"{self.asset_code or self.asset_id} - {self.generated_date}"
 
 
 class Vendor(BaseModel):

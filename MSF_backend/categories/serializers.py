@@ -33,7 +33,7 @@ class ItemTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemType
         fields = [
-            'id', 'name', 'category', 'category_name', 'description',
+            'id', 'name', 'code', 'category', 'category_name', 'description',
             'default_depreciation_rate', 'default_warranty_period',
             'created_at', 'updated_at', 'is_active'
         ]
@@ -46,6 +46,6 @@ class ItemTypeCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemType
         fields = [
-            'name', 'category', 'description',
+            'name', 'code', 'category', 'description',
             'default_depreciation_rate', 'default_warranty_period'
         ]

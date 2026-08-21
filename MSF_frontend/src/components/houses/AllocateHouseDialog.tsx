@@ -58,7 +58,8 @@ function eligibleCandidates(candidates: HouseApplication[], house: AvailableHous
     if (c.status === "Allocated") return false;
     if (c.status !== "Waiting for Allocation" && c.status !== "Verified") return false;
     const catRank = CATEGORY_ORDER[c.eligible_house_category] ?? 0;
-    return houseRank <= catRank;
+    // STRICT CATEGORY MATCH
+    return house.house_type === c.eligible_house_category;
   });
 }
 
